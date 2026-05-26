@@ -7,31 +7,55 @@ namespace forall::lexer {
 enum class TokenKind {
     // Literals & identifiers
     Identifier,
+    Number,
 
-    // Keywords
+    // Declaration keywords
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
     KwProof, KwEnd,
-    KwAssume, KwExact, KwApply, KwHave,
-    KwBy, KwCase, KwCases, KwOn,
+
+    // Proof-step keywords
+    KwLet, KwBe, KwSuppose, KwHave, KwThen,
+    KwContradiction, KwBy, KwWith,
+    KwExact, KwApply,           // kept for compatibility
+
+    // Logical keywords (natural-language alternatives to symbols)
+    KwIf,                       // "if"
+    KwFor, KwAll, KwThere,      // "for all", "there exists"
+    KwImplies,                  // "implies"
+    KwFalse,                    // "false" / ⊥
+    KwIn,                       // "in"
+
+    // Proof-step tactic keywords
+    KwCase, KwCases, KwOn,
 
     // Punctuation
-    Colon, ColonColon,  // :  ::
-    Comma,              // ,
-    Dot,                // .
-    FatArrow,           // =>
+    Colon, ColonColon,          // :  ::
+    Comma,                      // ,
+    Dot,                        // .
+    FatArrow,                   // =>
 
-    // Math symbols (ASCII alternatives accepted alongside Unicode)
-    Arrow,              // →  (or ->)
-    Iff,                // ↔  (or <->)
-    Forall,             // ∀  (or \forall)
-    Exists,             // ∃  (or \exists)
-    And,                // ∧  (or /\)
-    Or,                 // ∨  (or \/)
-    Not,                // ¬  (or ~)
+    // Arithmetic operators
+    Plus, Minus, Star, Slash,
+
+    // Comparison operators
+    Equals,                     // =
+    Less, Greater,              // <  >
+    LessEq, GreaterEq,          // <=  >=
+    NotEq,                      // /=
+
+    // Math symbols — Unicode and ASCII alternatives both produce these
+    Arrow,                      // →  (or ->  or "implies")
+    Iff,                        // ↔
+    Forall,                     // ∀  (or "for all")
+    Exists,                     // ∃  (or "there exists")
+    And,                        // ∧  (or /\  or "and")
+    Or,                         // ∨  (or \/  or "or")
+    Not,                        // ¬  (or ~   or "not")
+    Pipe,                       // |  (absolute value)
 
     // Brackets
-    LParen, RParen,     // ( )
-    LBrace, RBrace,     // { }
+    LParen, RParen,             // ( )
+    LBrace, RBrace,             // { }
 
     // Sentinels
     Eof,

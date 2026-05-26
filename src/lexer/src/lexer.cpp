@@ -17,7 +17,6 @@ void Lexer::skipWhitespaceAndComments() {
         } else if (c == ' ' || c == '\t' || c == '\r') {
             ++pos_; ++col_;
         } else if (c == '-' && pos_ + 1 < source_.size() && source_[pos_ + 1] == '-') {
-            // Line comment: -- to end of line
             while (!isAtEnd() && source_[pos_] != '\n') { ++pos_; ++col_; }
         } else {
             break;
@@ -34,12 +33,10 @@ Token Lexer::nextToken() {
     const std::uint32_t start_line = line_;
     const std::uint32_t start_col  = col_;
 
-    // Build a Token spanning [start_pos, pos_) in source_.
     auto make = [&](TokenKind kind) -> Token {
         return Token{kind, source_.substr(start_pos, pos_ - start_pos), {filename_, start_line, start_col}};
     };
 
-    // Consume n bytes and advance the column counter by n.
     // Column numbers are byte offsets, not codepoint indices.
     auto consume = [&](std::size_t n) {
         pos_ += n;
@@ -49,7 +46,6 @@ Token Lexer::nextToken() {
     const unsigned char uc = static_cast<unsigned char>(source_[pos_]);
 
     // ── Multi-byte Unicode math symbols ───────────────────────────────────────
-    // Check the raw UTF-8 bytes directly; no locale or ICU required.
     //   ¬  U+00AC  →  C2 AC
     //   →  U+2192  →  E2 86 92
     //   ↔  U+2194  →  E2 86 94
@@ -76,6 +72,18 @@ Token Lexer::nextToken() {
         }
     }
 
+    // ── Numbers ───────────────────────────────────────────────────────────────
+    if (std::isdigit(uc)) {
+        while (!isAtEnd() && std::isdigit(static_cast<unsigned char>(source_[pos_])))
+            consume(1);
+        if (!isAtEnd() && source_[pos_] == '.') {
+            consume(1);
+            while (!isAtEnd() && std::isdigit(static_cast<unsigned char>(source_[pos_])))
+                consume(1);
+        }
+        return make(TokenKind::Number);
+    }
+
     // ── ASCII ─────────────────────────────────────────────────────────────────
     consume(1);
     const char c = static_cast<char>(uc);
@@ -87,25 +95,35 @@ Token Lexer::nextToken() {
         case '}': return make(TokenKind::RBrace);
         case ',': return make(TokenKind::Comma);
         case '.': return make(TokenKind::Dot);
+        case '+': return make(TokenKind::Plus);
+        case '*': return make(TokenKind::Star);
+        case '|': return make(TokenKind::Pipe);
         case ':':
             if (!isAtEnd() && source_[pos_] == ':') { consume(1); return make(TokenKind::ColonColon); }
             return make(TokenKind::Colon);
         case '=':
             if (!isAtEnd() && source_[pos_] == '>') { consume(1); return make(TokenKind::FatArrow); }
-            break;
+            return make(TokenKind::Equals);
+        case '<':
+            if (!isAtEnd() && source_[pos_] == '=') { consume(1); return make(TokenKind::LessEq); }
+            return make(TokenKind::Less);
+        case '>':
+            if (!isAtEnd() && source_[pos_] == '=') { consume(1); return make(TokenKind::GreaterEq); }
+            return make(TokenKind::Greater);
         case '-':
             if (!isAtEnd() && source_[pos_] == '>') { consume(1); return make(TokenKind::Arrow); }
-            break;
+            return make(TokenKind::Minus);
         case '~': return make(TokenKind::Not);
         case '/':
             if (!isAtEnd() && source_[pos_] == '\\') { consume(1); return make(TokenKind::And); }
-            break;
+            if (!isAtEnd() && source_[pos_] == '=')  { consume(1); return make(TokenKind::NotEq); }
+            return make(TokenKind::Slash);
         case '\\':
             if (!isAtEnd() && source_[pos_] == '/') { consume(1); return make(TokenKind::Or); }
             break;
     }
 
-    // Identifiers and keywords
+    // ── Identifiers and keywords ──────────────────────────────────────────────
     if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
         while (!isAtEnd() && (std::isalnum(static_cast<unsigned char>(source_[pos_])) || source_[pos_] == '_'))
             consume(1);
@@ -113,20 +131,41 @@ Token Lexer::nextToken() {
         const std::string_view word{source_.data() + start_pos, pos_ - start_pos};
 
         static constexpr std::pair<std::string_view, TokenKind> keywords[] = {
-            {"axiom",      TokenKind::KwAxiom},
-            {"definition", TokenKind::KwDefinition},
-            {"lemma",      TokenKind::KwLemma},
-            {"theorem",    TokenKind::KwTheorem},
-            {"proof",      TokenKind::KwProof},
-            {"end",        TokenKind::KwEnd},
-            {"assume",     TokenKind::KwAssume},
-            {"exact",      TokenKind::KwExact},
-            {"apply",      TokenKind::KwApply},
-            {"have",       TokenKind::KwHave},
-            {"by",         TokenKind::KwBy},
-            {"case",       TokenKind::KwCase},
-            {"cases",      TokenKind::KwCases},
-            {"on",         TokenKind::KwOn},
+            // Declaration
+            {"axiom",        TokenKind::KwAxiom},
+            {"definition",   TokenKind::KwDefinition},
+            {"lemma",        TokenKind::KwLemma},
+            {"theorem",      TokenKind::KwTheorem},
+            {"proof",        TokenKind::KwProof},
+            {"end",          TokenKind::KwEnd},
+            // Proof steps
+            {"let",          TokenKind::KwLet},
+            {"be",           TokenKind::KwBe},
+            {"suppose",      TokenKind::KwSuppose},
+            {"have",         TokenKind::KwHave},
+            {"then",         TokenKind::KwThen},
+            {"contradiction",TokenKind::KwContradiction},
+            {"by",           TokenKind::KwBy},
+            {"with",         TokenKind::KwWith},
+            {"exact",        TokenKind::KwExact},
+            {"apply",        TokenKind::KwApply},
+            // Logic keywords (natural-language symbols)
+            {"if",           TokenKind::KwIf},
+            {"for",          TokenKind::KwFor},
+            {"all",          TokenKind::KwAll},
+            {"there",        TokenKind::KwThere},
+            {"exists",       TokenKind::Exists},  // shares token with ∃
+            {"implies",      TokenKind::Arrow},   // shares token with →
+            {"false",        TokenKind::KwFalse},
+            {"in",           TokenKind::KwIn},
+            // Connective words (share tokens with symbols)
+            {"and",          TokenKind::And},
+            {"or",           TokenKind::Or},
+            {"not",          TokenKind::Not},
+            // Misc
+            {"case",         TokenKind::KwCase},
+            {"cases",        TokenKind::KwCases},
+            {"on",           TokenKind::KwOn},
         };
         for (const auto& [kw, kind] : keywords)
             if (word == kw) return make(kind);
