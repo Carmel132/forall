@@ -1,0 +1,90 @@
+(* forall language grammar — EBNF *)
+(* Notation: { } = zero or more, [ ] = optional, ( ) = grouping *)
+
+
+(* ── Top level ───────────────────────────────────────────────────────────── *)
+
+module      = { declaration } ;
+
+declaration = axiom
+            | definition
+            | theorem ;
+
+axiom       = "axiom"                , identifier , ":" , prop ;
+definition  = "definition"           , identifier , { param } , ":" , prop ;
+theorem     = ( "theorem" | "lemma") , identifier , ":" , prop , proof_block ;
+
+param       = "(" , identifier , ":" , type , ")" ;
+
+
+(* ── Proof blocks ────────────────────────────────────────────────────────── *)
+
+proof_block = "proof" , { step } , "end" ;
+
+step = let_step
+     | suppose_step
+     | have_step
+     | then_step
+     | contradiction_step ;
+
+let_step    = "let" , identifier , ( "=" , expr | "be" , "a" , type ) ;
+
+suppose_step = "suppose" , [ "for" , "contradiction" , ":" ]
+                         , [ identifier , ":" ] , prop ;
+
+have_step   = "have" , identifier , ":" , prop , "by" , justification ;
+
+then_step   = "then" , prop , [ "by" , justification ] ;
+
+contradiction_step = "contradiction" , ":" , prop ;
+
+justification = ref , { ( "and" | "with" ) , ref } ;
+ref           = identifier ;
+
+
+(* ── Propositions ────────────────────────────────────────────────────────── *)
+
+prop        = quantifier | implication ;
+
+quantifier  = ( "for" , "all" | "there" , "exists" ) , binder , "," , prop ;
+
+binder      = identifier , { "and" , identifier } , [ "be" , "a" , type ]
+            | identifier , rel , expr ;
+
+implication = "if" , prop , "then" , prop
+            | disjunction , [ "implies" , implication ] ;
+
+disjunction = conjunction , { "or"  , conjunction } ;
+conjunction = negation    , { "and" , negation    } ;
+negation    = "not" , atomic_prop | atomic_prop ;
+
+atomic_prop = identifier , [ "(" , arg_list , ")" ]
+            | expr , rel , expr
+            | "(" , prop , ")" ;
+
+
+(* ── Expressions ─────────────────────────────────────────────────────────── *)
+
+expr   = term   , { ( "+" | "-" ) , term   } ;
+term   = factor , { ( "*" | "/" ) , factor } ;
+factor = [ "-" ] , atom ;
+atom   = "|" , expr , "|"
+       | identifier , [ "(" , arg_list , ")" ]
+       | number
+       | "(" , expr , ")" ;
+
+arg_list = expr , { "," , expr } ;
+
+
+(* ── Types ───────────────────────────────────────────────────────────────── *)
+
+type = "Real" | "Nat" | "Prop" | "Sequence" | identifier ;
+
+
+(* ── Primitives ──────────────────────────────────────────────────────────── *)
+
+rel        = "<" | ">" | "≤" | "≥" | "=" | "≠" | "<=" | ">=" | "/=" ;
+identifier = letter , { letter | digit | "_" } ;
+number     = digit  , { digit } , [ "." , { digit } ] ;
+letter     = "a" | ... | "z" | "A" | ... | "Z" ;
+digit      = "0" | ... | "9" ;
