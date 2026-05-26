@@ -1,0 +1,14 @@
+build/
+.cache/
+compile_commands.json
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+_deps/
+*.o
+*.a
+*.so
+CLAUDE.md
+.claude/

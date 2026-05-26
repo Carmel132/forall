@@ -1,0 +1,24 @@
+-- A sketch of the forall proof language.
+-- This is aspirational syntax; not all of it parses yet.
+
+-- An axiom is a proposition accepted without proof.
+axiom excluded_middle : ∀ P, P ∨ ¬P
+
+-- A theorem requires a proof block.
+theorem identity : ∀ P, P → P
+proof
+  assume P : Prop
+  assume h : P
+  exact h
+end
+
+-- Modus ponens: from (A → B) and A, conclude B.
+-- This is the ImplElim inference rule.
+lemma modus_ponens : ∀ P Q, (P → Q) → P → Q
+proof
+  assume P : Prop
+  assume Q : Prop
+  assume h : P → Q
+  assume hp : P
+  exact h hp
+end
