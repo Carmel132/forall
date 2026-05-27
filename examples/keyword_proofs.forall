@@ -1,0 +1,53 @@
+-- keyword_proofs.forall
+-- The same logic as hello.forall, written entirely with English keywords.
+--
+-- Keyword equivalents for symbols:
+--   ->   or  implies   stands for  →
+--   and                stands for  ∧
+--   or                 stands for  ∨
+--   not                stands for  ¬
+--   false              stands for  ⊥
+--   if P then Q        stands for  P → Q  (alternative form)
+
+-- An axiom written with "if ... then ..." instead of "->".
+axiom conj_elim_left : if P and Q then P
+
+-- Modus tollens: from (P -> Q) and (not Q) we can derive (not P).
+-- Natural deduction breakdown:
+--   1. Assume P -> Q and not Q.
+--   2. Assume P (for contradiction with not Q).
+--   3. Apply modus ponens to get Q.
+--   4. Q contradicts not Q, giving false.
+--   5. Discharge the assumption of P to get not P.
+--   6. Discharge the outer assumptions to get the full implication.
+theorem modus_tollens : (P -> Q) -> not Q -> not P
+proof
+  suppose hpq  : P -> Q
+  suppose hnq  : not Q
+  suppose hp   : P
+  have hq      : Q                 by hpq and hp
+  have bot     : false             by hnq and hq
+  have np      : not P             by hp  and bot
+  have nq_imp  : not Q -> not P    by hnq and np
+  then (P -> Q) -> not Q -> not P  by hpq and nq_imp
+end
+
+-- Disjunction is commutative: (P or Q) implies (Q or P).
+-- Natural deduction breakdown:
+--   1. Assume P or Q.
+--   2. Case P: build Q or P via OrIntroR, then wrap as P -> Q or P.
+--   3. Case Q: build Q or P via OrIntroL, then wrap as Q -> Q or P.
+--   4. Apply OrElim with the two case implications.
+--   5. Discharge the assumption of P or Q.
+theorem or_comm : (P or Q) -> (Q or P)
+proof
+  suppose h    : P or Q
+  suppose hp   : P
+  have qp_l   : Q or P          by hp
+  have p_qp   : P -> Q or P     by hp  and qp_l
+  suppose hq   : Q
+  have qp_r   : Q or P          by hq
+  have q_qp   : Q -> Q or P     by hq  and qp_r
+  have qp     : Q or P          by h   and p_qp and q_qp
+  then (P or Q) -> (Q or P)     by h   and qp
+end

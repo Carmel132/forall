@@ -1,24 +1,24 @@
--- A sketch of the forall proof language.
--- This is aspirational syntax; not all of it parses yet.
+-- Examples in the forall proof language.
+-- Propositions P, Q are free atomic variables.
+-- Quantifiers (∀/∃) are not yet supported by the parser.
 
--- An axiom is a proposition accepted without proof.
-axiom excluded_middle : ∀ P, P ∨ ¬P
+-- An axiom is accepted without proof.
+axiom refl : P → P
 
--- A theorem requires a proof block.
-theorem identity : ∀ P, P → P
+-- Modus ponens: from (P → Q) and P, conclude Q.
+lemma modus_ponens : Q
 proof
-  assume P : Prop
-  assume h : P
-  exact h
+  suppose h1 : P → Q
+  suppose h2 : P
+  then Q by h1 and h2
 end
 
--- Modus ponens: from (A → B) and A, conclude B.
--- This is the ImplElim inference rule.
-lemma modus_ponens : ∀ P Q, (P → Q) → P → Q
+-- Commutativity of conjunction: P ∧ Q implies Q ∧ P.
+theorem and_comm : (P ∧ Q) → (Q ∧ P)
 proof
-  assume P : Prop
-  assume Q : Prop
-  assume h : P → Q
-  assume hp : P
-  exact h hp
+  suppose h : P ∧ Q
+  have hp : P by h
+  have hq : Q by h
+  have hqp : Q ∧ P by hq and hp
+  then (P ∧ Q) → (Q ∧ P) by h and hqp
 end

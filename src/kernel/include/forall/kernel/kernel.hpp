@@ -22,8 +22,6 @@ struct KernelError {
 //   3. Every public method is const-correct and stateless where possible.
 //   4. Keep this class small. Automation and tactics live elsewhere.
 //
-// TODO: premise shape verification requires ast::Prop to be a structural
-// expression tree rather than a raw string.
 class Kernel {
 public:
     // Apply a named inference rule to zero or more premise judgments.

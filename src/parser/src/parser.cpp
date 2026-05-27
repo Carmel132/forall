@@ -60,7 +60,7 @@ ast::Prop Parser::parseImplication() {
     // disjunction [ "implies" / → disjunction ]
     const auto loc = peek().loc;
     auto lhs = parseDisjunction();
-    if (check(lexer::TokenKind::Arrow)) {
+    if (check(lexer::TokenKind::Arrow) || check(lexer::TokenKind::KwImplies)) {
         advance();
         auto rhs = parseImplication(); // right-associative
         return {loc, ast::PropImpl{ast::make_prop(std::move(lhs)),
