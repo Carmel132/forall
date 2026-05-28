@@ -187,6 +187,31 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+TEST(CheckerTest, ValidLemmaUsedInSubsequentProof) {
+    // A proved lemma is accumulated into module_env and can be used as a ref
+    // in any declaration that follows it in the same file.
+    auto diag = run_checker("valid_lemma_reuse", R"(
+axiom ab : A -> B
+axiom bc : B -> C
+
+lemma a_to_b : A -> B
+proof
+  suppose h : A
+  have hb : B by ab and h
+  then A -> B by h and hb
+end
+
+theorem a_to_c : A -> C
+proof
+  suppose h : A
+  have hb : B by a_to_b and h
+  have hc : C by bc and hb
+  then A -> C by h and hc
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 // ── Invalid proofs ─────────────────────────────────────────────────────────────
 
 TEST(CheckerTest, InvalidUnknownRef) {
@@ -230,6 +255,31 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_TRUE(has_error(diag, "'then' step requires a 'by' justification"));
+}
+
+TEST(CheckerTest, InvalidWrongConclusion) {
+    // Proof establishes P but the theorem declares P and Q.
+    auto diag = run_checker("invalid_wrong_conclusion", R"(
+theorem bad : P and Q
+proof
+  suppose h : P
+  then P by h
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "wrong proposition"));
+}
+
+TEST(CheckerTest, InvalidNoThenStep) {
+    // A proof with no 'then' step produces no conclusion.
+    auto diag = run_checker("invalid_no_then", R"(
+theorem bad : P
+proof
+  suppose h : P
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "no concluding"));
 }
 
 TEST(CheckerTest, InvalidContradictionWithNoJustification) {

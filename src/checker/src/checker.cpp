@@ -277,8 +277,34 @@ void check_proof(const ast::Decl& decl,
     // Seed local env with module-level axioms and previously proved lemmas.
     HypEnv env{module_env};
 
-    for (const auto& step : decl.proof->steps)
+    const ast::Step* last_then = nullptr;
+    bool had_step_errors = false;
+
+    for (const auto& step : decl.proof->steps) {
+        const auto snapshot = diag.diagnostics().size();
         check_step(step, env, kernel, diag);
+        const auto& all = diag.diagnostics();
+        for (auto i = snapshot; i < all.size(); ++i) {
+            if (all[i].severity == diag::Severity::Error) {
+                had_step_errors = true;
+                break;
+            }
+        }
+        if (std::get_if<ast::ThenStep>(&step.node))
+            last_then = &step;
+    }
+
+    // Only validate the conclusion when every step passed; cascading errors on a
+    // broken proof are more noise than signal.
+    if (!had_step_errors) {
+        if (!last_then) {
+            diag.emit({diag::Severity::Error, decl.loc,
+                       "proof of '" + decl.name + "' has no concluding 'then' step"});
+        } else if (std::get<ast::ThenStep>(last_then->node).prop != decl.statement) {
+            diag.emit({diag::Severity::Error, last_then->loc,
+                       "proof concludes with wrong proposition"});
+        }
+    }
 }
 
 } // namespace
@@ -319,9 +345,22 @@ void Checker::check(const std::filesystem::path& path) {
             break;
         }
         case ast::DeclKind::Theorem:
-        case ast::DeclKind::Lemma:
+        case ast::DeclKind::Lemma: {
+            const auto snapshot = diag_.diagnostics().size();
             check_proof(*decl, module_env, kernel, diag_);
+            // Register the proved statement so later declarations can cite it by name.
+            const auto& all = diag_.diagnostics();
+            bool no_new_errors = true;
+            for (auto i = snapshot; i < all.size(); ++i) {
+                if (all[i].severity == diag::Severity::Error) { no_new_errors = false; break; }
+            }
+            if (no_new_errors) {
+                if (auto r = kernel.introduce_axiom(decl->statement))
+                    module_env.insert_or_assign(decl->name,
+                                                HypEntry{std::move(*r), EntryKind::Derived});
+            }
             break;
+        }
         case ast::DeclKind::Definition:
             break;
         }
