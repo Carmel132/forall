@@ -525,6 +525,32 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── Quantifiers ────────────────────────────────────────────────────────────────
+
+TEST(CheckerTest, QuantifierAxiom) {
+    // Axioms with quantifiers are accepted; kernel semantics are longer-term.
+    auto diag = run_checker("quant_axiom", "axiom all_p : for all x, P");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, QuantifierExistsAxiom) {
+    auto diag = run_checker("quant_exists_axiom", "axiom some_p : there exists x, P");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, QuantifierTheoremStatement) {
+    // A theorem whose statement contains a quantifier: the checker accepts the
+    // statement (no kernel quantifier rules yet, but parsing and axiom-seeding work).
+    auto diag = run_checker("quant_theorem", R"(
+axiom univ : for all x : Nat, P
+theorem restate : for all x : Nat, P
+proof
+  then for all x : Nat, P by univ
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 TEST(CheckerTest, InvalidContradictionWithNoJustification) {
     auto diag = run_checker("invalid_contradiction_no_by", R"(
 theorem bad : P

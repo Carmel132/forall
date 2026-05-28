@@ -231,6 +231,83 @@ TEST(ParserTest, PropImplAndImpliesAreEquivalent) {
     EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
 }
 
+// ── Quantifiers ────────────────────────────────────────────────────────────────
+
+TEST(ParserTest, QuantifierForAll) {
+    auto r = parse_str("axiom a : for all x, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    EXPECT_EQ(fa->var, "x");
+    EXPECT_FALSE(fa->type.has_value());
+    EXPECT_NE(std::get_if<Atomic>(&fa->body->node), nullptr);
+}
+
+TEST(ParserTest, QuantifierForAllTyped) {
+    auto r = parse_str("axiom a : for all x : Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    EXPECT_EQ(fa->var, "x");
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_EQ(*fa->type, "Nat");
+    EXPECT_NE(std::get_if<Atomic>(&fa->body->node), nullptr);
+}
+
+TEST(ParserTest, QuantifierExists) {
+    auto r = parse_str("axiom a : there exists x, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ex = std::get_if<PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(ex, nullptr);
+    EXPECT_EQ(ex->var, "x");
+    EXPECT_FALSE(ex->type.has_value());
+}
+
+TEST(ParserTest, QuantifierUnicodeForall) {
+    // ∀ U+2200 → UTF-8 E2 88 80
+    auto r = parse_str("axiom a : \xE2\x88\x80 x, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_NE(std::get_if<PropForall>(&r.mod.decls[0]->statement.node), nullptr);
+}
+
+TEST(ParserTest, QuantifierUnicodeExists) {
+    // ∃ U+2203 → UTF-8 E2 88 83
+    auto r = parse_str("axiom a : \xE2\x88\x83 x, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_NE(std::get_if<PropExists>(&r.mod.decls[0]->statement.node), nullptr);
+}
+
+TEST(ParserTest, QuantifierInImplication) {
+    // "P -> for all x, Q"  parses as  P -> (for all x, Q)
+    auto r = parse_str("axiom a : P -> for all x, Q");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* im = std::get_if<PropImpl>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(im, nullptr);
+    EXPECT_NE(std::get_if<Atomic>(&im->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<PropForall>(&im->rhs->node), nullptr);
+}
+
+TEST(ParserTest, QuantifierNestedForall) {
+    // "for all x, for all y, P"  parses as  ∀ x, (∀ y, P)
+    auto r = parse_str("axiom a : for all x, for all y, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* outer = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->var, "x");
+    EXPECT_NE(std::get_if<PropForall>(&outer->body->node), nullptr);
+}
+
+TEST(ParserTest, ErrorRecoveryUnknownStep) {
+    // Unknown step token: parser emits an error and produces a silent sentinel.
+    // Subsequent valid steps are still parsed correctly.
+    auto r = parse_str("theorem t : P\nproof\n  bad_token\n  then P by h\nend");
+    EXPECT_TRUE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    EXPECT_EQ(r.mod.decls[0]->proof->steps.size(), 2u);
+    // Second step (the 'then') is parsed despite the earlier error
+    EXPECT_NE(std::get_if<ThenStep>(&r.mod.decls[0]->proof->steps[1].node), nullptr);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {
