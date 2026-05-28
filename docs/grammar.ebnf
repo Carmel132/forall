@@ -35,6 +35,8 @@
 (*   "prod i : T, f i"       │  ∏       │  aggregate product with binder  *)
 (*   "floor(x)" / "ceil(x)"  │  ⌊x⌋/⌈x⌉│  floor and ceiling functions    *)
 (*   "n!" (no Unicode alt.)  │  n!      │  factorial (postfix)            *)
+(*   "f compose g"/"f circ g"│  f ∘ g   │  function composition           *)
+(*   "inv f" (no Unicode alt.)│ (none)  │  function/group inverse (prefix)*)
 (*                                                                         *)
 (* Term-language symbols (planned):                                        *)
 (*   "x in S"                │  x ∈ S   │  set membership                 *)
@@ -46,8 +48,6 @@
 (*   "A inter B"             │  A ∩ B   │  set intersection               *)
 (*   "A setminus B"          │  A \ B   │  set difference                 *)
 (*   "compl A"               │  Aᶜ      │  set complement (prefix)        *)
-(*   "f compose g"           │  f ∘ g   │  function composition           *)
-(*   "inv f" / "f ^ (-1)"    │  f⁻¹     │  function / group inverse       *)
 
 
 (* ── Top level ───────────────────────────────────────────────────────────── *)
@@ -149,9 +149,9 @@ sumExpr   = ( "sum" | "∑" ) , aggBinder , "," , expr ;
 prodExpr  = ( "prod" | "∏" ) , aggBinder , "," , expr ;
 aggBinder = identifier , ":" , type     (* typed binder:   sum i : Nat, f i  *)
            | identifier , rel , expr ;  (* bounded binder: sum i < n, f i    *)
-exprAdd   = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
-exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" )       , exprUnary } ;
-exprUnary = [ "-" ] , exprPow ;
+exprAdd   = exprMul   , { ( "+" | "-" )                                             , exprMul   } ;
+exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" | "compose" | "circ" | "∘" ) , exprUnary } ;
+exprUnary = "-" , exprPow | "inv" , exprPow | exprPow ;  (* "inv" desugars to inv(exprPow) *)
 exprPow   = exprAtom , [ "^" , exprUnary ] ;           (* right-associative via exprUnary *)
 exprAtom  = base , { "[" , expr , "]" | "!" } ;        (* subscript and factorial — left-assoc *)
 base      = "|" , expr , "|"                           (* absolute value  |x - y|            *)

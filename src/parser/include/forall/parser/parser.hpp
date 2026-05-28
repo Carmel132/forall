@@ -42,8 +42,8 @@ private:
     //           condExpr  = "if" prop "then" expr "else" expr
     //           aggregate = ("sum"|"∑"|"prod"|"∏") id (":" type | rel expr) "," expr
     //           exprAdd   = exprMul { ("+" | "-") exprMul }
-    //           exprMul   = exprUnary { ("*" | "/" | "div" | "mod") exprUnary }
-    //           exprUnary = ["-"] exprPow
+    //           exprMul   = exprUnary { ("*" | "/" | "div" | "mod" | "compose" | "circ" | "∘") exprUnary }
+    //           exprUnary = ["-"] exprPow | "inv" exprPow   (→ ExprCall{"inv",[…]})
     //           exprPow   = exprAtom [ "^" exprUnary ]  (right-associative)
     //           exprAtom  = base { "[" expr "]" | "!" }  (postfix, left-assoc)
     //           base = number

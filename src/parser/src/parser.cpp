@@ -70,15 +70,17 @@ ast::Expr Parser::parseExpr() {
 ast::Expr Parser::parseExprMul() {
     const auto loc = peek().loc;
     auto lhs = parseExprUnary();
-    while (check(lexer::TokenKind::Star)   || check(lexer::TokenKind::Slash) ||
-           check(lexer::TokenKind::KwDiv)  || check(lexer::TokenKind::KwMod))
+    while (check(lexer::TokenKind::Star)      || check(lexer::TokenKind::Slash) ||
+           check(lexer::TokenKind::KwDiv)     || check(lexer::TokenKind::KwMod) ||
+           check(lexer::TokenKind::KwCompose) || check(lexer::TokenKind::Circ))
     {
         ast::BinOp op;
         switch (peek().kind) {
-            case lexer::TokenKind::Star:   op = ast::BinOp::Mul;  break;
-            case lexer::TokenKind::Slash:  op = ast::BinOp::Div;  break;
-            case lexer::TokenKind::KwDiv:  op = ast::BinOp::IDiv; break;
-            default:                       op = ast::BinOp::Mod;  break;
+            case lexer::TokenKind::Star:      op = ast::BinOp::Mul;     break;
+            case lexer::TokenKind::Slash:     op = ast::BinOp::Div;     break;
+            case lexer::TokenKind::KwDiv:     op = ast::BinOp::IDiv;    break;
+            case lexer::TokenKind::KwMod:     op = ast::BinOp::Mod;     break;
+            default:                          op = ast::BinOp::Compose; break; // compose / ∘
         }
         advance();
         auto rhs = parseExprUnary();
@@ -94,6 +96,13 @@ ast::Expr Parser::parseExprUnary() {
         advance();
         auto operand = parseExprPow();
         return {loc, ast::ExprUnary{ast::UnaryOp::Neg, ast::make_expr(std::move(operand))}};
+    }
+    if (check(lexer::TokenKind::KwInv)) {
+        const auto loc = peek().loc;
+        advance();
+        auto operand = parseExprPow(); // inv applies to the immediately following atom/pow
+        std::vector<ast::ExprPtr> args{ast::make_expr(std::move(operand))};
+        return {loc, ast::ExprCall{"inv", std::move(args)}};
     }
     return parseExprPow();
 }
