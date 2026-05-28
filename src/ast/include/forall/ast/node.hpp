@@ -37,8 +37,21 @@ struct ExprCall   { std::string name; std::vector<ExprPtr> args; }; // f(x, y)
 struct ExprIndex  { ExprPtr array; ExprPtr index; };                // a[n]
 struct ExprTuple  { std::vector<ExprPtr> elements; };               // (a, b, c)
 
+struct ExprLambda {                                                  // fun x [: T] => body  /  λ x, body
+    std::string              var;
+    std::optional<std::string> type;
+    ExprPtr                  body;
+};
+
+struct ExprIf {                                                      // if P then a else b
+    PropPtr cond;
+    ExprPtr then_;
+    ExprPtr else_;
+};
+
 using ExprNode = std::variant<
-    ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall, ExprIndex, ExprTuple
+    ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
+    ExprIndex, ExprTuple, ExprLambda, ExprIf
 >;
 
 struct Expr {

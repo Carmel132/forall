@@ -33,6 +33,10 @@ bool Expr::operator==(const Expr& other) const {
                 if (!(*x.elements[i] == *y.elements[i])) return false;
             return true;
         }
+        else if constexpr (std::is_same_v<T, ExprLambda>)
+            return x.var == y.var && x.type == y.type && *x.body == *y.body;
+        else if constexpr (std::is_same_v<T, ExprIf>)
+            return *x.cond == *y.cond && *x.then_ == *y.then_ && *x.else_ == *y.else_;
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }
