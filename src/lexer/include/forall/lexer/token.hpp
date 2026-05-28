@@ -35,6 +35,9 @@ enum class TokenKind {
     LFloor, RFloor,             // ⌊ ⌋  U+230A / U+230B
     LCeil,  RCeil,              // ⌈ ⌉  U+2308 / U+2309
     Bang,                       // !  (factorial postfix)
+    KwCompose,                  // "compose" / "circ"
+    Circ,                       // ∘  U+2218
+    KwInv,                      // "inv" (prefix function inverse)
 
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,

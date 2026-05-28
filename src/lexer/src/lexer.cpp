@@ -74,6 +74,7 @@ Token Lexer::nextToken() {
             if (b2 == 0x83) { consume(3); return make(TokenKind::Exists); }
             if (b2 == 0x8F) { consume(3); return make(TokenKind::Pi);     } // ∏ U+220F
             if (b2 == 0x91) { consume(3); return make(TokenKind::Sigma);  } // ∑ U+2211
+            if (b2 == 0x98) { consume(3); return make(TokenKind::Circ);   } // ∘ U+2218
             if (b2 == 0xA7) { consume(3); return make(TokenKind::And);    }
             if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);     }
         }
@@ -205,6 +206,9 @@ Token Lexer::nextToken() {
             {"else",         TokenKind::KwElse},
             {"sum",          TokenKind::KwSum},
             {"prod",         TokenKind::KwProd},
+            {"compose",      TokenKind::KwCompose},
+            {"circ",         TokenKind::KwCompose},  // alias for compose
+            {"inv",          TokenKind::KwInv},
             // Connective words (share tokens with symbols)
             {"and",          TokenKind::And},
             {"or",           TokenKind::Or},
