@@ -23,8 +23,8 @@ struct Step; // forward-declared so CasesStep can hold std::unique_ptr<Step>
 // Term-level arithmetic expressions, separate from Prop.
 // They enter the proposition layer via PropRel and PropPred.
 
-enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow };
-//                  +    -    *    /   div  mod   ^
+enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow, Compose };
+//                  +    -    *    /   div  mod   ^      ∘
 
 enum class UnaryOp { Neg }; // unary minus; absolute value is its own ExprAbs node
 
