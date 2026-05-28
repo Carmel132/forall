@@ -761,3 +761,55 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Algebraic operators (compose / ∘, inv) ─────────────────────────────────────
+
+TEST(CheckerTest, ComposeAxiomAccepted) {
+    auto diag = run_checker("compose_axiom", "axiom comp : f compose g = h");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ComposeTheoremByAssumption) {
+    auto diag = run_checker("compose_assume", R"(
+axiom comp_def : f compose g = h
+theorem restate_comp : f compose g = h
+proof
+  then f compose g = h by comp_def
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ComposeUnicodeAxiomAccepted) {
+    // Unicode ∘ (U+2218 = E2 88 98) produces the same AST as "compose"
+    auto diag = run_checker("compose_unicode_axiom",
+                            "axiom comp_u : f \xE2\x88\x98 g = h");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvAxiomAccepted) {
+    auto diag = run_checker("inv_axiom", "axiom inv_ax : inv f = g");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvTheoremByAssumption) {
+    auto diag = run_checker("inv_assume", R"(
+axiom inv_def : inv f = g
+theorem restate_inv : inv f = g
+proof
+  then inv f = g by inv_def
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ComposeAndInvAxiomsAccepted) {
+    // Multiple axioms using both compose and inv together.
+    // Note: lhs avoids a leading '(' (which the prop parser reads as grouped-prop).
+    // f compose g compose h is left-assoc: (f∘g)∘h; rhs uses parentheses inside expr context.
+    auto diag = run_checker("compose_inv_axioms", R"(
+axiom inv_comp   : inv (f compose g) = inv g compose inv f
+axiom comp_assoc : f compose g compose h = f compose (g compose h)
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}

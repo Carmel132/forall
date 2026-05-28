@@ -1109,6 +1109,120 @@ TEST(ParserTest, FactorialOnSubscript) {
     EXPECT_NE(std::get_if<ExprIndex>(&call->args[0]->node), nullptr);
 }
 
+// ── Item 13: Algebraic operators (compose / ∘, inv) ──────────────────────────
+
+TEST(ParserTest, ComposeKeyword) {
+    // f compose g = h  —  infix compose → ExprBinary{Compose, f, g}
+    auto r = parse_str("axiom a : f compose g = h");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* comp = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(comp, nullptr);
+    EXPECT_EQ(comp->op, BinOp::Compose);
+    EXPECT_NE(std::get_if<ExprVar>(&comp->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&comp->rhs->node), nullptr);
+}
+
+TEST(ParserTest, CircKeyword) {
+    // f circ g = h  —  "circ" is an alias for "compose"; identical AST
+    auto r1 = parse_str("axiom a : f compose g = h");
+    auto r2 = parse_str("axiom a : f circ g = h");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, ComposeUnicode) {
+    // f ∘ g = h  —  Unicode ∘ (U+2218 = E2 88 98) produces identical AST to keyword
+    auto r1 = parse_str("axiom a : f compose g = h");
+    auto r2 = parse_str("axiom a : f \xE2\x88\x98 g = h");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, ComposeLeftAssoc) {
+    // f compose g compose h  =  (f ∘ g) ∘ h  (left-associative, like *)
+    auto r = parse_str("axiom a : f compose g compose h = k");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->op, BinOp::Compose);
+    // lhs of outer is also a compose (f ∘ g)
+    const auto* inner = std::get_if<ExprBinary>(&outer->lhs->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->op, BinOp::Compose);
+    // rhs of outer is h (a bare variable)
+    EXPECT_NE(std::get_if<ExprVar>(&outer->rhs->node), nullptr);
+}
+
+TEST(ParserTest, ComposeBindsTighterThanAdd) {
+    // f compose g + h = k  →  (f ∘ g) + h = k  (compose at mul-level, tighter than +)
+    auto r = parse_str("axiom a : f compose g + h = k");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* add = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+    // lhs of + is the compose
+    const auto* comp = std::get_if<ExprBinary>(&add->lhs->node);
+    ASSERT_NE(comp, nullptr);
+    EXPECT_EQ(comp->op, BinOp::Compose);
+    // rhs of + is h
+    EXPECT_NE(std::get_if<ExprVar>(&add->rhs->node), nullptr);
+}
+
+TEST(ParserTest, InvBasic) {
+    // inv f = g  —  prefix inv desugars to ExprCall{"inv", [f]}
+    auto r = parse_str("axiom a : inv f = g");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "inv");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_NE(std::get_if<ExprVar>(&call->args[0]->node), nullptr);
+}
+
+TEST(ParserTest, InvFunctionCall) {
+    // inv f(x) = g  —  inv applies to the function call f(x), not just the identifier f
+    auto r = parse_str("axiom a : inv f(x) = g");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* inv_call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(inv_call, nullptr);
+    EXPECT_EQ(inv_call->name, "inv");
+    ASSERT_EQ(inv_call->args.size(), 1u);
+    // argument is f(x), itself a call
+    const auto* inner = std::get_if<ExprCall>(&inv_call->args[0]->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->name, "f");
+    EXPECT_EQ(inner->args.size(), 1u);
+}
+
+TEST(ParserTest, InvBindsTighterThanCompose) {
+    // inv f compose g = h  →  (inv f) ∘ g = h  (inv at unary level, tighter than compose)
+    auto r = parse_str("axiom a : inv f compose g = h");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* comp = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(comp, nullptr);
+    EXPECT_EQ(comp->op, BinOp::Compose);
+    // lhs of compose is inv(f)
+    const auto* inv_call = std::get_if<ExprCall>(&comp->lhs->node);
+    ASSERT_NE(inv_call, nullptr);
+    EXPECT_EQ(inv_call->name, "inv");
+    // rhs of compose is g
+    EXPECT_NE(std::get_if<ExprVar>(&comp->rhs->node), nullptr);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {
