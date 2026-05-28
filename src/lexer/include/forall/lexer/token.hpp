@@ -57,6 +57,7 @@ enum class TokenKind {
 
     // Brackets
     LParen, RParen,             // ( )
+    LBracket, RBracket,         // [ ]
     LBrace, RBrace,             // { }
 
     // Sentinels

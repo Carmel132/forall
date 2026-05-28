@@ -99,6 +99,8 @@ Token Lexer::nextToken() {
     switch (c) {
         case '(': return make(TokenKind::LParen);
         case ')': return make(TokenKind::RParen);
+        case '[': return make(TokenKind::LBracket);
+        case ']': return make(TokenKind::RBracket);
         case '{': return make(TokenKind::LBrace);
         case '}': return make(TokenKind::RBrace);
         case ',': return make(TokenKind::Comma);
