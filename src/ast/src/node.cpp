@@ -37,6 +37,14 @@ bool Expr::operator==(const Expr& other) const {
             return x.var == y.var && x.type == y.type && *x.body == *y.body;
         else if constexpr (std::is_same_v<T, ExprIf>)
             return *x.cond == *y.cond && *x.then_ == *y.then_ && *x.else_ == *y.else_;
+        else if constexpr (std::is_same_v<T, ExprAgg>) {
+            if (x.op != y.op || x.var != y.var || x.type != y.type || x.rel != y.rel)
+                return false;
+            const bool lb = x.bound.has_value(), rb = y.bound.has_value();
+            if (lb != rb) return false;
+            if (lb && !(**x.bound == **y.bound)) return false;
+            return *x.body == *y.body;
+        }
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }

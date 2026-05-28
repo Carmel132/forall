@@ -28,6 +28,12 @@ enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow };
 
 enum class UnaryOp { Neg }; // unary minus; absolute value is its own ExprAbs node
 
+// RelOp lives here (before ExprAgg which uses it) and is also used by PropRel.
+enum class RelOp { Lt, Gt, LtEq, GtEq, Eq, NotEq };
+//                  <   >   <=    >=    =   /=
+
+enum class AggOp { Sum, Prod };
+
 struct ExprLit    { std::string value;  };                          // 42, 3.14
 struct ExprVar    { std::string name;   };                          // x, n, eps
 struct ExprBinary { BinOp op; ExprPtr lhs, rhs; };                 // a + b
@@ -49,9 +55,18 @@ struct ExprIf {                                                      // if P the
     ExprPtr else_;
 };
 
+struct ExprAgg {                                                     // sum/prod with binder
+    AggOp                      op;
+    std::string                var;
+    std::optional<std::string> type;    // typed binder:   sum i : T, f i
+    std::optional<RelOp>       rel;     // bounded binder: sum i < n, f i
+    std::optional<ExprPtr>     bound;   // bound expression (bounded form only)
+    ExprPtr                    body;
+};
+
 using ExprNode = std::variant<
     ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
-    ExprIndex, ExprTuple, ExprLambda, ExprIf
+    ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg
 >;
 
 struct Expr {
@@ -83,9 +98,6 @@ struct PropExists {                            // ∃ x [: T], P
 };
 
 // ── Relational propositions (bridge between Expr and Prop) ────────────────────
-
-enum class RelOp { Lt, Gt, LtEq, GtEq, Eq, NotEq };
-//                  <   >   <=    >=    =   /=
 
 // expr rel expr  —  e.g. n + 1 > 0,  |a - b| < eps,  x ^ 2 >= 0
 struct PropRel {
