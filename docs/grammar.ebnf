@@ -138,13 +138,16 @@ atomic_prop = "false" | "⊥"
 expr      = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
 exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" )       , exprUnary } ;
 exprUnary = [ "-" ] , exprPow ;
-exprPow   = atom , [ "^" , exprUnary ] ;   (* right-associative via exprUnary *)
-atom      = "|" , expr , "|"               (* absolute value  |x - y| *)
-          | identifier , [ "(" , arg_list , ")" ]
+exprPow   = exprAtom , [ "^" , exprUnary ] ;      (* right-associative via exprUnary *)
+exprAtom  = base , { "[" , expr , "]" } ;         (* postfix subscript — left-associative, tightest binding *)
+base      = "|" , expr , "|"                      (* absolute value  |x - y| *)
+          | identifier , [ "(" , arg_list , ")" ] (* variable or function call *)
           | number
-          | "(" , expr , ")" ;
+          | "(" , expr , ")"                      (* grouping — transparent *)
+          | "(" , expr , "," , expr , { "," , expr } , ")" ;  (* tuple  (a, b, c) *)
 
 arg_list = expr , { "," , expr } ;
+(* Note: f(a, b) has two separate args; f((a, b)) has one tuple arg. *)
 
 
 (* ── Types ───────────────────────────────────────────────────────────────── *)
