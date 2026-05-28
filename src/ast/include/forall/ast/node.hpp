@@ -21,11 +21,22 @@ struct PropFalse {};                           // ⊥
 struct PropNot  { PropPtr inner; };            // ¬P
 struct PropAnd  { PropPtr lhs, rhs; };         // P ∧ Q
 struct PropOr   { PropPtr lhs, rhs; };         // P ∨ Q
-struct PropImpl { PropPtr lhs, rhs; };         // P → Q
+struct PropImpl   { PropPtr lhs, rhs; };       // P → Q
+struct PropForall {                            // ∀ x [: T], P
+    std::string              var;
+    std::optional<std::string> type;
+    PropPtr                  body;
+};
+struct PropExists {                            // ∃ x [: T], P
+    std::string              var;
+    std::optional<std::string> type;
+    PropPtr                  body;
+};
 
 using PropNode = std::variant<
     Atomic, PropFalse,
-    PropNot, PropAnd, PropOr, PropImpl
+    PropNot, PropAnd, PropOr, PropImpl,
+    PropForall, PropExists
 >;
 
 struct Prop {
