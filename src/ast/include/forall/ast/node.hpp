@@ -34,9 +34,11 @@ struct ExprBinary { BinOp op; ExprPtr lhs, rhs; };                 // a + b
 struct ExprUnary  { UnaryOp op; ExprPtr operand; };                 // -x
 struct ExprAbs    { ExprPtr operand; };                              // |x|
 struct ExprCall   { std::string name; std::vector<ExprPtr> args; }; // f(x, y)
+struct ExprIndex  { ExprPtr array; ExprPtr index; };                // a[n]
+struct ExprTuple  { std::vector<ExprPtr> elements; };               // (a, b, c)
 
 using ExprNode = std::variant<
-    ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall
+    ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall, ExprIndex, ExprTuple
 >;
 
 struct Expr {

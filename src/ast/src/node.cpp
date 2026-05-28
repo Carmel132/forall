@@ -25,6 +25,14 @@ bool Expr::operator==(const Expr& other) const {
                 if (!(*x.args[i] == *y.args[i])) return false;
             return true;
         }
+        else if constexpr (std::is_same_v<T, ExprIndex>)
+            return *x.array == *y.array && *x.index == *y.index;
+        else if constexpr (std::is_same_v<T, ExprTuple>) {
+            if (x.elements.size() != y.elements.size()) return false;
+            for (std::size_t i = 0; i < x.elements.size(); ++i)
+                if (!(*x.elements[i] == *y.elements[i])) return false;
+            return true;
+        }
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }
