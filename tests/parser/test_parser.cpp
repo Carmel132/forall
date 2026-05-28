@@ -920,6 +920,195 @@ TEST(ParserTest, CondExprWithRelationalCondition) {
     EXPECT_EQ(cond_rel->op, RelOp::GtEq);
 }
 
+// ── Item 12: Aggregate operators (sum, prod, floor/ceil, factorial) ──────────────
+
+TEST(ParserTest, SumTypedBinder) {
+    // sum i : Nat, i >= 0  — typed binder form
+    auto r = parse_str("axiom s : sum i : Nat, i >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* agg = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(agg, nullptr);
+    EXPECT_EQ(agg->op, AggOp::Sum);
+    EXPECT_EQ(agg->var, "i");
+    ASSERT_TRUE(agg->type.has_value());
+    EXPECT_EQ(*agg->type, "Nat");
+    EXPECT_FALSE(agg->rel.has_value());
+    EXPECT_FALSE(agg->bound.has_value());
+    EXPECT_NE(std::get_if<ExprVar>(&agg->body->node), nullptr);
+}
+
+TEST(ParserTest, SumBoundedBinder) {
+    // sum i < n, i >= 0  — bounded binder form
+    auto r = parse_str("axiom s : sum i < n, i >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* agg = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(agg, nullptr);
+    EXPECT_EQ(agg->op, AggOp::Sum);
+    EXPECT_EQ(agg->var, "i");
+    EXPECT_FALSE(agg->type.has_value());
+    ASSERT_TRUE(agg->rel.has_value());
+    EXPECT_EQ(*agg->rel, RelOp::Lt);
+    ASSERT_TRUE(agg->bound.has_value());
+    EXPECT_NE(std::get_if<ExprVar>(&(*agg->bound)->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&agg->body->node), nullptr);
+}
+
+TEST(ParserTest, ProdTypedBinder) {
+    // prod i : Nat, i >= 0
+    auto r = parse_str("axiom p : prod i : Nat, i >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* agg = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(agg, nullptr);
+    EXPECT_EQ(agg->op, AggOp::Prod);
+    ASSERT_TRUE(agg->type.has_value());
+    EXPECT_EQ(*agg->type, "Nat");
+    EXPECT_FALSE(agg->rel.has_value());
+}
+
+TEST(ParserTest, ProdBoundedBinder) {
+    // prod i <= n, i >= 0  — bounded with <=
+    auto r = parse_str("axiom p : prod i <= n, i >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* agg = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(agg, nullptr);
+    EXPECT_EQ(agg->op, AggOp::Prod);
+    ASSERT_TRUE(agg->rel.has_value());
+    EXPECT_EQ(*agg->rel, RelOp::LtEq);
+    ASSERT_TRUE(agg->bound.has_value());
+}
+
+TEST(ParserTest, SumUnicode) {
+    // ∑ i : Nat, i >= 0  — Unicode ∑ (U+2211 = E2 88 91) produces identical AST to "sum"
+    auto r1 = parse_str("axiom s : sum i : Nat, i >= 0");
+    auto r2 = parse_str("axiom s : \xE2\x88\x91 i : Nat, i >= 0");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, ProdUnicode) {
+    // ∏ i : Nat, i >= 0  — Unicode ∏ (U+220F = E2 88 8F) produces identical AST to "prod"
+    auto r1 = parse_str("axiom p : prod i : Nat, i >= 0");
+    auto r2 = parse_str("axiom p : \xE2\x88\x8F i : Nat, i >= 0");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SumNested) {
+    // sum i : Nat, sum j : Nat, i + j >= 0 — outer body is another sum
+    auto r = parse_str("axiom s : sum i : Nat, sum j : Nat, i + j >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->op, AggOp::Sum);
+    EXPECT_EQ(outer->var, "i");
+    const auto* inner = std::get_if<ExprAgg>(&outer->body->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->op, AggOp::Sum);
+    EXPECT_EQ(inner->var, "j");
+}
+
+TEST(ParserTest, SumBodyExtendsRight) {
+    // sum i : Nat, i * i = n  —  body grabs "i*i"; equality is at the outer level
+    auto r = parse_str("axiom s : sum i : Nat, i * i = n");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+    const auto* agg = std::get_if<ExprAgg>(&rel->lhs->node);
+    ASSERT_NE(agg, nullptr);
+    const auto* mul = std::get_if<ExprBinary>(&agg->body->node);
+    ASSERT_NE(mul, nullptr);
+    EXPECT_EQ(mul->op, BinOp::Mul);
+    EXPECT_NE(std::get_if<ExprVar>(&rel->rhs->node), nullptr); // rhs of whole prop is n
+}
+
+TEST(ParserTest, FloorUnicode) {
+    // ⌊x⌋ desugars to ExprCall{"floor", [x]}  (U+230A/230B = E2 8C 8A/8B)
+    auto r = parse_str("axiom f : \xE2\x8C\x8A x \xE2\x8C\x8B >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "floor");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_NE(std::get_if<ExprVar>(&call->args[0]->node), nullptr);
+}
+
+TEST(ParserTest, CeilUnicode) {
+    // ⌈x⌉ desugars to ExprCall{"ceil", [x]}  (U+2308/2309 = E2 8C 88/89)
+    auto r = parse_str("axiom c : \xE2\x8C\x88 x \xE2\x8C\x89 >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "ceil");
+    ASSERT_EQ(call->args.size(), 1u);
+}
+
+TEST(ParserTest, FloorUnicodeSameAsKeyword) {
+    // ⌊x⌋ produces the same AST as floor(x)
+    auto r1 = parse_str("axiom f : floor(x) >= 0");
+    auto r2 = parse_str("axiom f : \xE2\x8C\x8A x \xE2\x8C\x8B >= 0");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, FactorialBasic) {
+    // n! > 0  — postfix !, desugars to ExprCall{"factorial", [n]}
+    auto r = parse_str("axiom f : n! > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "factorial");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_NE(std::get_if<ExprVar>(&call->args[0]->node), nullptr);
+}
+
+TEST(ParserTest, FactorialBindsTighterThanPow) {
+    // n!^2 parses as (n!)^2  — factorial is tighter than exponentiation
+    auto r = parse_str("axiom f : n! ^ 2 = m");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* pw = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(pw, nullptr);
+    EXPECT_EQ(pw->op, BinOp::Pow);
+    const auto* call = std::get_if<ExprCall>(&pw->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "factorial");
+    EXPECT_NE(std::get_if<ExprLit>(&pw->rhs->node), nullptr);
+}
+
+TEST(ParserTest, FactorialOnSubscript) {
+    // a[n]! parses as factorial(a[n])  — postfix chain: subscript then factorial
+    auto r = parse_str("axiom f : a[n]! = m");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "factorial");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_NE(std::get_if<ExprIndex>(&call->args[0]->node), nullptr);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {

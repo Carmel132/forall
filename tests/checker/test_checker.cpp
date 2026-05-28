@@ -714,3 +714,50 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Aggregate operators ────────────────────────────────────────────────────────
+
+TEST(CheckerTest, SumAxiomAccepted) {
+    auto diag = run_checker("sum_axiom", "axiom triangle : sum i < n, i >= 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, SumTheoremByAssumption) {
+    auto diag = run_checker("sum_assume", R"(
+axiom s_def : sum i < n, i >= 0
+theorem restate_sum : sum i < n, i >= 0
+proof
+  then sum i < n, i >= 0 by s_def
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ProdAxiomAccepted) {
+    auto diag = run_checker("prod_axiom", "axiom prod_pos : prod i : Nat, i >= 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, FloorCeilAxiomsAccepted) {
+    auto diag = run_checker("floor_ceil_axioms", R"(
+axiom floor_bound : floor(x) <= x
+axiom ceil_bound  : x <= ceil(x)
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, FactorialAxiomAccepted) {
+    auto diag = run_checker("factorial_axiom", "axiom fact_pos : n! > 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, FactorialTheoremByAssumption) {
+    auto diag = run_checker("factorial_assume", R"(
+axiom fact_pos : n! > 0
+theorem restate_fact : n! > 0
+proof
+  then n! > 0 by fact_pos
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
