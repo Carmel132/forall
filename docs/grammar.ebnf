@@ -1,5 +1,33 @@
 (* forall language grammar — EBNF *)
-(* Notation: { } = zero or more, [ ] = optional, ( ) = grouping *)
+(* Notation: { } = zero or more, [ ] = optional, ( ) = grouping, | = choice *)
+
+
+(* ── Comments ────────────────────────────────────────────────────────────── *)
+
+(* Line comments begin with "--" and run to end of line.                 *)
+(* They may appear anywhere whitespace is allowed.                        *)
+(* Block comments are not supported.                                      *)
+
+
+(* ── Unicode alternatives ────────────────────────────────────────────────── *)
+
+(* Every keyword has a Unicode symbol equivalent.  Either form is valid   *)
+(* anywhere the keyword appears; they produce identical AST nodes.        *)
+(*                                                                         *)
+(*   Keyword(s)              │  Symbol  │  Notes                          *)
+(*   ────────────────────────┼──────────┼────────────────────────────     *)
+(*   "and"                   │  ∧       │  conjunction                    *)
+(*   "or"                    │  ∨       │  disjunction                    *)
+(*   "not"                   │  ¬       │  negation                       *)
+(*   "->" / "implies"        │  →       │  implication                    *)
+(*   "iff"                   │  ↔       │  biconditional                  *)
+(*   "for all"               │  ∀       │  universal quantifier           *)
+(*   "there exists"          │  ∃       │  existential quantifier         *)
+(*   "false"                 │  ⊥       │  bottom / absurdity             *)
+(*   "<="                    │  ≤       │  less-than-or-equal             *)
+(*   ">="                    │  ≥       │  greater-than-or-equal          *)
+(*   "/="                    │  ≠       │  not-equal                      *)
+(*   "end" / "qed"           │  □       │  proof terminator               *)
 
 
 (* ── Top level ───────────────────────────────────────────────────────────── *)
@@ -8,35 +36,50 @@ module      = { declaration } ;
 
 declaration = axiom
             | definition
-            | theorem ;
+            | theorem
+            | import ;
 
 axiom       = "axiom"                , identifier , ":" , prop ;
 definition  = "definition"           , identifier , { param } , ":" , prop ;
 theorem     = ( "theorem" | "lemma") , identifier , ":" , prop , proof_block ;
+import      = "import" , string_lit ;
 
 param       = "(" , identifier , ":" , type , ")" ;
 
 
 (* ── Proof blocks ────────────────────────────────────────────────────────── *)
 
-proof_block = "proof" , { step } , "end" ;
+proof_block = "proof" , { step } , ( "end" | "qed" | "□" ) ;
 
 step = let_step
      | suppose_step
      | have_step
      | then_step
-     | contradiction_step ;
+     | contradiction_step
+     | cases_step ;
 
+(* "let x be a Nat" introduces a term variable; deferred until term layer. *)
 let_step    = "let" , identifier , ( "=" , expr | "be" , "a" , type ) ;
 
-suppose_step = "suppose" , [ "for" , "contradiction" , ":" ]
-                         , [ identifier , ":" ] , prop ;
+(* "assume" and "suppose" are interchangeable. *)
+suppose_step = ( "suppose" | "assume" ) ,
+               [ "for" , "contradiction" , ":" ] ,
+               [ identifier , ":" ] , prop ;
 
-have_step   = "have" , identifier , ":" , prop , "by" , justification ;
+(* "we have" is an alias for "have". *)
+have_step   = ( "have" | "we" , "have" ) ,
+              identifier , ":" , prop , "by" , justification ;
 
-then_step   = "then" , prop , [ "by" , justification ] ;
+(* "therefore" and "thus" are aliases for "then". *)
+then_step   = ( "then" | "therefore" | "thus" ) , prop , [ "by" , justification ] ;
 
-contradiction_step = "contradiction" , ":" , prop ;
+(* Contradiction names the two contradictory hypotheses; it derives ⊥.   *)
+contradiction_step = "contradiction" , ":" , justification ;
+
+(* Case analysis on a disjunctive hypothesis.  Each arm names and binds   *)
+(* the case hypothesis, then provides sub-steps concluding the same goal. *)
+cases_step  = "cases" , ref ,
+              { "case" , identifier , ":" , prop , "=>" , { step } } ;
 
 justification = ref , { ( "and" | "with" ) , ref } ;
 ref           = identifier ;
@@ -44,21 +87,28 @@ ref           = identifier ;
 
 (* ── Propositions ────────────────────────────────────────────────────────── *)
 
-prop        = quantifier | implication ;
+prop        = quantifier | biconditional ;
 
-quantifier  = ( "for" , "all" | "there" , "exists" ) , binder , "," , prop ;
+(* Universal and existential quantifiers with optional type annotation.   *)
+quantifier  = ( "for" , "all" | "∀" ) , binder , "," , prop
+            | ( "there" , "exists" | "∃" ) , binder , "," , prop ;
 
-binder      = identifier , { "and" , identifier } , [ "be" , "a" , type ]
+(* A binder introduces one or more variables, optionally typed or bounded. *)
+binder      = identifier , { "and" , identifier } , [ ":" , type ]
             | identifier , rel , expr ;
 
+(* Biconditional (iff / ↔) — sugar for (A → B) ∧ (B → A). *)
+biconditional = implication , [ ( "iff" | "↔" ) , biconditional ] ;
+
 implication = "if" , prop , "then" , prop
-            | disjunction , [ "implies" , implication ] ;
+            | disjunction , [ ( "->" | "→" | "implies" ) , implication ] ;
 
-disjunction = conjunction , { "or"  , conjunction } ;
-conjunction = negation    , { "and" , negation    } ;
-negation    = "not" , atomic_prop | atomic_prop ;
+disjunction = conjunction , { ( "or"  | "∨" ) , conjunction } ;
+conjunction = negation    , { ( "and" | "∧" ) , negation    } ;
+negation    = ( "not" | "¬" ) , atomic_prop | atomic_prop ;
 
-atomic_prop = identifier , [ "(" , arg_list , ")" ]
+atomic_prop = "false" | "⊥"
+            | identifier , [ "(" , arg_list , ")" ]
             | expr , rel , expr
             | "(" , prop , ")" ;
 
@@ -78,7 +128,8 @@ arg_list = expr , { "," , expr } ;
 
 (* ── Types ───────────────────────────────────────────────────────────────── *)
 
-type = "Real" | "Nat" | "Prop" | "Sequence" | identifier ;
+(* Built-in numeric and logical types; user-defined types via identifier. *)
+type = "Real" | "Nat" | "Int" | "Rat" | "Prop" | "Set" | "Sequence" | identifier ;
 
 
 (* ── Primitives ──────────────────────────────────────────────────────────── *)
@@ -86,5 +137,6 @@ type = "Real" | "Nat" | "Prop" | "Sequence" | identifier ;
 rel        = "<" | ">" | "≤" | "≥" | "=" | "≠" | "<=" | ">=" | "/=" ;
 identifier = letter , { letter | digit | "_" } ;
 number     = digit  , { digit } , [ "." , { digit } ] ;
+string_lit = '"' , { any_char } , '"' ;
 letter     = "a" | ... | "z" | "A" | ... | "Z" ;
 digit      = "0" | ... | "9" ;

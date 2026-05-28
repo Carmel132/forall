@@ -1,0 +1,114 @@
+-- Real Analysis: Convergence and Boundedness of Sequences
+--
+-- Atomic propositions name properties of a fixed sequence (a_n):
+--
+--   Convergent  --  (a_n) has a finite limit L: ∀ε>0 ∃N ∀n≥N |a_n − L| < ε
+--   Cauchy      --  (a_n) is Cauchy: ∀ε>0 ∃N ∀m,n≥N |a_m − a_n| < ε
+--   Bounded     --  (a_n) is bounded: ∃M>0 ∀n |a_n| ≤ M
+--   Monotone    --  (a_n) is non-decreasing or non-increasing
+--
+-- Epsilon-delta arguments are treated as axioms; this file verifies only the
+-- propositional (logical) structure connecting those results.
+--
+-- Known checker limitations (next items on the roadmap):
+--   1. Proved lemmas are not added to the module environment, so each theorem
+--      must re-derive intermediate steps from axioms.
+--   2. The final step's proposition is not checked against the declared
+--      conclusion; the proofs below close every implication explicitly with
+--      ImplIntro so they are correct independent of that check.
+
+-- ── Axioms ─────────────────────────────────────────────────────────────────────
+--
+-- cauchy_criterion: every convergent sequence satisfies the Cauchy condition
+--   Proof sketch: for ε>0 choose N so |a_n−L|<ε/2 for n≥N; the triangle
+--   inequality gives |a_m−a_n| ≤ |a_m−L|+|a_n−L| < ε.
+axiom cauchy_criterion : Convergent -> Cauchy
+
+-- cauchy_bounded: every Cauchy sequence is bounded
+--   Proof sketch: take ε=1, find N, then |a_n|≤|a_N|+1 for n≥N; the finitely
+--   many initial terms are also bounded; take the maximum.
+axiom cauchy_bounded : Cauchy -> Bounded
+
+-- monotone_convergence: the Monotone Convergence Theorem
+--   A bounded monotone sequence converges (completeness of ℝ).
+axiom monotone_convergence : Bounded and Monotone -> Convergent
+
+-- completeness: every Cauchy sequence in ℝ converges
+--   This is the completeness of ℝ; it fails in ℚ (e.g. 3, 3.1, 3.14, …).
+axiom completeness : Cauchy -> Convergent
+
+-- ── Theorem 1: Convergent sequences are bounded ────────────────────────────────
+--
+-- Classic two-step chain: Convergent → Cauchy → Bounded.
+-- The final step closes the implication with ImplIntro, discharging h_conv.
+theorem convergent_bounded : Convergent -> Bounded
+proof
+  suppose h_conv : Convergent
+  have h_cauchy  : Cauchy             by cauchy_criterion and h_conv
+  have h_bdd     : Bounded            by cauchy_bounded and h_cauchy
+  then Convergent -> Bounded          by h_conv and h_bdd
+end
+
+-- ── Theorem 2: Unbounded sequences diverge ─────────────────────────────────────
+--
+-- Contrapositive of Theorem 1.  Suppose a_n is not bounded; assume for
+-- contradiction that it converges.  By the axioms it would then be bounded,
+-- contradicting h_unb.  NotIntro discharges h_conv to give ¬Convergent;
+-- ImplIntro then discharges h_unb to close the outer implication.
+theorem unbounded_diverges : not Bounded -> not Convergent
+proof
+  suppose h_unb  : not Bounded
+  suppose h_conv : Convergent
+  have h_cauchy  : Cauchy              by cauchy_criterion and h_conv
+  have h_bdd     : Bounded             by cauchy_bounded and h_cauchy
+  have h_bot     : false               by h_unb and h_bdd
+  have h_nc      : not Convergent      by h_conv and h_bot
+  then not Bounded -> not Convergent   by h_unb and h_nc
+end
+
+-- ── Theorem 3: Bounded monotone sequences are Cauchy ──────────────────────────
+--
+-- Monotone Convergence gives convergence; Cauchy Criterion then gives the
+-- Cauchy property.  This is the metric-space characterisation of completeness:
+-- in a complete metric space, convergence and the Cauchy property coincide.
+theorem monotone_bounded_is_cauchy : Bounded and Monotone -> Cauchy
+proof
+  suppose h_bm  : Bounded and Monotone
+  have h_conv   : Convergent          by monotone_convergence and h_bm
+  have h_cauchy : Cauchy              by cauchy_criterion and h_conv
+  then Bounded and Monotone -> Cauchy by h_bm and h_cauchy
+end
+
+-- ── Theorem 4: In ℝ, Cauchy ↔ Convergent ─────────────────────────────────────
+--
+-- Both directions: Cauchy→Convergent is completeness; Convergent→Cauchy is
+-- the Cauchy criterion.  The conjunction of the two implications is the
+-- biconditional; the final step uses AndIntro to combine them.
+theorem cauchy_iff_convergent : (Cauchy -> Convergent) and (Convergent -> Cauchy)
+proof
+  suppose h_c : Cauchy
+  have h_v1   : Convergent            by completeness and h_c
+  have fwd    : Cauchy -> Convergent  by h_c and h_v1
+  suppose h_v : Convergent
+  have h_c2   : Cauchy                by cauchy_criterion and h_v
+  have bwd    : Convergent -> Cauchy  by h_v and h_c2
+  then (Cauchy -> Convergent) and (Convergent -> Cauchy) by fwd and bwd
+end
+
+-- ── Theorem 5: Monotone + unbounded ⟹ divergent ──────────────────────────────
+--
+-- A monotone sequence either converges (if bounded, by Monotone Convergence)
+-- or diverges to ±∞ (if unbounded).  This captures the divergence case.
+-- Three nested ImplIntro applications close the three outer implications.
+theorem monotone_unbounded_diverges : Monotone -> not Bounded -> not Convergent
+proof
+  suppose h_mono : Monotone
+  suppose h_unb  : not Bounded
+  suppose h_conv : Convergent
+  have h_cauchy  : Cauchy              by cauchy_criterion and h_conv
+  have h_bdd     : Bounded             by cauchy_bounded and h_cauchy
+  have h_bot     : false               by h_unb and h_bdd
+  have h_nc      : not Convergent      by h_conv and h_bot
+  have h_ub_nc   : not Bounded -> not Convergent  by h_unb and h_nc
+  then Monotone -> not Bounded -> not Convergent  by h_mono and h_ub_nc
+end
