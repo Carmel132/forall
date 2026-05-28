@@ -282,6 +282,86 @@ end
     EXPECT_TRUE(has_error(diag, "no concluding"));
 }
 
+// ── Accessibility: keyword aliases ─────────────────────────────────────────────
+
+TEST(CheckerTest, AliasAssume) {
+    // "assume" is interchangeable with "suppose"
+    auto diag = run_checker("alias_assume", R"(
+theorem identity : P -> P
+proof
+  assume h : P
+  then P -> P by h and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AliasTherefore) {
+    // "therefore" is interchangeable with "then"
+    auto diag = run_checker("alias_therefore", R"(
+theorem mp : Q
+proof
+  suppose hpq : P -> Q
+  suppose hp  : P
+  therefore Q by hpq and hp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AliasThus) {
+    // "thus" is interchangeable with "then"
+    auto diag = run_checker("alias_thus", R"(
+theorem mp2 : Q
+proof
+  suppose hpq : P -> Q
+  suppose hp  : P
+  thus Q by hpq and hp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AliasWeHave) {
+    // "we have" is interchangeable with "have"
+    auto diag = run_checker("alias_we_have", R"(
+theorem chain : Q
+proof
+  suppose hpq : P -> Q
+  suppose hp  : P
+  we have hq : Q by hpq and hp
+  then Q by hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AliasQed) {
+    // "qed" closes a proof block the same as "end"
+    auto diag = run_checker("alias_qed", R"(
+theorem identity2 : P -> P
+proof
+  suppose h : P
+  then P -> P by h and h
+qed
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AliasMixed) {
+    // All four aliases (assume, we have, therefore, qed) in one proof
+    auto diag = run_checker("alias_mixed", R"(
+theorem mixed : P -> Q
+proof
+  assume hpq : P -> Q
+  assume hp  : P
+  we have hq : Q by hpq and hp
+  therefore P -> Q by hp and hq
+qed
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 TEST(CheckerTest, InvalidContradictionWithNoJustification) {
     auto diag = run_checker("invalid_contradiction_no_by", R"(
 theorem bad : P

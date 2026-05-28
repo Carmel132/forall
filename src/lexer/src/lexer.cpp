@@ -70,6 +70,8 @@ Token Lexer::nextToken() {
             if (b2 == 0xA7) { consume(3); return make(TokenKind::And);    }
             if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);     }
         }
+        // □  U+25A1  →  E2 96 A1  (alternative proof terminator)
+        if (b1 == 0x96 && b2 == 0xA1) { consume(3); return make(TokenKind::KwEnd); }
     }
 
     // ── Numbers ───────────────────────────────────────────────────────────────
@@ -138,13 +140,17 @@ Token Lexer::nextToken() {
             {"theorem",      TokenKind::KwTheorem},
             {"proof",        TokenKind::KwProof},
             {"end",          TokenKind::KwEnd},
-            // Proof steps
+            // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},
             {"suppose",      TokenKind::KwSuppose},
+            {"assume",       TokenKind::KwSuppose},  // alias: assume h : P
             {"have",         TokenKind::KwHave},
             {"then",         TokenKind::KwThen},
+            {"therefore",    TokenKind::KwThen},     // alias: therefore P by ...
+            {"thus",         TokenKind::KwThen},     // alias: thus P by ...
             {"contradiction",TokenKind::KwContradiction},
+            {"qed",          TokenKind::KwEnd},      // alias: qed closes proof block
             {"by",           TokenKind::KwBy},
             {"with",         TokenKind::KwWith},
             {"exact",        TokenKind::KwExact},

@@ -235,6 +235,10 @@ ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
     if (check(K::KwLet))          return parseLetStep();
     if (check(K::KwSuppose))      return parseSupposeStep();
+    // "we have" — two-token phrase aliasing "have"
+    if (check(K::Identifier) && peek().lexeme == "we"
+            && pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].kind == K::KwHave)
+        { advance(); return parseHaveStep(); }
     if (check(K::KwHave))         return parseHaveStep();
     if (check(K::KwThen))         return parseThenStep();
     if (check(K::KwContradiction)) return parseContradictionStep();
