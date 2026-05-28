@@ -527,6 +527,116 @@ end
 
 // ── Quantifiers ────────────────────────────────────────────────────────────────
 
+// ── Core arithmetic — end-to-end checker tests ────────────────────────────────
+//
+// The kernel has no arithmetic inference rules yet, so these tests verify:
+//   • Relational axioms are accepted (introduce_axiom handles PropRel/PropPred)
+//   • Proved theorems can re-use such axioms via the Assumption rule
+//   • PropRel equality works so check_proof validates the conclusion correctly
+
+TEST(CheckerTest, RelationalAxiomAccepted) {
+    // Axioms with relational propositions are accepted without errors.
+    auto diag = run_checker("rel_axiom", R"(
+axiom nonneg  : n >= 0
+axiom bounded : n < N
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, RelationalTheoremByAssumption) {
+    // A theorem whose statement is a relational prop can be proved via Assumption.
+    auto diag = run_checker("rel_assumption", R"(
+axiom bound : x < N
+theorem restate : x < N
+proof
+  then x < N by bound
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, RelationalSupposeAndConclude) {
+    // suppose h : n >= 0; then n >= 0 by h  uses Assumption rule.
+    auto diag = run_checker("rel_suppose", R"(
+theorem trivial_rel : n >= 0 -> n >= 0
+proof
+  suppose h : n >= 0
+  then n >= 0 -> n >= 0 by h and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AbsValueAxiomAccepted) {
+    auto diag = run_checker("abs_axiom", "axiom abs_nonneg : |x| >= 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExponentiationAxiomAccepted) {
+    auto diag = run_checker("pow_axiom", "axiom sq_nonneg : x ^ 2 >= 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, DivModAxiomsAccepted) {
+    auto diag = run_checker("divmod_axioms", R"(
+axiom div_bound : n div 2 >= 0
+axiom mod_range : n mod 2 < 2
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, FunctionCallRelAxiomAccepted) {
+    // f(x) > 0 as an axiom, used as a hypothesis
+    auto diag = run_checker("call_rel_axiom", R"(
+axiom f_pos : f(x) > 0
+theorem f_still_pos : f(x) > 0
+proof
+  then f(x) > 0 by f_pos
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, PredicateAxiomAccepted) {
+    // Predicate application as an opaque proposition
+    auto diag = run_checker("pred_axiom", R"(
+axiom primality : isPrime(n)
+theorem restate_pred : isPrime(n)
+proof
+  then isPrime(n) by primality
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, MixedPropRelAndLogical) {
+    // Combining relational and logical connectives in one proof
+    auto diag = run_checker("mixed_rel_logical", R"(
+axiom pos   : x > 0
+axiom small : x < 1
+theorem bounded : x > 0 and x < 1
+proof
+  have hboth : x > 0 and x < 1 by pos and small
+  then x > 0 and x < 1 by hboth
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidWrongRelConclusion) {
+    // The step correctly proves x < N (Assumption rule), but the theorem
+    // declares x < N -> x <= N — so the concluded prop doesn't match.
+    auto diag = run_checker("wrong_rel_conclusion", R"(
+axiom lt_ax : x < N
+theorem bad : x < N -> x <= N
+proof
+  then x < N by lt_ax
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "wrong proposition"));
+}
+
 TEST(CheckerTest, QuantifierAxiom) {
     // Axioms with quantifiers are accepted; kernel semantics are longer-term.
     auto diag = run_checker("quant_axiom", "axiom all_p : for all x, P");

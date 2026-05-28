@@ -308,6 +308,282 @@ TEST(ParserTest, ErrorRecoveryUnknownStep) {
     EXPECT_NE(std::get_if<ThenStep>(&r.mod.decls[0]->proof->steps[1].node), nullptr);
 }
 
+// ── Core arithmetic — expressions and relational propositions ──────────────────
+//
+// Coverage map:
+//   Item 1  Numeric literals         → ExprNumericLiteral
+//   Item 2  Basic arithmetic         → ExprArithmetic*, PropRelSimple
+//   Item 3  Absolute value           → ExprAbsoluteValue, PropRelAbsValue
+//   Item 4  Function application     → ExprFunctionCall, PropPredicate
+//   Item 5  Relational propositions  → PropRelSimple, PropRelInConjunction, PropRelNested
+//   Item 6  Exponentiation           → ExprExponentiation
+//   Item 7  Integer div / mod        → ExprDivMod
+
+// ── Item 1: Numeric literals ───────────────────────────────────────────────────
+
+TEST(ParserTest, ExprNumericLiteralInt) {
+    // Integer literal appears as lhs of a relational prop
+    auto r = parse_str("axiom a : 42 >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::GtEq);
+    const auto* lit = std::get_if<ExprLit>(&rel->lhs->node);
+    ASSERT_NE(lit, nullptr);
+    EXPECT_EQ(lit->value, "42");
+}
+
+TEST(ParserTest, ExprNumericLiteralDecimal) {
+    auto r = parse_str("axiom a : 3.14 > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lit = std::get_if<ExprLit>(&rel->lhs->node);
+    ASSERT_NE(lit, nullptr);
+    EXPECT_EQ(lit->value, "3.14");
+}
+
+// ── Item 2: Basic arithmetic ───────────────────────────────────────────────────
+
+TEST(ParserTest, ExprArithmeticAddSub) {
+    // n + 1 > n  parses as PropRel{ ExprBinary{Add,n,1}, Gt, ExprVar{n} }
+    auto r = parse_str("axiom a : n + 1 > n");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Gt);
+    const auto* add = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, ExprArithmeticMulDiv) {
+    // 2 * x = x + x
+    auto r = parse_str("axiom a : 2 * x = x + x");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+    const auto* mul = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(mul, nullptr);
+    EXPECT_EQ(mul->op, BinOp::Mul);
+}
+
+TEST(ParserTest, ExprArithmeticPrecedence) {
+    // 1 + 2 * 3 = 7  — multiplication binds tighter than addition
+    auto r = parse_str("axiom a : 1 + 2 * 3 = 7");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* add = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+    // rhs of add should be the 2*3 multiplication
+    const auto* mul = std::get_if<ExprBinary>(&add->rhs->node);
+    ASSERT_NE(mul, nullptr);
+    EXPECT_EQ(mul->op, BinOp::Mul);
+}
+
+TEST(ParserTest, ExprUnaryNegation) {
+    auto r = parse_str("axiom a : -x < 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* neg = std::get_if<ExprUnary>(&rel->lhs->node);
+    ASSERT_NE(neg, nullptr);
+    EXPECT_EQ(neg->op, UnaryOp::Neg);
+}
+
+// ── Item 3: Absolute value ─────────────────────────────────────────────────────
+
+TEST(ParserTest, ExprAbsoluteValue) {
+    // |x| >= 0  parses as PropRel{ ExprAbs{x}, GtEq, ExprLit{0} }
+    auto r = parse_str("axiom a : |x| >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::GtEq);
+    EXPECT_NE(std::get_if<ExprAbs>(&rel->lhs->node), nullptr);
+}
+
+TEST(ParserTest, PropRelAbsValue) {
+    // |a - b| < eps
+    auto r = parse_str("axiom a : |a - b| < eps");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Lt);
+    const auto* abs = std::get_if<ExprAbs>(&rel->lhs->node);
+    ASSERT_NE(abs, nullptr);
+    // inner of |...| is a subtraction
+    const auto* sub = std::get_if<ExprBinary>(&abs->operand->node);
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->op, BinOp::Sub);
+}
+
+// ── Item 4: Function application ───────────────────────────────────────────────
+
+TEST(ParserTest, ExprFunctionCallInRelProp) {
+    // f(x) > 0  —  ExprCall as lhs of a relational prop
+    auto r = parse_str("axiom a : f(x) > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "f");
+    ASSERT_EQ(call->args.size(), 1u);
+}
+
+TEST(ParserTest, ExprFunctionCallMultiArg) {
+    // g(x, y, z) = 0
+    auto r = parse_str("axiom a : g(x, y, z) = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "g");
+    EXPECT_EQ(call->args.size(), 3u);
+}
+
+TEST(ParserTest, PropPredicate) {
+    // isPrime(n)  alone as a proposition → PropPred
+    auto r = parse_str("axiom a : isPrime(n)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* pred = std::get_if<PropPred>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(pred, nullptr);
+    EXPECT_EQ(pred->name, "isPrime");
+    EXPECT_EQ(pred->args.size(), 1u);
+}
+
+// ── Item 5: Relational propositions ───────────────────────────────────────────
+
+TEST(ParserTest, PropRelAllSixOperators) {
+    // Each relational operator parses correctly
+    struct Case { const char* src; RelOp expected; };
+    const Case cases[] = {
+        {"axiom a : x <  y", RelOp::Lt   },
+        {"axiom a : x >  y", RelOp::Gt   },
+        {"axiom a : x <= y", RelOp::LtEq },
+        {"axiom a : x >= y", RelOp::GtEq },
+        {"axiom a : x =  y", RelOp::Eq   },
+        {"axiom a : x /= y", RelOp::NotEq},
+    };
+    for (const auto& c : cases) {
+        auto r = parse_str(c.src);
+        ASSERT_FALSE(r.diag.hasErrors()) << "failed for: " << c.src;
+        const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+        ASSERT_NE(rel, nullptr) << "not PropRel for: " << c.src;
+        EXPECT_EQ(rel->op, c.expected) << "wrong op for: " << c.src;
+    }
+}
+
+TEST(ParserTest, PropRelUnicodeOperators) {
+    // Unicode ≤ / ≥ / ≠ produce the same tokens as <= / >= / /=
+    auto r1 = parse_str("axiom a : x <= y");
+    auto r2 = parse_str("axiom a : x \xE2\x89\xA4 y"); // ≤ U+2264
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, PropRelInConjunction) {
+    // P and n >= 0  — relational atom inside a propositional connective
+    auto r = parse_str("axiom a : P and n >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    EXPECT_NE(std::get_if<Atomic>(&conj->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<PropRel>(&conj->rhs->node), nullptr);
+}
+
+TEST(ParserTest, PropRelParenthesized) {
+    // (x + 1 < n) as a parenthesized prop
+    auto r = parse_str("axiom a : (x + 1 < n) and P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    EXPECT_NE(std::get_if<PropRel>(&conj->lhs->node), nullptr);
+}
+
+// ── Item 6: Exponentiation ─────────────────────────────────────────────────────
+
+TEST(ParserTest, ExprExponentiation) {
+    // x ^ 2 >= 0
+    auto r = parse_str("axiom a : x ^ 2 >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* pow = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(pow, nullptr);
+    EXPECT_EQ(pow->op, BinOp::Pow);
+}
+
+TEST(ParserTest, ExprExponentiationRightAssoc) {
+    // x ^ y ^ z  parses as  x ^ (y ^ z)
+    auto r = parse_str("axiom a : x ^ y ^ z = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->op, BinOp::Pow);
+    // rhs of outer ^ is also a ^
+    EXPECT_NE(std::get_if<ExprBinary>(&outer->rhs->node), nullptr);
+}
+
+TEST(ParserTest, ExprExponentiationBindsTighterThanMul) {
+    // 2 * x ^ 3  parses as  2 * (x ^ 3), not  (2 * x) ^ 3
+    auto r = parse_str("axiom a : 2 * x ^ 3 = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* mul = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(mul, nullptr);
+    EXPECT_EQ(mul->op, BinOp::Mul);
+    EXPECT_NE(std::get_if<ExprBinary>(&mul->rhs->node), nullptr); // x^3 on rhs
+}
+
+// ── Item 7: Integer division and modulo ────────────────────────────────────────
+
+TEST(ParserTest, ExprIntegerDiv) {
+    // n div 2 >= 0
+    auto r = parse_str("axiom a : n div 2 >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* idiv = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(idiv, nullptr);
+    EXPECT_EQ(idiv->op, BinOp::IDiv);
+}
+
+TEST(ParserTest, ExprModulo) {
+    // n mod 2 = 0
+    auto r = parse_str("axiom a : n mod 2 = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* mod = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(mod, nullptr);
+    EXPECT_EQ(mod->op, BinOp::Mod);
+    // rhs of mod is literal 2; lhs is var n
+    EXPECT_NE(std::get_if<ExprVar>(&mod->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<ExprLit>(&mod->rhs->node), nullptr);
+}
+
+TEST(ParserTest, ExprDivBindsTighterThanAdd) {
+    // n div 2 + 1  parses as  (n div 2) + 1
+    auto r = parse_str("axiom a : n div 2 + 1 = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* add = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+    EXPECT_NE(std::get_if<ExprBinary>(&add->lhs->node), nullptr); // n div 2 on lhs
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {
