@@ -72,6 +72,8 @@ Token Lexer::nextToken() {
         if (b1 == 0x88) {
             if (b2 == 0x80) { consume(3); return make(TokenKind::Forall); }
             if (b2 == 0x83) { consume(3); return make(TokenKind::Exists); }
+            if (b2 == 0x8F) { consume(3); return make(TokenKind::Pi);     } // ∏ U+220F
+            if (b2 == 0x91) { consume(3); return make(TokenKind::Sigma);  } // ∑ U+2211
             if (b2 == 0xA7) { consume(3); return make(TokenKind::And);    }
             if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);     }
         }
@@ -80,6 +82,13 @@ Token Lexer::nextToken() {
             if (b2 == 0xA4) { consume(3); return make(TokenKind::LessEq);    }
             if (b2 == 0xA5) { consume(3); return make(TokenKind::GreaterEq); }
             if (b2 == 0xA0) { consume(3); return make(TokenKind::NotEq);     }
+        }
+        // ⌊ U+230A → E2 8C 8A   ⌋ U+230B → E2 8C 8B   ⌈ U+2308 → E2 8C 88   ⌉ U+2309 → E2 8C 89
+        if (b1 == 0x8C) {
+            if (b2 == 0x88) { consume(3); return make(TokenKind::LCeil);  }
+            if (b2 == 0x89) { consume(3); return make(TokenKind::RCeil);  }
+            if (b2 == 0x8A) { consume(3); return make(TokenKind::LFloor); }
+            if (b2 == 0x8B) { consume(3); return make(TokenKind::RFloor); }
         }
         // □  U+25A1  →  E2 96 A1  (alternative proof terminator)
         if (b1 == 0x96 && b2 == 0xA1) { consume(3); return make(TokenKind::KwEnd); }
@@ -114,6 +123,7 @@ Token Lexer::nextToken() {
         case '*': return make(TokenKind::Star);
         case '|': return make(TokenKind::Pipe);
         case '^': return make(TokenKind::Caret);
+        case '!': return make(TokenKind::Bang);
         case '"': {
             while (!isAtEnd() && source_[pos_] != '"' && source_[pos_] != '\n')
                 consume(1);
@@ -193,6 +203,8 @@ Token Lexer::nextToken() {
             {"mod",          TokenKind::KwMod},
             {"fun",          TokenKind::KwFun},
             {"else",         TokenKind::KwElse},
+            {"sum",          TokenKind::KwSum},
+            {"prod",         TokenKind::KwProd},
             // Connective words (share tokens with symbols)
             {"and",          TokenKind::And},
             {"or",           TokenKind::Or},

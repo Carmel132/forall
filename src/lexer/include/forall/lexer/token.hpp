@@ -27,7 +27,14 @@ enum class TokenKind {
     KwDiv, KwMod,               // integer division and modulo
     KwFun,                      // "fun"
     KwElse,                     // "else"
+    KwSum,                      // "sum"
+    KwProd,                     // "prod"
     Lambda,                     // λ  U+03BB
+    Sigma,                      // ∑  U+2211
+    Pi,                         // ∏  U+220F
+    LFloor, RFloor,             // ⌊ ⌋  U+230A / U+230B
+    LCeil,  RCeil,              // ⌈ ⌉  U+2308 / U+2309
+    Bang,                       // !  (factorial postfix)
 
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,
