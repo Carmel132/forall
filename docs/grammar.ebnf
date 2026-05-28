@@ -29,7 +29,7 @@
 (*   "/="                    │  ≠       │  not-equal                      *)
 (*   "end" / "qed"           │  □       │  proof terminator               *)
 (*                                                                         *)
-(* Planned term-language symbols (not yet implemented):                   *)
+(* Implemented term-language symbols:                                      *)
 (*   "fun x => e"            │  λ x, e  │  lambda / anonymous function    *)
 (*   "sum i : T, f i"        │  ∑       │  summation with binder          *)
 (*   "prod i : T, f i"       │  ∏       │  aggregate product with binder  *)
@@ -135,7 +135,14 @@ atomic_prop = "false" | "⊥"
 
 (* ── Expressions ─────────────────────────────────────────────────────────── *)
 
-expr      = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
+(* Expressions — lambda and conditional are lowest precedence (bind loosest) *)
+expr      = lambda | condExpr | exprAdd ;
+lambda    = ( "fun" | "λ" ) , identifier , [ ":" , type ] , ( "=>" | "," ) , expr ;
+condExpr  = "if" , prop , "then" , expr , "else" , expr ;
+(* Note: "if P then Q" (no else) is the proposition-level implication handled by      *)
+(* parseImplication.  The conditional expression "if P then a else b" (with else) is  *)
+(* reachable from expression context: inside relational props, arg lists, etc.         *)
+exprAdd   = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
 exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" )       , exprUnary } ;
 exprUnary = [ "-" ] , exprPow ;
 exprPow   = exprAtom , [ "^" , exprUnary ] ;      (* right-associative via exprUnary *)

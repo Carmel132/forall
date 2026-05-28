@@ -34,7 +34,9 @@ void Parser::consumeArticle() {
 // ── Expression parsing ─────────────────────────────────────────────────────────
 //
 // Grammar (see docs/grammar.ebnf):
-//   expr     = exprMul   { ("+" | "-")                    exprMul   }
+//   expr     = lambda | condExpr | exprMul { ("+" | "-") exprMul }
+//   lambda   = ("fun" | "λ") id [":" type] ("=>" | ",") expr
+//   condExpr = "if" prop "then" expr "else" expr
 //   exprMul  = exprUnary { ("*" | "/" | "div" | "mod")    exprUnary }
 //   exprUnary = ["-"] exprPow
 //   exprPow  = exprAtom  [ "^" exprUnary ]           (right-associative)
@@ -46,6 +48,11 @@ void Parser::consumeArticle() {
 //            | "(" expr "," expr {"," expr} ")"        (tuple)
 
 ast::Expr Parser::parseExpr() {
+    using K = lexer::TokenKind;
+    if (check(K::KwFun) || check(K::Lambda))
+        return parseLambda();
+    if (check(K::KwIf))
+        return parseCondExpr();
     const auto loc = peek().loc;
     auto lhs = parseExprMul();
     while (check(lexer::TokenKind::Plus) || check(lexer::TokenKind::Minus)) {
@@ -166,6 +173,60 @@ ast::Expr Parser::parseExprAtom() {
     }
 
     return base;
+}
+
+// lambda = ("fun" | "λ") id [":" type] ("=>" | ",") expr
+// Body extends right as far as possible (same rule as quantifier body).
+ast::Expr Parser::parseLambda() {
+    const auto loc = peek().loc;
+    advance(); // consume "fun" or "λ"
+
+    std::string var;
+    if (check(lexer::TokenKind::Identifier))
+        var = std::string{advance().lexeme};
+    else
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected parameter name after 'fun'"});
+
+    std::optional<std::string> type;
+    if (check(lexer::TokenKind::Colon)) {
+        advance();
+        if (check(lexer::TokenKind::Identifier))
+            type = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected type name after ':' in lambda"});
+    }
+
+    // Accept both "=>" (primary) and "," (Unicode λ convention) as the separator.
+    if (check(lexer::TokenKind::FatArrow) || check(lexer::TokenKind::Comma))
+        advance();
+    else
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected '=>' or ',' after lambda parameter"});
+
+    auto body = parseExpr(); // body extends right as far as possible
+    return {loc, ast::ExprLambda{std::move(var), std::move(type),
+                                  ast::make_expr(std::move(body))}};
+}
+
+// condExpr = "if" prop "then" expr "else" expr
+// The condition is a full proposition (including implications and quantifiers).
+// Note: "if P then Q" (no else) is the proposition-level implication form handled
+// by parseImplication(); this function only fires from the expression layer.
+ast::Expr Parser::parseCondExpr() {
+    const auto loc = peek().loc;
+    advance(); // consume "if"
+
+    auto cond  = parseProp(); // full proposition as condition
+    expect(lexer::TokenKind::KwThen, "expected 'then' after condition");
+    auto then_ = parseExpr(); // then-branch extends right until "else"
+    expect(lexer::TokenKind::KwElse, "expected 'else' after then-branch");
+    auto else_ = parseExpr(); // else-branch extends right
+
+    return {loc, ast::ExprIf{ast::make_prop(std::move(cond)),
+                              ast::make_expr(std::move(then_)),
+                              ast::make_expr(std::move(else_))}};
 }
 
 // argList = expr { "," expr }

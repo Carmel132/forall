@@ -37,10 +37,12 @@ private:
     [[nodiscard]] ast::Step       parseCasesStep();
 
     // Expressions (arithmetic, precedence climbing)
-    // Grammar:  expr = exprMul { (+ | -) exprMul }
-    //           exprMul = exprUnary { (* | / | div | mod) exprUnary }
+    // Grammar:  expr     = lambda | condExpr | exprMul { (+ | -) exprMul }
+    //           lambda   = ("fun" | "λ") id [":" type] ("=>" | ",") expr
+    //           condExpr = "if" prop "then" expr "else" expr
+    //           exprMul  = exprUnary { (* | / | div | mod) exprUnary }
     //           exprUnary = [-] exprPow
-    //           exprPow = exprAtom [ ^ exprUnary ]   (right-associative)
+    //           exprPow  = exprAtom [ ^ exprUnary ]  (right-associative)
     //           exprAtom = base { "[" expr "]" }     (postfix subscript, left-assoc)
     //           base = number
     //                | identifier ["(" argList ")"]
@@ -48,6 +50,8 @@ private:
     //                | "(" expr ")"                          (grouping)
     //                | "(" expr "," expr {"," expr} ")"      (tuple)
     [[nodiscard]] ast::Expr parseExpr();
+    [[nodiscard]] ast::Expr parseLambda();
+    [[nodiscard]] ast::Expr parseCondExpr();
     [[nodiscard]] ast::Expr parseExprMul();
     [[nodiscard]] ast::Expr parseExprUnary();
     [[nodiscard]] ast::Expr parseExprPow();
