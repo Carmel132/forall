@@ -13,10 +13,9 @@ namespace forall::ast {
 struct Prop;
 using PropPtr = std::shared_ptr<Prop>;
 
-// ── Propositions ───────────────────────────────────────────────────────────────
-// Propositional nodes. Quantifiers and arithmetic expressions are not yet
-// modelled; they will be added when the checker grows to predicate logic.
+struct Step; // forward-declared so CasesStep can hold std::unique_ptr<Step>
 
+// ── Propositions ───────────────────────────────────────────────────────────────
 struct Atomic   { std::string name; };         // P, Q, excluded_middle, …
 struct PropFalse {};                           // ⊥
 struct PropNot  { PropPtr inner; };            // ¬P
@@ -41,6 +40,25 @@ inline PropPtr make_prop(Prop p) {
 }
 
 // ── Proof steps ────────────────────────────────────────────────────────────────
+
+// A single arm of a 'cases' step.  Introduces arm.name : arm.prop as a local
+// assumption and sub-checks the arm.steps, which must end with a 'then' step.
+struct CaseArm {
+    std::string                        name;
+    Prop                               prop;
+    std::vector<std::unique_ptr<Step>> steps; // unique_ptr for incomplete-type recursion
+};
+
+// cases <name> : <ref>
+//   case <arm.name> : <arm.prop> => <arm.steps...>
+//   case <arm.name> : <arm.prop> => <arm.steps...>
+//
+// Desugars to OrElim.  Must be the last step before 'end'/'qed' in the proof.
+struct CasesStep {
+    std::string          name;         // label under which the result is stored in env
+    std::string          disjunct_ref; // ref to the P ∨ Q hypothesis
+    std::vector<CaseArm> arms;
+};
 
 struct LetStep {
     std::string           var;
@@ -69,7 +87,7 @@ struct ContradictionStep {
 };
 
 using StepNode = std::variant<
-    LetStep, SupposeStep, HaveStep, ThenStep, ContradictionStep
+    LetStep, SupposeStep, HaveStep, ThenStep, ContradictionStep, CasesStep
 >;
 
 struct Step {
@@ -83,14 +101,14 @@ struct ProofBlock {
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-enum class DeclKind { Axiom, Definition, Lemma, Theorem };
+enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import };
 
 struct Decl {
     DeclKind                  kind;
-    std::string               name;
+    std::string               name;       // for Import: the file path (quotes stripped)
     diag::SourceLocation      loc;
-    Prop                      statement;
-    std::optional<ProofBlock> proof; // present for Theorem / Lemma
+    Prop                      statement;  // for Import: dummy PropFalse{}
+    std::optional<ProofBlock> proof;      // absent for Axiom / Import
 };
 
 using DeclPtr = std::unique_ptr<Decl>;

@@ -100,6 +100,16 @@ Token Lexer::nextToken() {
         case '+': return make(TokenKind::Plus);
         case '*': return make(TokenKind::Star);
         case '|': return make(TokenKind::Pipe);
+        case '"': {
+            while (!isAtEnd() && source_[pos_] != '"' && source_[pos_] != '\n')
+                consume(1);
+            if (isAtEnd() || source_[pos_] == '\n')
+                diag_.emit({diag::Severity::Error, {filename_, start_line, start_col},
+                            "unterminated string literal"});
+            else
+                consume(1); // closing "
+            return make(TokenKind::StringLit);
+        }
         case ':':
             if (!isAtEnd() && source_[pos_] == ':') { consume(1); return make(TokenKind::ColonColon); }
             return make(TokenKind::Colon);
@@ -140,6 +150,8 @@ Token Lexer::nextToken() {
             {"theorem",      TokenKind::KwTheorem},
             {"proof",        TokenKind::KwProof},
             {"end",          TokenKind::KwEnd},
+            // Module-level
+            {"import",       TokenKind::KwImport},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},
@@ -162,6 +174,7 @@ Token Lexer::nextToken() {
             {"there",        TokenKind::KwThere},
             {"exists",       TokenKind::Exists},  // shares token with ∃
             {"implies",      TokenKind::Arrow},   // shares token with →
+            {"iff",          TokenKind::Iff},     // biconditional, shares token with ↔
             {"false",        TokenKind::KwFalse},
             {"in",           TokenKind::KwIn},
             // Connective words (share tokens with symbols)

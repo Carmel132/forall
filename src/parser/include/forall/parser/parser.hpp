@@ -24,6 +24,7 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseDeclaration();
     [[nodiscard]] std::optional<ast::DeclPtr> parseAxiom();
     [[nodiscard]] std::optional<ast::DeclPtr> parseTheorem(ast::DeclKind kind);
+    [[nodiscard]] std::optional<ast::DeclPtr> parseImport();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();
@@ -33,9 +34,11 @@ private:
     [[nodiscard]] ast::Step       parseHaveStep();
     [[nodiscard]] ast::Step       parseThenStep();
     [[nodiscard]] ast::Step       parseContradictionStep();
+    [[nodiscard]] ast::Step       parseCasesStep();
 
     // Propositions (precedence climbing)
     [[nodiscard]] ast::Prop parseProp();
+    [[nodiscard]] ast::Prop parseBiconditional();
     [[nodiscard]] ast::Prop parseImplication();
     [[nodiscard]] ast::Prop parseDisjunction();
     [[nodiscard]] ast::Prop parseConjunction();

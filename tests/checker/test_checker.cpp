@@ -362,6 +362,169 @@ qed
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── New constructs ─────────────────────────────────────────────────────────────
+
+// Biconditional: "A iff B" desugars to "(A→B) ∧ (B→A)" at parse time, so both
+// the theorem declaration and the then-step see the same (A→B)∧(B→A) prop.
+TEST(CheckerTest, BiconditionalInDeclaration) {
+    auto diag = run_checker("bic_decl", R"(
+theorem fwd_bwd : A iff B
+proof
+  suppose hab : A -> B
+  suppose hba : B -> A
+  then A iff B by hab and hba
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, BiconditionalElim) {
+    // ab_bic desugars to (A->B)∧(B->A); AndElimL extracts A->B, then ImplElim derives B.
+    auto diag = run_checker("bic_elim", R"(
+axiom ab_bic : A iff B
+theorem forward : A -> B
+proof
+  suppose ha : A
+  have fwd : A -> B by ab_bic
+  have hb  : B      by fwd and ha
+  then A -> B by ha and hb
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// Cases step: OrElim with named case arms.
+// 'cases' must be the last step before 'end'/'qed' because the arm step loop
+// stops only on 'case' or 'end', so a trailing 'then' would be consumed by the
+// last arm.  The theorem therefore declares the arm conclusion directly.
+TEST(CheckerTest, ValidCasesStep) {
+    auto diag = run_checker("cases_step", R"(
+axiom pr  : P -> R
+axiom qr  : Q -> R
+axiom hor : P or Q
+
+theorem or_elim : R
+proof
+  cases result : hor
+    case hp : P => then R by pr and hp
+    case hq : Q => then R by qr and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidCasesWithHaveArms) {
+    // Arms may contain intermediate 'have' steps before the final 'then'.
+    auto diag = run_checker("cases_have_arms", R"(
+axiom pr  : P -> R
+axiom rs  : R -> S
+axiom qr  : Q -> R
+axiom hor : P or Q
+
+theorem or_to_s : S
+proof
+  cases result : hor
+    case hp : P =>
+      have hr : R by pr and hp
+      then S by rs and hr
+    case hq : Q =>
+      have hr : R by qr and hq
+      then S by rs and hr
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidCasesWrongDisjunct) {
+    // Arm propositions don't match the disjuncts of the hypothesis.
+    auto diag = run_checker("cases_wrong_disjunct", R"(
+theorem bad : P or Q -> R
+proof
+  suppose h : P or Q
+  cases result : h
+    case hp : P =>
+      then R by hp
+    case hq : X =>
+      then R by hq
+  then P or Q -> R by h and result
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidCasesNotDisjunction) {
+    // Ref must be a disjunction.
+    auto diag = run_checker("cases_not_disj", R"(
+theorem bad : P -> Q
+proof
+  suppose h : P
+  cases result : h
+    case ha : P => then Q by ha
+    case hb : P => then Q by hb
+  then P -> Q by h and result
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+// Import: axioms and proved lemmas from the imported file are available.
+TEST(CheckerTest, ValidImport) {
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_import_lib.forall";
+    auto main = dir / "forall_import_main.forall";
+
+    std::ofstream{lib}  << "axiom base : P -> Q\n";
+    std::ofstream{main} << R"(
+import "forall_import_lib.forall"
+theorem use_import : P -> Q
+proof
+  suppose h  : P
+  have    hq : Q by base and h
+  then P -> Q by h and hq
+end
+)";
+
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidImportLemma) {
+    // A proved lemma in the imported file is also accessible.
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_import_lemma_lib.forall";
+    auto main = dir / "forall_import_lemma_main.forall";
+
+    std::ofstream{lib}  << R"(
+axiom ax : A -> B
+lemma a_to_b : A -> B
+proof
+  suppose h  : A
+  have    hb : B by ax and h
+  then A -> B by h and hb
+end
+)";
+    std::ofstream{main} << R"(
+import "forall_import_lemma_lib.forall"
+axiom bc : B -> C
+theorem a_to_c : A -> C
+proof
+  suppose h : A
+  have hb : B by a_to_b and h
+  have hc : C by bc and hb
+  then A -> C by h and hc
+end
+)";
+
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 TEST(CheckerTest, InvalidContradictionWithNoJustification) {
     auto diag = run_checker("invalid_contradiction_no_by", R"(
 theorem bad : P

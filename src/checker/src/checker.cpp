@@ -3,8 +3,10 @@
 #include <forall/lexer/lexer.hpp>
 #include <forall/parser/parser.hpp>
 
+#include <array>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace forall::checker {
@@ -171,6 +173,140 @@ infer_rule(const ast::Prop& conc,
     return std::nullopt;
 }
 
+// ── check_step (forward declaration for mutual recursion with CasesStep) ───────
+bool check_step(const ast::Step& step,
+                HypEnv& env,
+                kernel::Kernel& kernel,
+                diag::DiagnosticEngine& diag);
+
+// ── check_cases_step ───────────────────────────────────────────────────────────
+//
+// Implements OrElim with named case arms.
+// Each arm introduces arm.name : arm.prop as an assumption, checks arm.steps,
+// and requires the last step to be a ThenStep concluding some proposition R.
+// Both arms must conclude the same R; then OrElim is applied.
+// The result is stored in env under s.name.
+bool check_cases_step(const ast::CasesStep& s,
+                      const diag::SourceLocation& loc,
+                      HypEnv& env,
+                      kernel::Kernel& kernel,
+                      diag::DiagnosticEngine& diag)
+{
+    // 1. Look up the disjunction
+    auto disj_it = env.find(s.disjunct_ref);
+    if (disj_it == env.end()) {
+        diag.emit({diag::Severity::Error, loc,
+                   "unknown hypothesis '" + s.disjunct_ref + "'"});
+        return false;
+    }
+    const auto* disj = std::get_if<ast::PropOr>(&disj_it->second.judgment.prop().node);
+    if (!disj) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'" + s.disjunct_ref + "' must be a disjunction (P ∨ Q)"});
+        return false;
+    }
+    if (s.arms.size() != 2) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'cases' requires exactly two arms"});
+        return false;
+    }
+
+    const ast::Prop* expected[2] = {disj->lhs.get(), disj->rhs.get()};
+    std::optional<ast::Prop> shared_conclusion;
+    std::vector<kernel::Judgment> impl_js; // P→R, Q→R
+    bool had_arm_error = false;
+
+    for (std::size_t i = 0; i < 2; ++i) {
+        const auto& arm = s.arms[i];
+
+        if (!(arm.prop == *expected[i])) {
+            diag.emit({diag::Severity::Error, loc,
+                       "arm " + std::to_string(i + 1)
+                       + " proposition does not match disjunct"});
+            had_arm_error = true;
+            continue;
+        }
+
+        // Sub-environment for this arm
+        HypEnv arm_env = env;
+        auto arm_j = kernel.introduce_axiom(arm.prop);
+        arm_env.insert_or_assign(arm.name, HypEntry{std::move(*arm_j), EntryKind::Assumption});
+
+        bool arm_step_error = false;
+        const ast::Step* arm_last_then = nullptr;
+
+        for (const auto& uptr : arm.steps) {
+            const auto snap = diag.diagnostics().size();
+            check_step(*uptr, arm_env, kernel, diag);
+            const auto& all = diag.diagnostics();
+            for (auto j = snap; j < all.size(); ++j) {
+                if (all[j].severity == diag::Severity::Error) {
+                    arm_step_error = true;
+                    break;
+                }
+            }
+            if (std::get_if<ast::ThenStep>(&uptr->node))
+                arm_last_then = uptr.get();
+        }
+
+        if (arm_step_error || !arm_last_then) {
+            if (!arm_step_error)
+                diag.emit({diag::Severity::Error, loc,
+                           "arm '" + arm.name + "' must end with a 'then' step"});
+            had_arm_error = true;
+            continue;
+        }
+
+        const auto& arm_then = std::get<ast::ThenStep>(arm_last_then->node);
+
+        // Both arms must conclude the same proposition
+        if (!shared_conclusion) {
+            shared_conclusion = arm_then.prop;
+        } else if (!(*shared_conclusion == arm_then.prop)) {
+            diag.emit({diag::Severity::Error, loc,
+                       "'cases' arms conclude different propositions"});
+            had_arm_error = true;
+            continue;
+        }
+
+        // Build arm.prop → R via ImplIntro.  The arm proof was already verified,
+        // so introduce_axiom(R) is sound here.
+        const kernel::Judgment conc_j = *kernel.introduce_axiom(arm_then.prop);
+        ast::Prop impl_prop{loc, ast::PropImpl{ast::make_prop(arm.prop),
+                                               ast::make_prop(arm_then.prop)}};
+        auto impl_j = kernel.apply(kernel::Rule::ImplIntro,
+                                   std::span<const kernel::Judgment>{&conc_j, 1},
+                                   impl_prop);
+        if (!impl_j) {
+            diag.emit({diag::Severity::Error, loc,
+                       "ImplIntro failed for arm '" + arm.name
+                       + "': " + impl_j.error().message});
+            had_arm_error = true;
+            continue;
+        }
+        impl_js.push_back(std::move(*impl_j));
+    }
+
+    if (had_arm_error || !shared_conclusion || impl_js.size() != 2) return false;
+
+    // Apply OrElim: P ∨ Q, P → R, Q → R ⊢ R
+    const std::array<kernel::Judgment, 3> or_prem = {
+        disj_it->second.judgment,
+        impl_js[0],
+        impl_js[1]
+    };
+    auto result = kernel.apply(kernel::Rule::OrElim,
+                               std::span{or_prem},
+                               *shared_conclusion);
+    if (!result) {
+        diag.emit({diag::Severity::Error, loc,
+                   "OrElim failed: " + result.error().message});
+        return false;
+    }
+    env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
+    return true;
+}
+
 // ── check_step ─────────────────────────────────────────────────────────────────
 
 bool check_step(const ast::Step& step,
@@ -257,6 +393,11 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
+        // cases <name> : <ref>  case ... => ... case ... => ...
+        else if constexpr (std::is_same_v<T, ast::CasesStep>) {
+            return check_cases_step(s, step.loc, env, kernel, diag);
+        }
+
         return true;
     }, step.node);
 }
@@ -274,85 +415,113 @@ void check_proof(const ast::Decl& decl,
         return;
     }
 
-    // Seed local env with module-level axioms and previously proved lemmas.
     HypEnv env{module_env};
 
-    const ast::Step* last_then = nullptr;
-    bool had_step_errors = false;
+    // Track the last concluding step — either a ThenStep or a CasesStep.
+    enum class LastKind { None, Then, Cases };
+    const ast::Step* last_concluding = nullptr;
+    LastKind         last_kind       = LastKind::None;
+    bool             had_step_errors = false;
 
     for (const auto& step : decl.proof->steps) {
-        const auto snapshot = diag.diagnostics().size();
+        const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag);
         const auto& all = diag.diagnostics();
-        for (auto i = snapshot; i < all.size(); ++i) {
+        for (auto i = snap; i < all.size(); ++i) {
             if (all[i].severity == diag::Severity::Error) {
                 had_step_errors = true;
                 break;
             }
         }
-        if (std::get_if<ast::ThenStep>(&step.node))
-            last_then = &step;
+        if (std::get_if<ast::ThenStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Then;
+        }
+        if (std::get_if<ast::CasesStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Cases;
+        }
     }
 
-    // Only validate the conclusion when every step passed; cascading errors on a
-    // broken proof are more noise than signal.
+    // Only validate the conclusion when all steps passed; cascading errors on
+    // a broken proof are more noise than signal.
     if (!had_step_errors) {
-        if (!last_then) {
+        if (last_kind == LastKind::None) {
             diag.emit({diag::Severity::Error, decl.loc,
                        "proof of '" + decl.name + "' has no concluding 'then' step"});
-        } else if (std::get<ast::ThenStep>(last_then->node).prop != decl.statement) {
-            diag.emit({diag::Severity::Error, last_then->loc,
-                       "proof concludes with wrong proposition"});
+        } else if (last_kind == LastKind::Then) {
+            const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
+            if (ts.prop != decl.statement)
+                diag.emit({diag::Severity::Error, last_concluding->loc,
+                           "proof concludes with wrong proposition"});
+        } else { // Cases
+            const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
+            auto it = env.find(cs.name);
+            if (it != env.end() && !(it->second.judgment.prop() == decl.statement))
+                diag.emit({diag::Severity::Error, last_concluding->loc,
+                           "proof concludes with wrong proposition"});
         }
     }
 }
 
-} // namespace
+// ── check_module ───────────────────────────────────────────────────────────────
+//
+// Parses and validates a single .forall file, returning the module-level
+// HypEnv (axioms + proved lemmas/theorems) so callers can import it.
+// visited tracks canonical paths to prevent circular imports.
 
-// ── Checker::check ─────────────────────────────────────────────────────────────
+HypEnv check_module(const std::filesystem::path& path,
+                    kernel::Kernel& kernel,
+                    diag::DiagnosticEngine& diag,
+                    std::set<std::filesystem::path>& visited)
+{
+    visited.insert(std::filesystem::weakly_canonical(path));
 
-void Checker::check(const std::filesystem::path& path) {
     std::ifstream file{path};
     if (!file) {
-        diag_.emit({diag::Severity::Error, {}, "cannot open file: " + path.string()});
-        return;
+        diag.emit({diag::Severity::Error, {}, "cannot open file: " + path.string()});
+        return {};
     }
     std::ostringstream buf;
     buf << file.rdbuf();
 
-    lexer::Lexer lex{buf.str(), path.string(), diag_};
+    lexer::Lexer lex{buf.str(), path.string(), diag};
     auto tokens = lex.tokenize();
-    if (diag_.hasErrors()) return;
+    if (diag.hasErrors()) return {};
 
-    parser::Parser parser{tokens, diag_};
+    parser::Parser parser{tokens, diag};
     ast::Module mod = parser.parse();
     mod.path = path.string();
-    if (diag_.hasErrors()) return;
+    if (diag.hasErrors()) return {};
 
-    kernel::Kernel kernel;
-    HypEnv module_env; // axioms and proved lemmas/theorems, available to later decls
+    HypEnv module_env;
+    const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
         switch (decl->kind) {
+
         case ast::DeclKind::Axiom: {
             auto r = kernel.introduce_axiom(decl->statement);
             if (!r)
-                diag_.emit({diag::Severity::Error, decl->loc,
+                diag.emit({diag::Severity::Error, decl->loc,
                             "invalid axiom: " + r.error().message});
             else
                 module_env.insert_or_assign(decl->name,
                                             HypEntry{std::move(*r), EntryKind::Derived});
             break;
         }
+
         case ast::DeclKind::Theorem:
         case ast::DeclKind::Lemma: {
-            const auto snapshot = diag_.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag_);
-            // Register the proved statement so later declarations can cite it by name.
-            const auto& all = diag_.diagnostics();
+            const auto snapshot = diag.diagnostics().size();
+            check_proof(*decl, module_env, kernel, diag);
+            const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
-                if (all[i].severity == diag::Severity::Error) { no_new_errors = false; break; }
+                if (all[i].severity == diag::Severity::Error) {
+                    no_new_errors = false;
+                    break;
+                }
             }
             if (no_new_errors) {
                 if (auto r = kernel.introduce_axiom(decl->statement))
@@ -361,10 +530,33 @@ void Checker::check(const std::filesystem::path& path) {
             }
             break;
         }
+
+        case ast::DeclKind::Import: {
+            auto import_path = current_dir / decl->name;
+            auto canonical   = std::filesystem::weakly_canonical(import_path);
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag, visited);
+                for (auto& [name, entry] : imported)
+                    module_env.insert_or_assign(name, entry);
+            }
+            break;
+        }
+
         case ast::DeclKind::Definition:
             break;
         }
     }
+    return module_env;
+}
+
+} // namespace
+
+// ── Checker::check ─────────────────────────────────────────────────────────────
+
+void Checker::check(const std::filesystem::path& path) {
+    kernel::Kernel kernel;
+    std::set<std::filesystem::path> visited;
+    check_module(path, kernel, diag_, visited);
 }
 
 } // namespace forall::checker

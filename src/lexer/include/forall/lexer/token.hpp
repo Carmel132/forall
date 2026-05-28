@@ -8,10 +8,11 @@ enum class TokenKind {
     // Literals & identifiers
     Identifier,
     Number,
+    StringLit,                   // "..."
 
     // Declaration keywords
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
-    KwProof, KwEnd,
+    KwProof, KwEnd, KwImport,
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,

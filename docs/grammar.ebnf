@@ -78,7 +78,10 @@ contradiction_step = "contradiction" , ":" , justification ;
 
 (* Case analysis on a disjunctive hypothesis.  Each arm names and binds   *)
 (* the case hypothesis, then provides sub-steps concluding the same goal. *)
-cases_step  = "cases" , ref ,
+(* <name> is the label under which the result is stored for later use.    *)
+(* Because arm step-lists end only on 'case'/'end'/'qed', 'cases' must    *)
+(* be the last step in the proof (before 'end'/'qed').                    *)
+cases_step  = "cases" , identifier , ":" , ref ,
               { "case" , identifier , ":" , prop , "=>" , { step } } ;
 
 justification = ref , { ( "and" | "with" ) , ref } ;

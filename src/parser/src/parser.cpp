@@ -42,7 +42,24 @@ void Parser::consumeArticle() {
 //   atomic_prop = identifier | "false" | "(" prop ")"
 
 ast::Prop Parser::parseProp() {
-    return parseImplication();
+    return parseBiconditional();
+}
+
+// A ↔ B  →  (A→B) ∧ (B→A)   (right-associative, desugared at parse time)
+ast::Prop Parser::parseBiconditional() {
+    const auto loc = peek().loc;
+    auto lhs = parseImplication();
+    if (check(lexer::TokenKind::Iff)) {
+        advance();
+        auto rhs = parseImplication();
+        // Share both sub-props between A→B and B→A without extra copies.
+        auto lp = ast::make_prop(lhs);
+        auto rp = ast::make_prop(rhs);
+        auto ab = ast::make_prop({loc, ast::PropImpl{lp, rp}});
+        auto ba = ast::make_prop({loc, ast::PropImpl{rp, lp}});
+        return {loc, ast::PropAnd{std::move(ab), std::move(ba)}};
+    }
+    return lhs;
 }
 
 ast::Prop Parser::parseImplication() {
@@ -231,6 +248,54 @@ ast::Step Parser::parseContradictionStep() {
     return {loc, ast::ContradictionStep{std::move(refs)}};
 }
 
+// cases <name> : <ref>
+//   case <arm_name> : <prop> => { step }
+//   case <arm_name> : <prop> => { step }
+//
+// Each arm's step list runs until the next 'case' or 'end'/'qed'.
+// This means 'cases' must be the last step before the proof terminator.
+ast::Step Parser::parseCasesStep() {
+    const auto loc = peek().loc;
+    advance(); // consume "cases"
+
+    std::string name;
+    if (check(lexer::TokenKind::Identifier))
+        name = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected result name after 'cases'"});
+
+    expect(lexer::TokenKind::Colon, "expected ':' after cases result name");
+
+    std::string disjunct_ref;
+    if (check(lexer::TokenKind::Identifier))
+        disjunct_ref = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis ref after 'cases <name>:'"});
+
+    std::vector<ast::CaseArm> arms;
+    while (check(lexer::TokenKind::KwCase)) {
+        advance(); // consume "case"
+
+        std::string arm_name;
+        if (check(lexer::TokenKind::Identifier))
+            arm_name = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc, "expected arm name after 'case'"});
+
+        expect(lexer::TokenKind::Colon,    "expected ':' after arm name");
+        auto arm_prop = parseProp();
+        expect(lexer::TokenKind::FatArrow, "expected '=>' after arm proposition");
+
+        std::vector<std::unique_ptr<ast::Step>> arm_steps;
+        while (!isAtEnd() && !check(lexer::TokenKind::KwCase) && !check(lexer::TokenKind::KwEnd))
+            arm_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+
+        arms.push_back(ast::CaseArm{std::move(arm_name), std::move(arm_prop), std::move(arm_steps)});
+    }
+
+    return {loc, ast::CasesStep{std::move(name), std::move(disjunct_ref), std::move(arms)}};
+}
+
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
     if (check(K::KwLet))          return parseLetStep();
@@ -242,6 +307,7 @@ ast::Step Parser::parseStep() {
     if (check(K::KwHave))         return parseHaveStep();
     if (check(K::KwThen))         return parseThenStep();
     if (check(K::KwContradiction)) return parseContradictionStep();
+    if (check(K::KwCases))        return parseCasesStep();
 
     diag_.emit({diag::Severity::Error, peek().loc,
                 "expected proof step; got '" + peek().lexeme + "'"});
@@ -295,11 +361,31 @@ std::optional<ast::DeclPtr> Parser::parseTheorem(ast::DeclKind kind) {
                                        std::move(prop), std::move(proof));
 }
 
+std::optional<ast::DeclPtr> Parser::parseImport() {
+    const auto loc = peek().loc;
+    advance(); // consume "import"
+
+    if (!check(lexer::TokenKind::StringLit)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected string literal after 'import'"});
+        return std::nullopt;
+    }
+
+    std::string raw = advance().lexeme; // includes surrounding quotes
+    // Strip quotes: "file.forall" → file.forall
+    if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"')
+        raw = raw.substr(1, raw.size() - 2);
+
+    return std::make_unique<ast::Decl>(ast::DeclKind::Import, std::move(raw), loc,
+                                       ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
     if (check(K::KwAxiom))   return parseAxiom();
     if (check(K::KwTheorem)) return parseTheorem(ast::DeclKind::Theorem);
     if (check(K::KwLemma))   return parseTheorem(ast::DeclKind::Lemma);
+    if (check(K::KwImport))  return parseImport();
 
     diag_.emit({diag::Severity::Error, peek().loc,
                 "expected 'axiom', 'theorem', or 'lemma'; got '" + peek().lexeme + "'"});
