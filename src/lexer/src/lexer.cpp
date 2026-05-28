@@ -70,6 +70,12 @@ Token Lexer::nextToken() {
             if (b2 == 0xA7) { consume(3); return make(TokenKind::And);    }
             if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);     }
         }
+        // ≤  U+2264  →  E2 89 A4   ≥  U+2265  →  E2 89 A5   ≠  U+2260  →  E2 89 A0
+        if (b1 == 0x89) {
+            if (b2 == 0xA4) { consume(3); return make(TokenKind::LessEq);    }
+            if (b2 == 0xA5) { consume(3); return make(TokenKind::GreaterEq); }
+            if (b2 == 0xA0) { consume(3); return make(TokenKind::NotEq);     }
+        }
         // □  U+25A1  →  E2 96 A1  (alternative proof terminator)
         if (b1 == 0x96 && b2 == 0xA1) { consume(3); return make(TokenKind::KwEnd); }
     }
@@ -100,6 +106,7 @@ Token Lexer::nextToken() {
         case '+': return make(TokenKind::Plus);
         case '*': return make(TokenKind::Star);
         case '|': return make(TokenKind::Pipe);
+        case '^': return make(TokenKind::Caret);
         case '"': {
             while (!isAtEnd() && source_[pos_] != '"' && source_[pos_] != '\n')
                 consume(1);
@@ -177,6 +184,8 @@ Token Lexer::nextToken() {
             {"iff",          TokenKind::Iff},     // biconditional, shares token with ↔
             {"false",        TokenKind::KwFalse},
             {"in",           TokenKind::KwIn},
+            {"div",          TokenKind::KwDiv},
+            {"mod",          TokenKind::KwMod},
             // Connective words (share tokens with symbols)
             {"and",          TokenKind::And},
             {"or",           TokenKind::Or},

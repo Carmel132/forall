@@ -25,6 +25,7 @@ enum class TokenKind {
     KwImplies,                  // "implies"
     KwFalse,                    // "false" / ⊥
     KwIn,                       // "in"
+    KwDiv, KwMod,               // integer division and modulo
 
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,
@@ -36,7 +37,7 @@ enum class TokenKind {
     FatArrow,                   // =>
 
     // Arithmetic operators
-    Plus, Minus, Star, Slash,
+    Plus, Minus, Star, Slash, Caret,    // + - * / ^
 
     // Comparison operators
     Equals,                     // =
