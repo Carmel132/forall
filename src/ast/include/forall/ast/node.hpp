@@ -13,7 +13,41 @@ namespace forall::ast {
 struct Prop;
 using PropPtr = std::shared_ptr<Prop>;
 
+struct Expr;
+using ExprPtr = std::shared_ptr<Expr>;
+
 struct Step; // forward-declared so CasesStep can hold std::unique_ptr<Step>
+
+// ── Expressions ───────────────────────────────────────────────────────────────
+//
+// Term-level arithmetic expressions, separate from Prop.
+// They enter the proposition layer via PropRel and PropPred.
+
+enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow };
+//                  +    -    *    /   div  mod   ^
+
+enum class UnaryOp { Neg }; // unary minus; absolute value is its own ExprAbs node
+
+struct ExprLit    { std::string value;  };                          // 42, 3.14
+struct ExprVar    { std::string name;   };                          // x, n, eps
+struct ExprBinary { BinOp op; ExprPtr lhs, rhs; };                 // a + b
+struct ExprUnary  { UnaryOp op; ExprPtr operand; };                 // -x
+struct ExprAbs    { ExprPtr operand; };                              // |x|
+struct ExprCall   { std::string name; std::vector<ExprPtr> args; }; // f(x, y)
+
+using ExprNode = std::variant<
+    ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall
+>;
+
+struct Expr {
+    diag::SourceLocation loc;
+    ExprNode             node;
+    bool operator==(const Expr&) const; // structural, ignores loc
+};
+
+inline ExprPtr make_expr(Expr e) {
+    return std::make_shared<Expr>(std::move(e));
+}
 
 // ── Propositions ───────────────────────────────────────────────────────────────
 struct Atomic   { std::string name; };         // P, Q, excluded_middle, …
@@ -33,10 +67,29 @@ struct PropExists {                            // ∃ x [: T], P
     PropPtr                  body;
 };
 
+// ── Relational propositions (bridge between Expr and Prop) ────────────────────
+
+enum class RelOp { Lt, Gt, LtEq, GtEq, Eq, NotEq };
+//                  <   >   <=    >=    =   /=
+
+// expr rel expr  —  e.g. n + 1 > 0,  |a - b| < eps,  x ^ 2 >= 0
+struct PropRel {
+    ExprPtr lhs, rhs;
+    RelOp   op;
+};
+
+// identifier "(" arg_list ")"  as a proposition  —  e.g. isPrime(n), P(x)
+// Checker stub: accepted as an opaque proposition; no proof rules yet.
+struct PropPred {
+    std::string          name;
+    std::vector<ExprPtr> args;
+};
+
 using PropNode = std::variant<
     Atomic, PropFalse,
     PropNot, PropAnd, PropOr, PropImpl,
-    PropForall, PropExists
+    PropForall, PropExists,
+    PropRel, PropPred
 >;
 
 struct Prop {

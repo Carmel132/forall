@@ -2,6 +2,35 @@
 
 namespace forall::ast {
 
+// ── Expr::operator== ──────────────────────────────────────────────────────────
+
+bool Expr::operator==(const Expr& other) const {
+    if (node.index() != other.node.index()) return false;
+    return std::visit([&](const auto& x) -> bool {
+        using T = std::decay_t<decltype(x)>;
+        const auto& y = std::get<T>(other.node);
+        if constexpr (std::is_same_v<T, ExprLit>)
+            return x.value == y.value;
+        else if constexpr (std::is_same_v<T, ExprVar>)
+            return x.name == y.name;
+        else if constexpr (std::is_same_v<T, ExprBinary>)
+            return x.op == y.op && *x.lhs == *y.lhs && *x.rhs == *y.rhs;
+        else if constexpr (std::is_same_v<T, ExprUnary>)
+            return x.op == y.op && *x.operand == *y.operand;
+        else if constexpr (std::is_same_v<T, ExprAbs>)
+            return *x.operand == *y.operand;
+        else if constexpr (std::is_same_v<T, ExprCall>) {
+            if (x.name != y.name || x.args.size() != y.args.size()) return false;
+            for (std::size_t i = 0; i < x.args.size(); ++i)
+                if (!(*x.args[i] == *y.args[i])) return false;
+            return true;
+        }
+        else return false; // unreachable — all ExprNode alternatives are listed above
+    }, node);
+}
+
+// ── Prop::operator== ──────────────────────────────────────────────────────────
+
 bool Prop::operator==(const Prop& other) const {
     if (node.index() != other.node.index()) return false;
     return std::visit([&](const auto& x) -> bool {
@@ -15,8 +44,18 @@ bool Prop::operator==(const Prop& other) const {
             return *x.inner == *y.inner;
         else if constexpr (std::is_same_v<T, PropForall> || std::is_same_v<T, PropExists>)
             return x.var == y.var && x.type == y.type && *x.body == *y.body;
-        else // PropAnd, PropOr, PropImpl
+        else if constexpr (std::is_same_v<T, PropRel>)
+            return x.op == y.op && *x.lhs == *y.lhs && *x.rhs == *y.rhs;
+        else if constexpr (std::is_same_v<T, PropPred>) {
+            if (x.name != y.name || x.args.size() != y.args.size()) return false;
+            for (std::size_t i = 0; i < x.args.size(); ++i)
+                if (!(*x.args[i] == *y.args[i])) return false;
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, PropAnd> || std::is_same_v<T, PropOr>
+                           || std::is_same_v<T, PropImpl>)
             return *x.lhs == *y.lhs && *x.rhs == *y.rhs;
+        else return false; // unreachable — all PropNode alternatives are listed above
     }, node);
 }
 
