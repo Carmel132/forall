@@ -31,15 +31,141 @@ void Parser::consumeArticle() {
         advance();
 }
 
+// ── Expression parsing ─────────────────────────────────────────────────────────
+//
+// Grammar (see docs/grammar.ebnf):
+//   expr     = exprMul   { ("+" | "-")                    exprMul   }
+//   exprMul  = exprUnary { ("*" | "/" | "div" | "mod")    exprUnary }
+//   exprUnary = ["-"] exprPow
+//   exprPow  = exprAtom  [ "^" exprUnary ]           (right-associative)
+//   exprAtom = number
+//            | identifier ["(" argList ")"]
+//            | "|" expr "|"
+//            | "(" expr ")"
+
+ast::Expr Parser::parseExpr() {
+    const auto loc = peek().loc;
+    auto lhs = parseExprMul();
+    while (check(lexer::TokenKind::Plus) || check(lexer::TokenKind::Minus)) {
+        const ast::BinOp op = check(lexer::TokenKind::Plus) ? ast::BinOp::Add : ast::BinOp::Sub;
+        advance();
+        auto rhs = parseExprMul();
+        lhs = {loc, ast::ExprBinary{op, ast::make_expr(std::move(lhs)),
+                                        ast::make_expr(std::move(rhs))}};
+    }
+    return lhs;
+}
+
+ast::Expr Parser::parseExprMul() {
+    const auto loc = peek().loc;
+    auto lhs = parseExprUnary();
+    while (check(lexer::TokenKind::Star)   || check(lexer::TokenKind::Slash) ||
+           check(lexer::TokenKind::KwDiv)  || check(lexer::TokenKind::KwMod))
+    {
+        ast::BinOp op;
+        switch (peek().kind) {
+            case lexer::TokenKind::Star:   op = ast::BinOp::Mul;  break;
+            case lexer::TokenKind::Slash:  op = ast::BinOp::Div;  break;
+            case lexer::TokenKind::KwDiv:  op = ast::BinOp::IDiv; break;
+            default:                       op = ast::BinOp::Mod;  break;
+        }
+        advance();
+        auto rhs = parseExprUnary();
+        lhs = {loc, ast::ExprBinary{op, ast::make_expr(std::move(lhs)),
+                                        ast::make_expr(std::move(rhs))}};
+    }
+    return lhs;
+}
+
+ast::Expr Parser::parseExprUnary() {
+    if (check(lexer::TokenKind::Minus)) {
+        const auto loc = peek().loc;
+        advance();
+        auto operand = parseExprPow();
+        return {loc, ast::ExprUnary{ast::UnaryOp::Neg, ast::make_expr(std::move(operand))}};
+    }
+    return parseExprPow();
+}
+
+// Right-associative: x ^ y ^ z  =  x ^ (y ^ z)
+// RHS calls parseExprUnary so that -x ^ 2  =  -(x ^ 2).
+ast::Expr Parser::parseExprPow() {
+    const auto loc = peek().loc;
+    auto base = parseExprAtom();
+    if (check(lexer::TokenKind::Caret)) {
+        advance();
+        auto exp = parseExprUnary(); // right-recursive via unary
+        return {loc, ast::ExprBinary{ast::BinOp::Pow, ast::make_expr(std::move(base)),
+                                                       ast::make_expr(std::move(exp))}};
+    }
+    return base;
+}
+
+ast::Expr Parser::parseExprAtom() {
+    const auto loc = peek().loc;
+
+    // Number literal
+    if (check(lexer::TokenKind::Number)) {
+        std::string val{advance().lexeme};
+        return {loc, ast::ExprLit{std::move(val)}};
+    }
+
+    // Absolute value  |expr|
+    if (check(lexer::TokenKind::Pipe)) {
+        advance();
+        auto inner = parseExpr();
+        expect(lexer::TokenKind::Pipe, "expected closing '|' for absolute value");
+        return {loc, ast::ExprAbs{ast::make_expr(std::move(inner))}};
+    }
+
+    // Grouped expression  (expr)
+    if (check(lexer::TokenKind::LParen)) {
+        advance();
+        auto inner = parseExpr();
+        expect(lexer::TokenKind::RParen, "expected ')'");
+        return inner;
+    }
+
+    // Identifier: variable or function call  f(x, y)
+    if (check(lexer::TokenKind::Identifier)) {
+        std::string name{advance().lexeme};
+        if (check(lexer::TokenKind::LParen)) {
+            advance();
+            auto args = parseArgList();
+            expect(lexer::TokenKind::RParen, "expected ')' after argument list");
+            return {loc, ast::ExprCall{std::move(name), std::move(args)}};
+        }
+        return {loc, ast::ExprVar{std::move(name)}};
+    }
+
+    diag_.emit({diag::Severity::Error, loc,
+                "expected expression; got '" + peek().lexeme + "'"});
+    advance();
+    return {loc, ast::ExprLit{"0"}}; // error sentinel
+}
+
+// argList = expr { "," expr }
+std::vector<ast::ExprPtr> Parser::parseArgList() {
+    std::vector<ast::ExprPtr> args;
+    if (check(lexer::TokenKind::RParen)) return args; // empty arg list
+    args.push_back(ast::make_expr(parseExpr()));
+    while (check(lexer::TokenKind::Comma)) {
+        advance();
+        args.push_back(ast::make_expr(parseExpr()));
+    }
+    return args;
+}
+
 // ── Proposition parsing ────────────────────────────────────────────────────────
 //
 // Grammar (from docs/grammar.ebnf):
-//   prop        = quantifier | implication
-//   implication = "if" prop "then" prop | disjunction [ "implies" disjunction ]
+//   prop        = quantifier | biconditional
+//   biconditional = implication [ iff biconditional ]
+//   implication = "if" prop "then" prop | disjunction [ "->" implication ]
 //   disjunction = conjunction { "or"  conjunction }
 //   conjunction = negation    { "and" negation    }
 //   negation    = "not" atomic_prop | atomic_prop
-//   atomic_prop = identifier | "false" | "(" prop ")"
+//   atomic_prop = "false" | "(" prop ")" | expr [rel expr]
 
 ast::Prop Parser::parseProp() {
     using K = lexer::TokenKind;
@@ -175,9 +301,31 @@ ast::Prop Parser::parseNegation() {
     return parseAtomicProp();
 }
 
+// Map a token to a relational operator, or return nullopt.
+static std::optional<ast::RelOp> as_rel_op(lexer::TokenKind k) {
+    switch (k) {
+        case lexer::TokenKind::Less:      return ast::RelOp::Lt;
+        case lexer::TokenKind::Greater:   return ast::RelOp::Gt;
+        case lexer::TokenKind::LessEq:    return ast::RelOp::LtEq;
+        case lexer::TokenKind::GreaterEq: return ast::RelOp::GtEq;
+        case lexer::TokenKind::Equals:    return ast::RelOp::Eq;
+        case lexer::TokenKind::NotEq:     return ast::RelOp::NotEq;
+        default:                          return std::nullopt;
+    }
+}
+
 ast::Prop Parser::parseAtomicProp() {
     const auto loc = peek().loc;
 
+    // "false" / ⊥
+    if (check(lexer::TokenKind::KwFalse)) {
+        advance();
+        return {loc, ast::PropFalse{}};
+    }
+
+    // "(" ... ")"
+    // Parses the inner content as a full proposition, which already handles
+    // relational atoms like (x + 1 < n) via the recursive descent below.
     if (check(lexer::TokenKind::LParen)) {
         advance();
         auto inner = parseProp();
@@ -185,19 +333,30 @@ ast::Prop Parser::parseAtomicProp() {
         return inner;
     }
 
-    if (check(lexer::TokenKind::KwFalse)) {
+    // All other cases start an expression.  After parsing the lhs expression:
+    //   • Followed by a relational operator → PropRel
+    //   • Expression is a bare identifier   → Atomic (propositional variable)
+    //   • Expression is a function call     → PropPred (predicate application)
+    //   • Otherwise                         → error (arithmetic needs a rel op)
+    auto lhs = parseExpr();
+
+    auto rel = as_rel_op(peek().kind);
+    if (rel) {
         advance();
-        return {loc, ast::PropFalse{}};
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), *rel}};
     }
 
-    if (check(lexer::TokenKind::Identifier)) {
-        std::string name{advance().lexeme};
-        return {loc, ast::Atomic{std::move(name)}};
-    }
+    // Convert a no-rel expression to a propositional atom.
+    if (const auto* v = std::get_if<ast::ExprVar>(&lhs.node))
+        return {loc, ast::Atomic{v->name}};
+
+    if (const auto* c = std::get_if<ast::ExprCall>(&lhs.node))
+        return {loc, ast::PropPred{c->name, c->args}};
 
     diag_.emit({diag::Severity::Error, loc,
-                "expected proposition; got '" + peek().lexeme + "'"});
-    advance();
+                "arithmetic expression in proposition context requires a relational operator"});
     return {loc, ast::PropFalse{}};
 }
 

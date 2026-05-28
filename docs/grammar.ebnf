@@ -14,7 +14,7 @@
 (* Every keyword has a Unicode symbol equivalent.  Either form is valid   *)
 (* anywhere the keyword appears; they produce identical AST nodes.        *)
 (*                                                                         *)
-(*   Keyword(s)              │  Symbol  │  Notes                          *)
+(*   Keyword / ASCII form     │  Symbol  │  Notes                          *)
 (*   ────────────────────────┼──────────┼────────────────────────────     *)
 (*   "and"                   │  ∧       │  conjunction                    *)
 (*   "or"                    │  ∨       │  disjunction                    *)
@@ -28,6 +28,23 @@
 (*   ">="                    │  ≥       │  greater-than-or-equal          *)
 (*   "/="                    │  ≠       │  not-equal                      *)
 (*   "end" / "qed"           │  □       │  proof terminator               *)
+(*                                                                         *)
+(* Planned term-language symbols (not yet implemented):                   *)
+(*   "fun x => e"            │  λ x, e  │  lambda / anonymous function    *)
+(*   "sum i : T, f i"        │  ∑       │  summation with binder          *)
+(*   "prod i : T, f i"       │  ∏       │  aggregate product with binder  *)
+(*   "floor(x)" / "ceil(x)"  │  ⌊x⌋/⌈x⌉│  floor and ceiling functions    *)
+(*   "x in S"                │  x ∈ S   │  set membership                 *)
+(*   "x not in S"            │  x ∉ S   │  set non-membership             *)
+(*   "A subseteq B"          │  A ⊆ B   │  subset-or-equal                *)
+(*   "A subset B"            │  A ⊂ B   │  strict subset                  *)
+(*   "A supseteq B"          │  A ⊇ B   │  superset-or-equal              *)
+(*   "A union B"             │  A ∪ B   │  set union                      *)
+(*   "A inter B"             │  A ∩ B   │  set intersection               *)
+(*   "A setminus B"          │  A \ B   │  set difference                 *)
+(*   "compl A"               │  Aᶜ      │  set complement (prefix)        *)
+(*   "f compose g"           │  f ∘ g   │  function composition           *)
+(*   "inv f" / "f ^ (-1)"    │  f⁻¹     │  function / group inverse       *)
 
 
 (* ── Top level ───────────────────────────────────────────────────────────── *)
@@ -118,13 +135,14 @@ atomic_prop = "false" | "⊥"
 
 (* ── Expressions ─────────────────────────────────────────────────────────── *)
 
-expr   = term   , { ( "+" | "-" ) , term   } ;
-term   = factor , { ( "*" | "/" ) , factor } ;
-factor = [ "-" ] , atom ;
-atom   = "|" , expr , "|"
-       | identifier , [ "(" , arg_list , ")" ]
-       | number
-       | "(" , expr , ")" ;
+expr      = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
+exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" )       , exprUnary } ;
+exprUnary = [ "-" ] , exprPow ;
+exprPow   = atom , [ "^" , exprUnary ] ;   (* right-associative via exprUnary *)
+atom      = "|" , expr , "|"               (* absolute value  |x - y| *)
+          | identifier , [ "(" , arg_list , ")" ]
+          | number
+          | "(" , expr , ")" ;
 
 arg_list = expr , { "," , expr } ;
 
@@ -137,7 +155,8 @@ type = "Real" | "Nat" | "Int" | "Rat" | "Prop" | "Set" | "Sequence" | identifier
 
 (* ── Primitives ──────────────────────────────────────────────────────────── *)
 
-rel        = "<" | ">" | "≤" | "≥" | "=" | "≠" | "<=" | ">=" | "/=" ;
+rel        = "<" | ">" | "<=" | ">=" | "/="    (* ASCII forms *)
+           | "≤" | "≥" | "≠" ;              (* Unicode U+2264 / U+2265 / U+2260 *)
 identifier = letter , { letter | digit | "_" } ;
 number     = digit  , { digit } , [ "." , { digit } ] ;
 string_lit = '"' , { any_char } , '"' ;

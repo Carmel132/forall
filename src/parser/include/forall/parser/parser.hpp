@@ -36,6 +36,19 @@ private:
     [[nodiscard]] ast::Step       parseContradictionStep();
     [[nodiscard]] ast::Step       parseCasesStep();
 
+    // Expressions (arithmetic, precedence climbing)
+    // Grammar:  expr = exprMul { (+ | -) exprMul }
+    //           exprMul = exprUnary { (* | / | div | mod) exprUnary }
+    //           exprUnary = [-] exprPow
+    //           exprPow = exprAtom [ ^ exprUnary ]   (right-associative)
+    //           exprAtom = number | identifier ["(" argList ")"] | "|" expr "|" | "(" expr ")"
+    [[nodiscard]] ast::Expr parseExpr();
+    [[nodiscard]] ast::Expr parseExprMul();
+    [[nodiscard]] ast::Expr parseExprUnary();
+    [[nodiscard]] ast::Expr parseExprPow();
+    [[nodiscard]] ast::Expr parseExprAtom();
+    [[nodiscard]] std::vector<ast::ExprPtr> parseArgList();
+
     // Propositions (precedence climbing)
     [[nodiscard]] ast::Prop parseProp();
     [[nodiscard]] ast::Prop parseQuantifier();
