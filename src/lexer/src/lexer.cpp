@@ -57,6 +57,11 @@ Token Lexer::nextToken() {
         const auto b = static_cast<unsigned char>(source_[pos_ + 1]);
         if (b == 0xAC) { consume(2); return make(TokenKind::Not); }
     }
+    // λ  U+03BB  →  CE BB
+    if (uc == 0xCE && pos_ + 1 < source_.size()) {
+        const auto b = static_cast<unsigned char>(source_[pos_ + 1]);
+        if (b == 0xBB) { consume(2); return make(TokenKind::Lambda); }
+    }
     if (uc == 0xE2 && pos_ + 2 < source_.size()) {
         const auto b1 = static_cast<unsigned char>(source_[pos_ + 1]);
         const auto b2 = static_cast<unsigned char>(source_[pos_ + 2]);
@@ -174,8 +179,6 @@ Token Lexer::nextToken() {
             {"qed",          TokenKind::KwEnd},      // alias: qed closes proof block
             {"by",           TokenKind::KwBy},
             {"with",         TokenKind::KwWith},
-            {"exact",        TokenKind::KwExact},
-            {"apply",        TokenKind::KwApply},
             // Logic keywords (natural-language symbols)
             {"if",           TokenKind::KwIf},
             {"for",          TokenKind::KwFor},
@@ -188,6 +191,8 @@ Token Lexer::nextToken() {
             {"in",           TokenKind::KwIn},
             {"div",          TokenKind::KwDiv},
             {"mod",          TokenKind::KwMod},
+            {"fun",          TokenKind::KwFun},
+            {"else",         TokenKind::KwElse},
             // Connective words (share tokens with symbols)
             {"and",          TokenKind::And},
             {"or",           TokenKind::Or},
