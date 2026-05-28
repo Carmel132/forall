@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false   # let both platforms run even if one fails
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # std::print (C++23) requires GCC 14 / libstdc++14.
+      # ubuntu-latest (Ubuntu 24.04) ships GCC 13 by default; install 14 explicitly.
+      # windows-latest ships VS 2022 which already has full C++23 support.
+      - name: Install GCC 14
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y g++-14
+          echo "CC=gcc-14"   >> $GITHUB_ENV
+          echo "CXX=g++-14" >> $GITHUB_ENV
+
+      # Cache the FetchContent download of googletest.
+      # FETCHCONTENT_BASE_DIR points CMake at .cmake-deps/ (gitignored) instead of
+      # build/_deps/, so the cached tree persists across runs without touching the repo.
+      # Cache is keyed on OS + hash of all CMakeLists files; a googletest version bump
+      # automatically invalidates it.
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.cmake-deps
+          key: ${{ runner.os }}-cmake-deps-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-cmake-deps-
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_BASE_DIR="${{ github.workspace }}/.cmake-deps"
+
+      - name: Build
+        run: cmake --build build --config Release -j4
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
