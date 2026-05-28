@@ -41,7 +41,12 @@ private:
     //           exprMul = exprUnary { (* | / | div | mod) exprUnary }
     //           exprUnary = [-] exprPow
     //           exprPow = exprAtom [ ^ exprUnary ]   (right-associative)
-    //           exprAtom = number | identifier ["(" argList ")"] | "|" expr "|" | "(" expr ")"
+    //           exprAtom = base { "[" expr "]" }     (postfix subscript, left-assoc)
+    //           base = number
+    //                | identifier ["(" argList ")"]
+    //                | "|" expr "|"
+    //                | "(" expr ")"                          (grouping)
+    //                | "(" expr "," expr {"," expr} ")"      (tuple)
     [[nodiscard]] ast::Expr parseExpr();
     [[nodiscard]] ast::Expr parseExprMul();
     [[nodiscard]] ast::Expr parseExprUnary();

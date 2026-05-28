@@ -38,10 +38,12 @@ void Parser::consumeArticle() {
 //   exprMul  = exprUnary { ("*" | "/" | "div" | "mod")    exprUnary }
 //   exprUnary = ["-"] exprPow
 //   exprPow  = exprAtom  [ "^" exprUnary ]           (right-associative)
-//   exprAtom = number
+//   exprAtom = base { "[" expr "]" }                  (postfix subscript, left-assoc)
+//   base     = number
 //            | identifier ["(" argList ")"]
 //            | "|" expr "|"
-//            | "(" expr ")"
+//            | "(" expr ")"                            (grouping)
+//            | "(" expr "," expr {"," expr} ")"        (tuple)
 
 ast::Expr Parser::parseExpr() {
     const auto loc = peek().loc;
@@ -103,45 +105,67 @@ ast::Expr Parser::parseExprPow() {
 
 ast::Expr Parser::parseExprAtom() {
     const auto loc = peek().loc;
+    ast::Expr base{loc, ast::ExprLit{"0"}}; // overwritten below
 
     // Number literal
     if (check(lexer::TokenKind::Number)) {
-        std::string val{advance().lexeme};
-        return {loc, ast::ExprLit{std::move(val)}};
+        base = {loc, ast::ExprLit{std::string{advance().lexeme}}};
     }
-
     // Absolute value  |expr|
-    if (check(lexer::TokenKind::Pipe)) {
+    else if (check(lexer::TokenKind::Pipe)) {
         advance();
         auto inner = parseExpr();
         expect(lexer::TokenKind::Pipe, "expected closing '|' for absolute value");
-        return {loc, ast::ExprAbs{ast::make_expr(std::move(inner))}};
+        base = {loc, ast::ExprAbs{ast::make_expr(std::move(inner))}};
     }
-
-    // Grouped expression  (expr)
-    if (check(lexer::TokenKind::LParen)) {
+    // Grouped expression  (expr)  or tuple  (expr, expr, ...)
+    else if (check(lexer::TokenKind::LParen)) {
         advance();
-        auto inner = parseExpr();
-        expect(lexer::TokenKind::RParen, "expected ')'");
-        return inner;
+        auto first = parseExpr();
+        if (check(lexer::TokenKind::RParen)) {
+            advance();
+            base = std::move(first); // grouping — preserve inner expression's location
+        } else {
+            // Tuple: collect the rest of the elements
+            std::vector<ast::ExprPtr> elements;
+            elements.push_back(ast::make_expr(std::move(first)));
+            while (check(lexer::TokenKind::Comma)) {
+                advance();
+                elements.push_back(ast::make_expr(parseExpr()));
+            }
+            expect(lexer::TokenKind::RParen, "expected ')' to close tuple");
+            base = {loc, ast::ExprTuple{std::move(elements)}};
+        }
     }
-
     // Identifier: variable or function call  f(x, y)
-    if (check(lexer::TokenKind::Identifier)) {
+    else if (check(lexer::TokenKind::Identifier)) {
         std::string name{advance().lexeme};
         if (check(lexer::TokenKind::LParen)) {
             advance();
             auto args = parseArgList();
             expect(lexer::TokenKind::RParen, "expected ')' after argument list");
-            return {loc, ast::ExprCall{std::move(name), std::move(args)}};
+            base = {loc, ast::ExprCall{std::move(name), std::move(args)}};
+        } else {
+            base = {loc, ast::ExprVar{std::move(name)}};
         }
-        return {loc, ast::ExprVar{std::move(name)}};
+    }
+    else {
+        diag_.emit({diag::Severity::Error, loc,
+                    "expected expression; got '" + peek().lexeme + "'"});
+        advance();
+        return {loc, ast::ExprLit{"0"}}; // error sentinel — skip indexing
     }
 
-    diag_.emit({diag::Severity::Error, loc,
-                "expected expression; got '" + peek().lexeme + "'"});
-    advance();
-    return {loc, ast::ExprLit{"0"}}; // error sentinel
+    // Postfix subscript indexing: base[index]  (left-associative, tightest binding)
+    while (check(lexer::TokenKind::LBracket)) {
+        advance();
+        auto idx = parseExpr();
+        expect(lexer::TokenKind::RBracket, "expected ']' after index expression");
+        base = {loc, ast::ExprIndex{ast::make_expr(std::move(base)),
+                                    ast::make_expr(std::move(idx))}};
+    }
+
+    return base;
 }
 
 // argList = expr { "," expr }
