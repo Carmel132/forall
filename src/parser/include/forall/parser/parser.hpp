@@ -37,21 +37,26 @@ private:
     [[nodiscard]] ast::Step       parseCasesStep();
 
     // Expressions (arithmetic, precedence climbing)
-    // Grammar:  expr     = lambda | condExpr | exprMul { (+ | -) exprMul }
-    //           lambda   = ("fun" | "λ") id [":" type] ("=>" | ",") expr
-    //           condExpr = "if" prop "then" expr "else" expr
-    //           exprMul  = exprUnary { (* | / | div | mod) exprUnary }
-    //           exprUnary = [-] exprPow
-    //           exprPow  = exprAtom [ ^ exprUnary ]  (right-associative)
-    //           exprAtom = base { "[" expr "]" }     (postfix subscript, left-assoc)
+    // Grammar:  expr      = lambda | condExpr | aggregate | exprAdd
+    //           lambda    = ("fun" | "λ") id [":" type] ("=>" | ",") expr
+    //           condExpr  = "if" prop "then" expr "else" expr
+    //           aggregate = ("sum"|"∑"|"prod"|"∏") id (":" type | rel expr) "," expr
+    //           exprAdd   = exprMul { ("+" | "-") exprMul }
+    //           exprMul   = exprUnary { ("*" | "/" | "div" | "mod") exprUnary }
+    //           exprUnary = ["-"] exprPow
+    //           exprPow   = exprAtom [ "^" exprUnary ]  (right-associative)
+    //           exprAtom  = base { "[" expr "]" | "!" }  (postfix, left-assoc)
     //           base = number
     //                | identifier ["(" argList ")"]
     //                | "|" expr "|"
+    //                | "⌊" expr "⌋"  (→ floor(expr))
+    //                | "⌈" expr "⌉"  (→ ceil(expr))
     //                | "(" expr ")"                          (grouping)
     //                | "(" expr "," expr {"," expr} ")"      (tuple)
     [[nodiscard]] ast::Expr parseExpr();
     [[nodiscard]] ast::Expr parseLambda();
     [[nodiscard]] ast::Expr parseCondExpr();
+    [[nodiscard]] ast::Expr parseAggregate();
     [[nodiscard]] ast::Expr parseExprMul();
     [[nodiscard]] ast::Expr parseExprUnary();
     [[nodiscard]] ast::Expr parseExprPow();

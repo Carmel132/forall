@@ -29,11 +29,14 @@
 (*   "/="                    │  ≠       │  not-equal                      *)
 (*   "end" / "qed"           │  □       │  proof terminator               *)
 (*                                                                         *)
-(* Implemented term-language symbols:                                      *)
+(* Term-language Unicode symbols (implemented):                            *)
 (*   "fun x => e"            │  λ x, e  │  lambda / anonymous function    *)
 (*   "sum i : T, f i"        │  ∑       │  summation with binder          *)
 (*   "prod i : T, f i"       │  ∏       │  aggregate product with binder  *)
 (*   "floor(x)" / "ceil(x)"  │  ⌊x⌋/⌈x⌉│  floor and ceiling functions    *)
+(*   "n!" (no Unicode alt.)  │  n!      │  factorial (postfix)            *)
+(*                                                                         *)
+(* Term-language symbols (planned):                                        *)
 (*   "x in S"                │  x ∈ S   │  set membership                 *)
 (*   "x not in S"            │  x ∉ S   │  set non-membership             *)
 (*   "A subseteq B"          │  A ⊆ B   │  subset-or-equal                *)
@@ -135,23 +138,29 @@ atomic_prop = "false" | "⊥"
 
 (* ── Expressions ─────────────────────────────────────────────────────────── *)
 
-(* Expressions — lambda and conditional are lowest precedence (bind loosest) *)
-expr      = lambda | condExpr | exprAdd ;
+(* lambda, conditional, and aggregate operators are lowest precedence (bind loosest) *)
+expr      = lambda | condExpr | sumExpr | prodExpr | exprAdd ;
 lambda    = ( "fun" | "λ" ) , identifier , [ ":" , type ] , ( "=>" | "," ) , expr ;
 condExpr  = "if" , prop , "then" , expr , "else" , expr ;
 (* Note: "if P then Q" (no else) is the proposition-level implication handled by      *)
 (* parseImplication.  The conditional expression "if P then a else b" (with else) is  *)
 (* reachable from expression context: inside relational props, arg lists, etc.         *)
+sumExpr   = ( "sum" | "∑" ) , aggBinder , "," , expr ;
+prodExpr  = ( "prod" | "∏" ) , aggBinder , "," , expr ;
+aggBinder = identifier , ":" , type     (* typed binder:   sum i : Nat, f i  *)
+           | identifier , rel , expr ;  (* bounded binder: sum i < n, f i    *)
 exprAdd   = exprMul   , { ( "+" | "-" )                       , exprMul   } ;
 exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" )       , exprUnary } ;
 exprUnary = [ "-" ] , exprPow ;
-exprPow   = exprAtom , [ "^" , exprUnary ] ;      (* right-associative via exprUnary *)
-exprAtom  = base , { "[" , expr , "]" } ;         (* postfix subscript — left-associative, tightest binding *)
-base      = "|" , expr , "|"                      (* absolute value  |x - y| *)
-          | identifier , [ "(" , arg_list , ")" ] (* variable or function call *)
+exprPow   = exprAtom , [ "^" , exprUnary ] ;           (* right-associative via exprUnary *)
+exprAtom  = base , { "[" , expr , "]" | "!" } ;        (* subscript and factorial — left-assoc *)
+base      = "|" , expr , "|"                           (* absolute value  |x - y|            *)
+          | identifier , [ "(" , arg_list , ")" ]      (* variable or function call           *)
           | number
-          | "(" , expr , ")"                      (* grouping — transparent *)
-          | "(" , expr , "," , expr , { "," , expr } , ")" ;  (* tuple  (a, b, c) *)
+          | "(" , expr , ")"                           (* grouping — transparent              *)
+          | "(" , expr , "," , expr , { "," , expr } , ")"  (* tuple  (a, b, c)              *)
+          | "⌊" , expr , "⌋"                            (* floor — desugars to floor(expr)    *)
+          | "⌈" , expr , "⌉" ;                          (* ceiling — desugars to ceil(expr)   *)
 
 arg_list = expr , { "," , expr } ;
 (* Note: f(a, b) has two separate args; f((a, b)) has one tuple arg. *)

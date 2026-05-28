@@ -53,6 +53,8 @@ ast::Expr Parser::parseExpr() {
         return parseLambda();
     if (check(K::KwIf))
         return parseCondExpr();
+    if (check(K::KwSum) || check(K::Sigma) || check(K::KwProd) || check(K::Pi))
+        return parseAggregate();
     const auto loc = peek().loc;
     auto lhs = parseExprMul();
     while (check(lexer::TokenKind::Plus) || check(lexer::TokenKind::Minus)) {
@@ -118,6 +120,22 @@ ast::Expr Parser::parseExprAtom() {
     if (check(lexer::TokenKind::Number)) {
         base = {loc, ast::ExprLit{std::string{advance().lexeme}}};
     }
+    // ⌊ expr ⌋  →  ExprCall{"floor", [expr]}   (desugar at parse time)
+    else if (check(lexer::TokenKind::LFloor)) {
+        advance();
+        auto inner = parseExpr();
+        expect(lexer::TokenKind::RFloor, "expected closing floor bracket '\xe2\x8c\x8b'");
+        std::vector<ast::ExprPtr> args{ast::make_expr(std::move(inner))};
+        base = {loc, ast::ExprCall{"floor", std::move(args)}};
+    }
+    // ⌈ expr ⌉  →  ExprCall{"ceil", [expr]}    (desugar at parse time)
+    else if (check(lexer::TokenKind::LCeil)) {
+        advance();
+        auto inner = parseExpr();
+        expect(lexer::TokenKind::RCeil, "expected closing ceiling bracket '\xe2\x8c\x89'");
+        std::vector<ast::ExprPtr> args{ast::make_expr(std::move(inner))};
+        base = {loc, ast::ExprCall{"ceil", std::move(args)}};
+    }
     // Absolute value  |expr|
     else if (check(lexer::TokenKind::Pipe)) {
         advance();
@@ -163,13 +181,21 @@ ast::Expr Parser::parseExprAtom() {
         return {loc, ast::ExprLit{"0"}}; // error sentinel — skip indexing
     }
 
-    // Postfix subscript indexing: base[index]  (left-associative, tightest binding)
-    while (check(lexer::TokenKind::LBracket)) {
-        advance();
-        auto idx = parseExpr();
-        expect(lexer::TokenKind::RBracket, "expected ']' after index expression");
-        base = {loc, ast::ExprIndex{ast::make_expr(std::move(base)),
-                                    ast::make_expr(std::move(idx))}};
+    // Postfix operators (left-associative, tightest binding):
+    //   base[index]  →  ExprIndex
+    //   base!        →  ExprCall{"factorial", [base]}
+    while (check(lexer::TokenKind::LBracket) || check(lexer::TokenKind::Bang)) {
+        if (check(lexer::TokenKind::LBracket)) {
+            advance();
+            auto idx = parseExpr();
+            expect(lexer::TokenKind::RBracket, "expected ']' after index expression");
+            base = {loc, ast::ExprIndex{ast::make_expr(std::move(base)),
+                                        ast::make_expr(std::move(idx))}};
+        } else { // Bang — factorial
+            advance();
+            std::vector<ast::ExprPtr> args{ast::make_expr(std::move(base))};
+            base = {loc, ast::ExprCall{"factorial", std::move(args)}};
+        }
     }
 
     return base;
@@ -227,6 +253,52 @@ ast::Expr Parser::parseCondExpr() {
     return {loc, ast::ExprIf{ast::make_prop(std::move(cond)),
                               ast::make_expr(std::move(then_)),
                               ast::make_expr(std::move(else_))}};
+}
+
+static std::optional<ast::RelOp> as_rel_op(lexer::TokenKind k); // defined in prop section below
+
+// aggregate = ("sum"|"∑"|"prod"|"∏") aggBinder "," expr
+// aggBinder = identifier ":" type           (typed binder)
+//           | identifier rel expr           (bounded binder: sum i < n, f i)
+// Body extends right as far as possible (same rule as lambda body).
+ast::Expr Parser::parseAggregate() {
+    const auto loc = peek().loc;
+    const bool is_sum = check(lexer::TokenKind::KwSum) || check(lexer::TokenKind::Sigma);
+    advance(); // consume "sum"/"prod"/∑/∏
+
+    std::string var;
+    if (check(lexer::TokenKind::Identifier))
+        var = std::string{advance().lexeme};
+    else
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected variable name after aggregate operator"});
+
+    std::optional<std::string>  type;
+    std::optional<ast::RelOp>   rel;
+    std::optional<ast::ExprPtr> bound;
+
+    if (check(lexer::TokenKind::Colon)) {
+        advance(); // typed binder: sum i : T
+        if (check(lexer::TokenKind::Identifier))
+            type = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected type name after ':' in aggregate binder"});
+    } else if (auto r = as_rel_op(peek().kind); r.has_value()) {
+        advance(); // bounded binder: sum i < n  (bound expr stops at comma)
+        rel   = r;
+        bound = ast::make_expr(parseExpr());
+    } else {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected ':' or relational operator in aggregate binder"});
+    }
+
+    expect(lexer::TokenKind::Comma, "expected ',' after aggregate binder");
+    auto body = parseExpr(); // body extends right as far as possible
+
+    const ast::AggOp op = is_sum ? ast::AggOp::Sum : ast::AggOp::Prod;
+    return {loc, ast::ExprAgg{op, std::move(var), std::move(type), rel, std::move(bound),
+                               ast::make_expr(std::move(body))}};
 }
 
 // argList = expr { "," expr }
