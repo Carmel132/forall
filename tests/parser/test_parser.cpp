@@ -584,6 +584,149 @@ TEST(ParserTest, ExprDivBindsTighterThanAdd) {
     EXPECT_NE(std::get_if<ExprBinary>(&add->lhs->node), nullptr); // n div 2 on lhs
 }
 
+// ── Item 8: Subscript indexing ─────────────────────────────────────────────────
+
+TEST(ParserTest, ExprSubscriptSimple) {
+    // a[n] >= 0  —  ExprIndex{ExprVar{a}, ExprVar{n}} as lhs of relational prop
+    auto r = parse_str("axiom a : a[n] >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* idx = std::get_if<ExprIndex>(&rel->lhs->node);
+    ASSERT_NE(idx, nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&idx->array->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&idx->index->node), nullptr);
+}
+
+TEST(ParserTest, ExprSubscriptLiteralIndex) {
+    // a[0] = 1  —  literal index
+    auto r = parse_str("axiom a : a[0] = 1");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* idx = std::get_if<ExprIndex>(&rel->lhs->node);
+    ASSERT_NE(idx, nullptr);
+    const auto* lit = std::get_if<ExprLit>(&idx->index->node);
+    ASSERT_NE(lit, nullptr);
+    EXPECT_EQ(lit->value, "0");
+}
+
+TEST(ParserTest, ExprSubscriptExpressionIndex) {
+    // a[n + 1] = 0  —  full expression as index
+    auto r = parse_str("axiom a : a[n + 1] = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* idx = std::get_if<ExprIndex>(&rel->lhs->node);
+    ASSERT_NE(idx, nullptr);
+    const auto* add = std::get_if<ExprBinary>(&idx->index->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, ExprSubscriptChained) {
+    // a[i][j] = 0  —  left-associative: (a[i])[j]
+    auto r = parse_str("axiom a : a[i][j] = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprIndex>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    // outer index is j
+    const auto* jvar = std::get_if<ExprVar>(&outer->index->node);
+    ASSERT_NE(jvar, nullptr);
+    EXPECT_EQ(jvar->name, "j");
+    // array of outer is itself an index a[i]
+    const auto* inner = std::get_if<ExprIndex>(&outer->array->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&inner->array->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&inner->index->node), nullptr);
+}
+
+TEST(ParserTest, ExprSubscriptBindsTighterThanPow) {
+    // a[n] ^ 2  parses as  (a[n]) ^ 2,  not  a[n^2]
+    auto r = parse_str("axiom a : a[n] ^ 2 = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* pw = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(pw, nullptr);
+    EXPECT_EQ(pw->op, BinOp::Pow);
+    // base of ^ is a[n]
+    EXPECT_NE(std::get_if<ExprIndex>(&pw->lhs->node), nullptr);
+    // exponent of ^ is literal 2
+    EXPECT_NE(std::get_if<ExprLit>(&pw->rhs->node), nullptr);
+}
+
+// ── Item 9: Tuple / pair construction ─────────────────────────────────────────
+
+TEST(ParserTest, ExprTuplePair) {
+    // pair = (1, 2)  —  ExprTuple as rhs of a relational prop
+    auto r = parse_str("axiom a : pair = (1, 2)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* tup = std::get_if<ExprTuple>(&rel->rhs->node);
+    ASSERT_NE(tup, nullptr);
+    ASSERT_EQ(tup->elements.size(), 2u);
+    EXPECT_NE(std::get_if<ExprLit>(&tup->elements[0]->node), nullptr);
+    EXPECT_NE(std::get_if<ExprLit>(&tup->elements[1]->node), nullptr);
+}
+
+TEST(ParserTest, ExprTupleTriple) {
+    // triple = (a, b, c)  —  three-element tuple
+    auto r = parse_str("axiom a : triple = (x, y, z)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* tup = std::get_if<ExprTuple>(&rel->rhs->node);
+    ASSERT_NE(tup, nullptr);
+    EXPECT_EQ(tup->elements.size(), 3u);
+}
+
+TEST(ParserTest, ExprTupleVsGrouping) {
+    // a[(n + 1)] > 0  —  a single parenthesised expression inside a subscript is
+    // grouping (transparent), NOT a single-element tuple.
+    auto r = parse_str("axiom a : a[(n + 1)] > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* idx = std::get_if<ExprIndex>(&rel->lhs->node);
+    ASSERT_NE(idx, nullptr);
+    // index is the addition, not a tuple
+    EXPECT_EQ(std::get_if<ExprTuple>(&idx->index->node), nullptr);
+    const auto* add = std::get_if<ExprBinary>(&idx->index->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, ExprTupleVsFunctionCall) {
+    // f(a, b) = 0  —  function call with two args, NOT a function call with a tuple
+    auto r = parse_str("axiom a : f(x, y) = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "f");
+    EXPECT_EQ(call->args.size(), 2u);              // two separate args, not one tuple
+    EXPECT_EQ(std::get_if<ExprTuple>(&call->args[0]->node), nullptr);
+}
+
+TEST(ParserTest, ExprTupleAsFunctionArg) {
+    // f((1, 2)) = 0  —  function call with one argument that is a tuple
+    auto r = parse_str("axiom a : f((1, 2)) = 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    ASSERT_EQ(call->args.size(), 1u);              // one argument: the tuple
+    const auto* tup = std::get_if<ExprTuple>(&call->args[0]->node);
+    ASSERT_NE(tup, nullptr);
+    EXPECT_EQ(tup->elements.size(), 2u);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {
