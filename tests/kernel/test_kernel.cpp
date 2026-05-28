@@ -128,3 +128,28 @@ TEST(KernelTest, PropEquality) {
     EXPECT_EQ(prop_not(atom("P")), prop_not(atom("P")));
     EXPECT_NE(prop_not(atom("P")), prop_not(atom("Q")));
 }
+
+TEST(KernelTest, PropEqualityNested) {
+    // (A → B) ∧ (C → D) == (A → B) ∧ (C → D)
+    auto ab = prop_impl(atom("A"), atom("B"));
+    auto cd = prop_impl(atom("C"), atom("D"));
+    EXPECT_EQ(prop_and(ab, cd), prop_and(ab, cd));
+    EXPECT_NE(prop_and(ab, cd), prop_and(ab, prop_impl(atom("C"), atom("E"))));
+    // Nesting depth does not confuse equality
+    EXPECT_EQ(prop_or(prop_and(ab, cd), prop_not(atom("P"))),
+              prop_or(prop_and(ab, cd), prop_not(atom("P"))));
+}
+
+TEST(KernelTest, PropFalseEquality) {
+    EXPECT_EQ(prop_false(), prop_false());
+    EXPECT_NE(prop_false(), atom("P"));
+    EXPECT_NE(atom("P"),    prop_false());
+    EXPECT_NE(prop_false(), prop_not(atom("P")));
+}
+
+TEST(KernelTest, PropImplAssociativity) {
+    // P → (Q → R) ≠ (P → Q) → R
+    auto left  = prop_impl(atom("P"), prop_impl(atom("Q"), atom("R")));
+    auto right = prop_impl(prop_impl(atom("P"), atom("Q")), atom("R"));
+    EXPECT_NE(left, right);
+}
