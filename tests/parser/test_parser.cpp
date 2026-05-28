@@ -727,6 +727,199 @@ TEST(ParserTest, ExprTupleAsFunctionArg) {
     EXPECT_EQ(tup->elements.size(), 2u);
 }
 
+// ── Item 10: Lambda abstraction ───────────────────────────────────────────────
+
+TEST(ParserTest, LambdaBasic) {
+    // f = fun x => x  —  bare lambda, no type annotation
+    auto r = parse_str("axiom a : f = fun x => x");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    EXPECT_EQ(lam->var, "x");
+    EXPECT_FALSE(lam->type.has_value());
+    EXPECT_NE(std::get_if<ExprVar>(&lam->body->node), nullptr);
+}
+
+TEST(ParserTest, LambdaTyped) {
+    // f = fun x : Nat => x + 1
+    auto r = parse_str("axiom a : f = fun x : Nat => x + 1");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    EXPECT_EQ(lam->var, "x");
+    ASSERT_TRUE(lam->type.has_value());
+    EXPECT_EQ(*lam->type, "Nat");
+    const auto* add = std::get_if<ExprBinary>(&lam->body->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, LambdaUnicode) {
+    // f = λ x, x  — Unicode λ with comma separator
+    auto r = parse_str("axiom a : f = \xCE\xBB x, x");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    EXPECT_EQ(lam->var, "x");
+    EXPECT_NE(std::get_if<ExprVar>(&lam->body->node), nullptr);
+}
+
+TEST(ParserTest, LambdaUnicodeTyped) {
+    // f = λ x : Real, x * x — Unicode λ with type
+    auto r = parse_str("axiom a : f = \xCE\xBB x : Real, x * x");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    EXPECT_EQ(lam->var, "x");
+    ASSERT_TRUE(lam->type.has_value());
+    EXPECT_EQ(*lam->type, "Real");
+    EXPECT_NE(std::get_if<ExprBinary>(&lam->body->node), nullptr);
+}
+
+TEST(ParserTest, LambdaNested) {
+    // f = fun x => fun y => x + y  — nested lambdas; outer body is a lambda
+    auto r = parse_str("axiom a : f = fun x => fun y => x + y");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->var, "x");
+    const auto* inner = std::get_if<ExprLambda>(&outer->body->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->var, "y");
+    EXPECT_NE(std::get_if<ExprBinary>(&inner->body->node), nullptr);
+}
+
+TEST(ParserTest, LambdaBodyExtendsRight) {
+    // f = fun x => x + 1 — body is x+1, not just x
+    auto r = parse_str("axiom a : f = fun x => x + 1");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    // Body is the full addition, not just x
+    const auto* add = std::get_if<ExprBinary>(&lam->body->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, LambdaAsArg) {
+    // apply(fun x => x, 3) = 3 — lambda as function argument
+    auto r = parse_str("axiom a : apply(fun x => x, 3) = 3");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "apply");
+    ASSERT_EQ(call->args.size(), 2u);
+    EXPECT_NE(std::get_if<ExprLambda>(&call->args[0]->node), nullptr);
+    EXPECT_NE(std::get_if<ExprLit>(&call->args[1]->node), nullptr);
+}
+
+// ── Item 11: Conditional term ─────────────────────────────────────────────────
+
+TEST(ParserTest, CondExprBasic) {
+    // n and (if x > 0 then x else 0) >= 0 — conditional in relational prop via "and"
+    // (Reached through parseConjunction -> parseAtomicProp -> parseExpr -> parseCondExpr)
+    auto r = parse_str("axiom a : P and if x > 0 then x else 0 >= 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    // RHS of "and" is the relational: (if x>0 then x else 0) >= 0
+    const auto* rel = std::get_if<PropRel>(&conj->rhs->node);
+    ASSERT_NE(rel, nullptr);
+    const auto* cond = std::get_if<ExprIf>(&rel->lhs->node);
+    ASSERT_NE(cond, nullptr);
+}
+
+TEST(ParserTest, CondExprCondition) {
+    // Verify the condition, then-branch, and else-branch are stored correctly
+    auto r = parse_str("axiom a : P and if x > 0 then x else 0 = x");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    const auto* rel = std::get_if<PropRel>(&conj->rhs->node);
+    ASSERT_NE(rel, nullptr);
+    const auto* cond = std::get_if<ExprIf>(&rel->lhs->node);
+    ASSERT_NE(cond, nullptr);
+    // condition is PropRel{x, 0, Gt}
+    EXPECT_NE(std::get_if<PropRel>(&cond->cond->node), nullptr);
+    // then-branch is ExprVar{x}
+    EXPECT_NE(std::get_if<ExprVar>(&cond->then_->node), nullptr);
+    // else-branch is ExprLit{0}
+    EXPECT_NE(std::get_if<ExprLit>(&cond->else_->node), nullptr);
+}
+
+TEST(ParserTest, CondExprNested) {
+    // if P then (if Q then a else b) else c — outer is conditional, inner is conditional
+    auto r = parse_str("axiom a : P and if P then if Q then x else y else z = w");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    const auto* rel = std::get_if<PropRel>(&conj->rhs->node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprIf>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    // then-branch of outer is another ExprIf
+    EXPECT_NE(std::get_if<ExprIf>(&outer->then_->node), nullptr);
+    // else-branch of outer is ExprVar{z}
+    EXPECT_NE(std::get_if<ExprVar>(&outer->else_->node), nullptr);
+}
+
+TEST(ParserTest, CondExprElseBranchExtendsRight) {
+    // if P then a else b + 1  —  else-branch is b+1, not just b
+    auto r = parse_str("axiom a : P and if P then a else b + 1 = c");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    const auto* rel = std::get_if<PropRel>(&conj->rhs->node);
+    ASSERT_NE(rel, nullptr);
+    const auto* cond = std::get_if<ExprIf>(&rel->lhs->node);
+    ASSERT_NE(cond, nullptr);
+    // else-branch is b + 1
+    const auto* add = std::get_if<ExprBinary>(&cond->else_->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, CondExprInLambda) {
+    // f = fun x => if x > 0 then x else 0 — conditional inside lambda body
+    auto r = parse_str("axiom a : f = fun x => if x > 0 then x else 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* lam = std::get_if<ExprLambda>(&rel->rhs->node);
+    ASSERT_NE(lam, nullptr);
+    EXPECT_NE(std::get_if<ExprIf>(&lam->body->node), nullptr);
+}
+
+TEST(ParserTest, CondExprWithRelationalCondition) {
+    // Condition is a relational prop: if a >= b then a else b
+    auto r = parse_str("axiom a : P and if a >= b then a else b = max_val");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    const auto* rel = std::get_if<PropRel>(&conj->rhs->node);
+    ASSERT_NE(rel, nullptr);
+    const auto* cond = std::get_if<ExprIf>(&rel->lhs->node);
+    ASSERT_NE(cond, nullptr);
+    // condition is a >= b (PropRel with GtEq)
+    const auto* cond_rel = std::get_if<PropRel>(&cond->cond->node);
+    ASSERT_NE(cond_rel, nullptr);
+    EXPECT_EQ(cond_rel->op, RelOp::GtEq);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {

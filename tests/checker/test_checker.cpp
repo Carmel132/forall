@@ -670,3 +670,47 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── Lambda abstraction and conditional terms ───────────────────────────────────
+
+TEST(CheckerTest, LambdaAxiomAccepted) {
+    // An axiom whose statement contains a lambda expression is accepted.
+    auto diag = run_checker("lambda_axiom", "axiom id_fn : f = fun x => x");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, LambdaTypedAxiomAccepted) {
+    auto diag = run_checker("lambda_typed_axiom",
+                            "axiom sq : f = \xCE\xBB x : Nat, x * x");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, LambdaTheoremByAssumption) {
+    // The checker can match a lambda-containing relational prop via Assumption.
+    auto diag = run_checker("lambda_assume", R"(
+axiom fn_def : f = fun x => x + 1
+theorem restate : f = fun x => x + 1
+proof
+  then f = fun x => x + 1 by fn_def
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, CondExprAxiomAccepted) {
+    // An axiom with a conditional expression is accepted.
+    auto diag = run_checker("cond_axiom",
+                            "axiom abs_val : P and if x >= 0 then x else 0 >= 0");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, CondExprTheoremByAssumption) {
+    auto diag = run_checker("cond_assume", R"(
+axiom max_def : P and if a >= b then a else b = m
+theorem restate : P and if a >= b then a else b = m
+proof
+  then P and if a >= b then a else b = m by max_def
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
