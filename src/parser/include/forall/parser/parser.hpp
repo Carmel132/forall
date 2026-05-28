@@ -38,6 +38,7 @@ private:
 
     // Propositions (precedence climbing)
     [[nodiscard]] ast::Prop parseProp();
+    [[nodiscard]] ast::Prop parseQuantifier();
     [[nodiscard]] ast::Prop parseBiconditional();
     [[nodiscard]] ast::Prop parseImplication();
     [[nodiscard]] ast::Prop parseDisjunction();

@@ -42,7 +42,54 @@ void Parser::consumeArticle() {
 //   atomic_prop = identifier | "false" | "(" prop ")"
 
 ast::Prop Parser::parseProp() {
+    using K = lexer::TokenKind;
+    if (check(K::Forall) || check(K::KwFor) || check(K::Exists) || check(K::KwThere))
+        return parseQuantifier();
     return parseBiconditional();
+}
+
+// (∀ | "for" "all" | ∃ | "there" "exists") <var> [ ":" <type> ] "," prop
+ast::Prop Parser::parseQuantifier() {
+    const auto loc = peek().loc;
+    bool is_forall;
+
+    if (check(lexer::TokenKind::Forall)) {
+        is_forall = true;
+        advance();
+    } else if (check(lexer::TokenKind::Exists)) {
+        is_forall = false;
+        advance();
+    } else if (check(lexer::TokenKind::KwFor)) {
+        advance();
+        expect(lexer::TokenKind::KwAll, "expected 'all' after 'for'");
+        is_forall = true;
+    } else { // KwThere
+        advance();
+        expect(lexer::TokenKind::Exists, "expected 'exists' after 'there'");
+        is_forall = false;
+    }
+
+    std::string var;
+    if (check(lexer::TokenKind::Identifier))
+        var = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
+
+    std::optional<std::string> type;
+    if (check(lexer::TokenKind::Colon)) {
+        advance();
+        if (check(lexer::TokenKind::Identifier))
+            type = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
+    }
+
+    expect(lexer::TokenKind::Comma, "expected ',' after quantifier binder");
+    auto body = parseProp();
+
+    if (is_forall)
+        return {loc, ast::PropForall{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
+    return {loc, ast::PropExists{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
 }
 
 // A ↔ B  →  (A→B) ∧ (B→A)   (right-associative, desugared at parse time)
@@ -63,6 +110,14 @@ ast::Prop Parser::parseBiconditional() {
 }
 
 ast::Prop Parser::parseImplication() {
+    // Quantifiers bind loosely and may appear as the RHS of an implication or biconditional.
+    // E.g. "P -> for all x, Q" parses as P -> (for all x, Q).
+    {
+        using K = lexer::TokenKind;
+        if (check(K::Forall) || check(K::KwFor) || check(K::Exists) || check(K::KwThere))
+            return parseQuantifier();
+    }
+
     // "if" prop "then" prop
     if (check(lexer::TokenKind::KwIf)) {
         const auto loc = peek().loc;
@@ -309,10 +364,11 @@ ast::Step Parser::parseStep() {
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
 
-    diag_.emit({diag::Severity::Error, peek().loc,
+    const auto loc = peek().loc;
+    diag_.emit({diag::Severity::Error, loc,
                 "expected proof step; got '" + peek().lexeme + "'"});
     advance();
-    return {peek().loc, ast::ContradictionStep{}};
+    return {loc, ast::LetStep{}}; // silently skipped by the checker
 }
 
 ast::ProofBlock Parser::parseProofBlock() {
