@@ -1,4 +1,5 @@
 #include <forall/parser/parser.hpp>
+#include <forall/pretty/to_string.hpp>
 
 namespace forall::parser {
 
@@ -522,7 +523,8 @@ ast::Prop Parser::parseAtomicProp() {
         return {loc, ast::PropPred{c->name, c->args}};
 
     diag_.emit({diag::Severity::Error, loc,
-                "arithmetic expression in proposition context requires a relational operator"});
+                "arithmetic expression `" + forall::pretty::to_string(lhs)
+                + "` in proposition context requires a relational operator"});
     return {loc, ast::PropFalse{}};
 }
 

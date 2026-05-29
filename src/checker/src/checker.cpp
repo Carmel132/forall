@@ -2,6 +2,7 @@
 #include <forall/kernel/kernel.hpp>
 #include <forall/lexer/lexer.hpp>
 #include <forall/parser/parser.hpp>
+#include <forall/pretty/to_string.hpp>
 
 #include <array>
 #include <fstream>
@@ -264,7 +265,9 @@ bool check_cases_step(const ast::CasesStep& s,
             shared_conclusion = arm_then.prop;
         } else if (!(*shared_conclusion == arm_then.prop)) {
             diag.emit({diag::Severity::Error, loc,
-                       "'cases' arms conclude different propositions"});
+                       "'cases' arms conclude different propositions: `"
+                       + forall::pretty::to_string(*shared_conclusion)
+                       + "` vs `" + forall::pretty::to_string(arm_then.prop) + "`"});
             had_arm_error = true;
             continue;
         }
@@ -453,7 +456,8 @@ void check_proof(const ast::Decl& decl,
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
             if (ts.prop != decl.statement)
                 diag.emit({diag::Severity::Error, last_concluding->loc,
-                           "proof concludes with wrong proposition"});
+                           "proof concludes with `" + forall::pretty::to_string(ts.prop)
+                           + "`, expected `" + forall::pretty::to_string(decl.statement) + "`"});
         } else { // Cases
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
             auto it = env.find(cs.name);

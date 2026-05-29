@@ -11,9 +11,8 @@ target_sources(forall_parser
         src/parser.cpp
 )
 
-# lexer is PRIVATE: it's an implementation detail of parsing.
-# Callers of forall::parser don't need to know about tokens.
+# lexer and pretty are PRIVATE: implementation details of parsing.
 target_link_libraries(forall_parser
     PUBLIC  forall::compiler_options forall::ast forall::diagnostics
-    PRIVATE forall::lexer
+    PRIVATE forall::lexer forall::pretty
 )

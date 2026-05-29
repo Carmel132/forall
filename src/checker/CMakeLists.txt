@@ -11,8 +11,8 @@ target_sources(forall_checker
         src/checker.cpp
 )
 
-# kernel and parser are PRIVATE: the Checker's public API exposes neither.
+# kernel, parser, and pretty are PRIVATE: the Checker's public API exposes none of them.
 target_link_libraries(forall_checker
     PUBLIC  forall::compiler_options forall::diagnostics
-    PRIVATE forall::kernel forall::parser forall::lexer
+    PRIVATE forall::kernel forall::parser forall::lexer forall::pretty
 )
