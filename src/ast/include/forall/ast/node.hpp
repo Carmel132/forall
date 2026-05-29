@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -219,5 +220,21 @@ struct Module {
     std::string          path;
     std::vector<DeclPtr> decls;
 };
+
+// ── Free-variable enumeration and syntactic substitution ─────────────────────
+
+// Returns the set of all term variable names (ExprVar) that appear free.
+// Propositional atoms and PropFalse carry no term variables.
+// Binders (∀/∃/fun/sum/prod/{x|…}) exclude their variable within their scope.
+std::set<std::string> free_vars(const Prop& prop);
+std::set<std::string> free_vars(const Expr& expr);
+
+// Returns a copy with every free occurrence of term variable `var` replaced by
+// `replacement`.  Stops substituting inside any binder that shadows `var`.
+//
+// Note: capture-avoiding renaming is not performed.  Callers must ensure that
+// free variables of `replacement` are not captured by inner binders of `prop`.
+Prop subst(const Prop& prop, const std::string& var, const Expr& replacement);
+Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
 
 } // namespace forall::ast
