@@ -38,16 +38,18 @@
 (*   "f compose g"/"f circ g"│  f ∘ g   │  function composition           *)
 (*   "inv f" (no Unicode alt.)│ (none)  │  function/group inverse (prefix)*)
 (*                                                                         *)
-(* Term-language symbols (planned):                                        *)
-(*   "x in S"                │  x ∈ S   │  set membership                 *)
+(* Term-language symbols (implemented):                                     *)
+(*   "x in S"                │  x ∈ S   │  set membership (proposition)   *)
 (*   "x not in S"            │  x ∉ S   │  set non-membership             *)
 (*   "A subseteq B"          │  A ⊆ B   │  subset-or-equal                *)
 (*   "A subset B"            │  A ⊂ B   │  strict subset                  *)
 (*   "A supseteq B"          │  A ⊇ B   │  superset-or-equal              *)
-(*   "A union B"             │  A ∪ B   │  set union                      *)
+(*   "A union B"             │  A ∪ B   │  set union (expression)         *)
 (*   "A inter B"             │  A ∩ B   │  set intersection               *)
-(*   "A setminus B"          │  A \ B   │  set difference                 *)
-(*   "compl A"               │  Aᶜ      │  set complement (prefix)        *)
+(*   "A setminus B" / "A\B"  │  A ∖ B   │  set difference                 *)
+(*   "compl A"               │  (none)  │  set complement (prefix)        *)
+(*   "{a, b, c}" / "{}"      │          │  set literal                    *)
+(*   "{x : T | P}" / "{x|P}" │          │  set comprehension              *)
 
 
 (* ── Top level ───────────────────────────────────────────────────────────── *)
@@ -131,9 +133,14 @@ conjunction = negation    , { ( "and" | "∧" ) , negation    } ;
 negation    = ( "not" | "¬" ) , atomic_prop | atomic_prop ;
 
 atomic_prop = "false" | "⊥"
-            | identifier , [ "(" , arg_list , ")" ]
+            | "(" , prop , ")"
             | expr , rel , expr
-            | "(" , prop , ")" ;
+            | expr , ( "in" | "∈" ) , expr                              (* set membership    *)
+            | expr , ( "not" , "in" | "∉" ) , expr                     (* non-membership    *)
+            | expr , ( "subseteq" | "⊆" ) , expr                       (* subset-or-equal   *)
+            | expr , ( "subset"   | "⊂" ) , expr                       (* strict subset     *)
+            | expr , ( "supseteq" | "⊇" ) , expr                       (* superset-or-equal *)
+            | identifier , [ "(" , arg_list , ")" ] ;                  (* atom / predicate  *)
 
 
 (* ── Expressions ─────────────────────────────────────────────────────────── *)
@@ -149,18 +156,25 @@ sumExpr   = ( "sum" | "∑" ) , aggBinder , "," , expr ;
 prodExpr  = ( "prod" | "∏" ) , aggBinder , "," , expr ;
 aggBinder = identifier , ":" , type     (* typed binder:   sum i : Nat, f i  *)
            | identifier , rel , expr ;  (* bounded binder: sum i < n, f i    *)
-exprAdd   = exprMul   , { ( "+" | "-" )                                             , exprMul   } ;
-exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" | "compose" | "circ" | "∘" ) , exprUnary } ;
-exprUnary = "-" , exprPow | "inv" , exprPow | exprPow ;  (* "inv" desugars to inv(exprPow) *)
+exprAdd   = exprMul , { ( "+" | "-" | "union" | "∪" | "setminus" | "\" ) , exprMul } ;
+exprMul   = exprUnary , { ( "*" | "/" | "div" | "mod" | "compose" | "circ" | "∘" | "inter" | "∩" ) , exprUnary } ;
+exprUnary = "-" , exprPow                                (* unary minus                        *)
+           | "inv"   , exprPow                          (* function inverse: desugars inv(e)  *)
+           | "compl" , exprPow                          (* set complement: desugars compl(e)  *)
+           | exprPow ;
 exprPow   = exprAtom , [ "^" , exprUnary ] ;           (* right-associative via exprUnary *)
 exprAtom  = base , { "[" , expr , "]" | "!" } ;        (* subscript and factorial — left-assoc *)
-base      = "|" , expr , "|"                           (* absolute value  |x - y|            *)
-          | identifier , [ "(" , arg_list , ")" ]      (* variable or function call           *)
+base      = "|" , expr , "|"                            (* absolute value  |x - y|           *)
+          | identifier , [ "(" , arg_list , ")" ]       (* variable or function call          *)
           | number
-          | "(" , expr , ")"                           (* grouping — transparent              *)
-          | "(" , expr , "," , expr , { "," , expr } , ")"  (* tuple  (a, b, c)              *)
-          | "⌊" , expr , "⌋"                            (* floor — desugars to floor(expr)    *)
-          | "⌈" , expr , "⌉" ;                          (* ceiling — desugars to ceil(expr)   *)
+          | "(" , expr , ")"                            (* grouping — transparent             *)
+          | "(" , expr , "," , expr , { "," , expr } , ")"  (* tuple  (a, b, c)             *)
+          | "⌊" , expr , "⌋"                            (* floor — desugars to floor(expr)   *)
+          | "⌈" , expr , "⌉"                            (* ceiling — desugars to ceil(expr)  *)
+          | "{" , "}"                                   (* empty set literal                 *)
+          | "{" , expr , { "," , expr } , "}"           (* set literal  {a, b, c}            *)
+          | "{" , identifier , ":" , type , "|" , prop , "}"  (* set comprehension with type *)
+          | "{" , identifier , "|" , prop , "}" ;       (* set comprehension without type    *)
 
 arg_list = expr , { "," , expr } ;
 (* Note: f(a, b) has two separate args; f((a, b)) has one tuple arg. *)
@@ -174,8 +188,8 @@ type = "Real" | "Nat" | "Int" | "Rat" | "Prop" | "Set" | "Sequence" | identifier
 
 (* ── Primitives ──────────────────────────────────────────────────────────── *)
 
-rel        = "<" | ">" | "<=" | ">=" | "/="    (* ASCII forms *)
-           | "≤" | "≥" | "≠" ;              (* Unicode U+2264 / U+2265 / U+2260 *)
+rel        = "<" | ">" | "<=" | ">=" | "=" | "/="  (* ASCII arithmetic relational forms *)
+           | "≤" | "≥" | "≠" ;                      (* Unicode U+2264 / U+2265 / U+2260 *)
 identifier = letter , { letter | digit | "_" } ;
 number     = digit  , { digit } , [ "." , { digit } ] ;
 string_lit = '"' , { any_char } , '"' ;
