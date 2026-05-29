@@ -153,3 +153,118 @@ TEST(KernelTest, PropImplAssociativity) {
     auto right = prop_impl(prop_impl(atom("P"), atom("Q")), atom("R"));
     EXPECT_NE(left, right);
 }
+
+// ── ForallElim ────────────────────────────────────────────────────────────────
+
+static Prop prop_forall(std::string v, Prop body) {
+    return {diag::SourceLocation{}, PropForall{std::move(v), std::nullopt,
+                                               make_prop(std::move(body))}};
+}
+static Prop prop_exists(std::string v, Prop body) {
+    return {diag::SourceLocation{}, PropExists{std::move(v), std::nullopt,
+                                               make_prop(std::move(body))}};
+}
+static Prop prop_rel(Expr l, RelOp op, Expr r) {
+    return {diag::SourceLocation{},
+            PropRel{make_expr(std::move(l)), make_expr(std::move(r)), op}};
+}
+static Expr evar(std::string n) { return {diag::SourceLocation{}, ExprVar{std::move(n)}}; }
+static Expr elit(std::string v) { return {diag::SourceLocation{}, ExprLit{std::move(v)}}; }
+
+TEST(KernelTest, ForallElim_Basic) {
+    // ∀ x, x = 0   →  conclude  5 = 0  with witness 5
+    kernel::Kernel k;
+    Prop forall_prop = prop_forall("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    auto j = k.introduce_axiom(forall_prop); ASSERT_TRUE(j);
+
+    Expr five = elit("5");
+    Prop conclusion = subst(*std::get<PropForall>(forall_prop.node).body, "x", five);
+    // conclusion == 5 = 0
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallElim, prem, conclusion, &five);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->prop(), conclusion);
+}
+
+TEST(KernelTest, ForallElim_WrongConclusion) {
+    kernel::Kernel k;
+    Prop forall_prop = prop_forall("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    auto j = k.introduce_axiom(forall_prop); ASSERT_TRUE(j);
+
+    Expr five = elit("5");
+    Prop wrong_conclusion = prop_rel(elit("5"), RelOp::Eq, elit("1")); // 5 = 1 ≠ 5 = 0
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallElim, prem, wrong_conclusion, &five);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ForallElim_MissingWitness) {
+    kernel::Kernel k;
+    Prop forall_prop = prop_forall("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    auto j = k.introduce_axiom(forall_prop); ASSERT_TRUE(j);
+    Prop conclusion = prop_rel(elit("5"), RelOp::Eq, elit("0"));
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallElim, prem, conclusion, nullptr);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ForallElim_PremiseMustBeForall) {
+    kernel::Kernel k;
+    Prop not_forall = atom("P");
+    auto j = k.introduce_axiom(not_forall); ASSERT_TRUE(j);
+    Expr five = elit("5");
+    Prop conclusion = atom("P");
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallElim, prem, conclusion, &five);
+    EXPECT_FALSE(r.has_value());
+}
+
+// ── ExistsIntro ───────────────────────────────────────────────────────────────
+
+TEST(KernelTest, ExistsIntro_Basic) {
+    // premise: 5 = 0  (i.e., P[x:=5] with P = x=0)
+    // conclusion: ∃ x, x = 0   with witness 5
+    kernel::Kernel k;
+    Expr five = elit("5");
+    Prop premise = prop_rel(elit("5"), RelOp::Eq, elit("0")); // 5 = 0
+    auto j = k.introduce_axiom(premise); ASSERT_TRUE(j);
+
+    Prop conclusion = prop_exists("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ExistsIntro, prem, conclusion, &five);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->prop(), conclusion);
+}
+
+TEST(KernelTest, ExistsIntro_WrongWitness) {
+    // witness is 7 but premise says 5 = 0 — subst(x=0, x, 7) = 7=0 ≠ 5=0
+    kernel::Kernel k;
+    Expr seven = elit("7");
+    Prop premise = prop_rel(elit("5"), RelOp::Eq, elit("0"));
+    auto j = k.introduce_axiom(premise); ASSERT_TRUE(j);
+    Prop conclusion = prop_exists("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ExistsIntro, prem, conclusion, &seven);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ExistsIntro_MissingWitness) {
+    kernel::Kernel k;
+    Prop premise = prop_rel(elit("5"), RelOp::Eq, elit("0"));
+    auto j = k.introduce_axiom(premise); ASSERT_TRUE(j);
+    Prop conclusion = prop_exists("x", prop_rel(evar("x"), RelOp::Eq, elit("0")));
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ExistsIntro, prem, conclusion, nullptr);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ExistsIntro_ConclusionMustBeExists) {
+    kernel::Kernel k;
+    Expr five = elit("5");
+    Prop premise = prop_rel(elit("5"), RelOp::Eq, elit("0"));
+    auto j = k.introduce_axiom(premise); ASSERT_TRUE(j);
+    Prop not_exists = atom("P");
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ExistsIntro, prem, not_exists, &five);
+    EXPECT_FALSE(r.has_value());
+}
