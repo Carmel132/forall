@@ -3,14 +3,16 @@
 #   diagnostics  (no forall deps)
 #       └── ast
 #           ├── kernel   ← trusted core; NEVER depends on lexer/parser
+#           ├── pretty   ← display utilities; NEVER depends on lexer/parser/kernel
 #           └── lexer
-#               └── parser
-#                   └── checker
+#               └── parser  ← links pretty (PRIVATE)
+#                   └── checker  ← links pretty (PRIVATE)
 #                       └── forall (executable)
 #
 add_subdirectory(diagnostics)
 add_subdirectory(ast)
 add_subdirectory(kernel)
+add_subdirectory(pretty)
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(checker)
