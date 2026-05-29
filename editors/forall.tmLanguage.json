@@ -1,0 +1,105 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "forall",
+  "scopeName": "source.forall",
+  "fileTypes": ["forall"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#declaration-keyword" },
+    { "include": "#proof-structure" },
+    { "include": "#proof-justification" },
+    { "include": "#logical-connective" },
+    { "include": "#quantifier-phrase" },
+    { "include": "#term-operator" },
+    { "include": "#set-operator" },
+    { "include": "#relational-operator" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+
+    "comment": {
+      "name": "comment.line.double-dash.forall",
+      "match": "--.*$"
+    },
+
+    "string": {
+      "name": "string.quoted.double.forall",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": []
+    },
+
+    "number": {
+      "name": "constant.numeric.forall",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+
+    "declaration-keyword": {
+      "name": "storage.type.forall",
+      "match": "\\b(axiom|theorem|lemma|definition|import)\\b"
+    },
+
+    "proof-structure": {
+      "name": "keyword.control.proof.forall",
+      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|let|be|we|on)\\b|□"
+    },
+
+    "proof-justification": {
+      "name": "keyword.operator.proof.forall",
+      "match": "\\b(by|with)\\b"
+    },
+
+    "logical-connective": {
+      "name": "keyword.operator.logical.forall",
+      "match": "\\b(and|or|not|implies|iff|false)\\b|[∧∨¬↔⊥→]|->"
+    },
+
+    "quantifier-phrase": {
+      "patterns": [
+        {
+          "name": "keyword.operator.quantifier.forall",
+          "match": "\\bfor\\s+all\\b|\\bthere\\s+exists\\b"
+        },
+        {
+          "name": "keyword.operator.quantifier.forall",
+          "match": "[∀∃]"
+        }
+      ]
+    },
+
+    "term-operator": {
+      "name": "keyword.operator.term.forall",
+      "match": "\\b(fun|if|else|sum|prod|compose|circ|inv|div|mod|for|all|there|exists|in)\\b|[λ∑∏∘⌊⌋⌈⌉]|=>"
+    },
+
+    "set-operator": {
+      "name": "keyword.operator.set.forall",
+      "match": "\\b(union|inter|setminus|subseteq|subset|supseteq|compl|not\\s+in)\\b|[∪∩∖∈∉⊆⊂⊇]|\\\\"
+    },
+
+    "relational-operator": {
+      "name": "keyword.operator.relational.forall",
+      "match": "<=|>=|/=|<|>|=|[≤≥≠]"
+    },
+
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.forall",
+          "match": "[,]"
+        },
+        {
+          "name": "punctuation.definition.forall",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.definition.pipe.forall",
+          "match": "\\|"
+        }
+      ]
+    }
+
+  }
+}
