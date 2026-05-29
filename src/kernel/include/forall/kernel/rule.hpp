@@ -2,13 +2,14 @@
 
 namespace forall::kernel {
 
-// The inference rules of propositional natural deduction.
+// The inference rules of natural deduction (propositional + first-order).
 //
 // Natural deduction gives every logical connective an "introduction" rule
 // (how to prove it) and an "elimination" rule (how to use it).  Each case
 // below is annotated with its sequent: "premises ⊢ conclusion".
 //
 //   Γ ⊢ A   means "under assumptions Γ, proposition A is proved".
+//   t       denotes a term (Expr); passed as the `witness` parameter to apply().
 //
 // Rules:
 //   Axiom      : ─────────── declared axiom, no premises       ⊢ P
@@ -24,6 +25,8 @@ namespace forall::kernel {
 //   NotIntro   : Γ, A ⊢ ⊥                                   →  Γ ⊢ ¬A
 //   NotElim    : Γ ⊢ ¬A,  Γ ⊢ A                             →  Γ ⊢ ⊥
 //   FalseElim  : Γ ⊢ ⊥                                      →  Γ ⊢ P  (ex falso)
+//   ForallElim : Γ ⊢ ∀x.P,  witness t                      →  Γ ⊢ P[x:=t]
+//   ExistsIntro: Γ ⊢ P[x:=t],  witness t                   →  Γ ⊢ ∃x.P
 enum class Rule {
     Axiom,
     Assumption,
@@ -32,6 +35,8 @@ enum class Rule {
     OrIntroL, OrIntroR, OrElim,
     NotIntro, NotElim,
     FalseElim,
+    ForallElim,
+    ExistsIntro,
 };
 
 } // namespace forall::kernel

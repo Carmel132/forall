@@ -26,8 +26,14 @@ class Kernel {
 public:
     // Apply a named inference rule to zero or more premise judgments.
     // Returns a new Judgment if valid; KernelError if the application is ill-formed.
+    //
+    // `witness`: required for ForallElim and ExistsIntro; a term t such that:
+    //   ForallElim:  conclusion must equal subst(body, var, *witness)
+    //   ExistsIntro: premise must equal subst(body, var, *witness)
+    // Ignored by all other rules.
     [[nodiscard]] std::expected<Judgment, KernelError>
-    apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& conclusion);
+    apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& conclusion,
+          const ast::Expr* witness = nullptr);
 
     // Introduce an axiom: produces a Judgment with no premises.
     [[nodiscard]] std::expected<Judgment, KernelError>

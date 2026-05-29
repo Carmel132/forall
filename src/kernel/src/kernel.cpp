@@ -1,4 +1,5 @@
 #include <forall/kernel/kernel.hpp>
+#include <forall/ast/node.hpp>
 
 namespace forall::kernel {
 
@@ -27,7 +28,8 @@ Kernel::introduce_axiom(const ast::Prop& prop) {
 // Assumption) are noted; they are stubs until the checker passes a context.
 
 std::expected<Judgment, KernelError>
-Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& conclusion) {
+Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& conclusion,
+              const ast::Expr* witness) {
 
     using namespace ast;
     auto wrong_arity = [&](std::size_t expected) -> std::expected<Judgment, KernelError> {
@@ -186,6 +188,42 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         if (!std::get_if<PropFalse>(&premises[0].prop().node))
             return mismatch("FalseElim: premise must be ⊥");
         return make(conclusion); // conclusion can be anything
+    }
+
+    // ── P[x:=t] from ∀x.P and witness t ─────────────────────────────────────
+    // ForallElim (universal instantiation):
+    //   Γ ⊢ ∀x.P   t is any term
+    //   ─────────────────────────
+    //   Γ ⊢ P[x:=t]
+    case Rule::ForallElim: {
+        if (premises.size() != 1) return wrong_arity(1);
+        if (!witness)
+            return mismatch("ForallElim: witness term t is required");
+        const auto* fa = std::get_if<PropForall>(&premises[0].prop().node);
+        if (!fa)
+            return mismatch("ForallElim: premise must be ∀ x, P");
+        const ast::Prop expected = ast::subst(*fa->body, fa->var, *witness);
+        if (!(conclusion == expected))
+            return mismatch("ForallElim: conclusion must be P[x:=t]");
+        return make(conclusion);
+    }
+
+    // ── ∃x.P from P[x:=t] and witness t ─────────────────────────────────────
+    // ExistsIntro (existential introduction):
+    //   Γ ⊢ P[x:=t]   t is any term
+    //   ─────────────────────────────
+    //   Γ ⊢ ∃x.P
+    case Rule::ExistsIntro: {
+        if (premises.size() != 1) return wrong_arity(1);
+        if (!witness)
+            return mismatch("ExistsIntro: witness term t is required");
+        const auto* ex = std::get_if<PropExists>(&conclusion.node);
+        if (!ex)
+            return mismatch("ExistsIntro: conclusion must be ∃ x, P");
+        const ast::Prop expected = ast::subst(*ex->body, ex->var, *witness);
+        if (!(premises[0].prop() == expected))
+            return mismatch("ExistsIntro: premise must be P[x:=t]");
+        return make(conclusion);
     }
 
     } // switch
