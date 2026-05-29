@@ -23,6 +23,7 @@ private:
     // Declarations
     [[nodiscard]] std::optional<ast::DeclPtr> parseDeclaration();
     [[nodiscard]] std::optional<ast::DeclPtr> parseAxiom();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseDefinition();
     [[nodiscard]] std::optional<ast::DeclPtr> parseTheorem(ast::DeclKind kind);
     [[nodiscard]] std::optional<ast::DeclPtr> parseImport();
 

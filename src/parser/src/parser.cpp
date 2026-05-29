@@ -825,6 +825,33 @@ ast::ProofBlock Parser::parseProofBlock() {
 
 // ── Declaration parsing ────────────────────────────────────────────────────────
 
+// definition <name> { "(" <var> ":" <type> ")" } ":" <prop>
+// Parameter list is parsed and discarded until the type system is in place.
+std::optional<ast::DeclPtr> Parser::parseDefinition() {
+    const auto loc = peek().loc;
+    advance(); // consume "definition"
+
+    if (!check(lexer::TokenKind::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc, "expected definition name"});
+        return std::nullopt;
+    }
+    std::string name{advance().lexeme};
+
+    // Parse and discard optional parameter list: { "(" id ":" type ")" }
+    while (check(lexer::TokenKind::LParen)) {
+        advance(); // (
+        if (check(lexer::TokenKind::Identifier)) advance(); // var name
+        expect(lexer::TokenKind::Colon, "expected ':' in definition parameter");
+        if (check(lexer::TokenKind::Identifier)) advance(); // type name
+        expect(lexer::TokenKind::RParen, "expected ')' to close parameter");
+    }
+
+    expect(lexer::TokenKind::Colon, "expected ':' after definition name");
+    auto prop = parseProp();
+    return std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
+                                       std::move(prop), std::nullopt);
+}
+
 std::optional<ast::DeclPtr> Parser::parseAxiom() {
     const auto loc = peek().loc;
     advance(); // consume "axiom"
@@ -881,13 +908,15 @@ std::optional<ast::DeclPtr> Parser::parseImport() {
 
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
-    if (check(K::KwAxiom))   return parseAxiom();
-    if (check(K::KwTheorem)) return parseTheorem(ast::DeclKind::Theorem);
-    if (check(K::KwLemma))   return parseTheorem(ast::DeclKind::Lemma);
-    if (check(K::KwImport))  return parseImport();
+    if (check(K::KwAxiom))      return parseAxiom();
+    if (check(K::KwDefinition)) return parseDefinition();
+    if (check(K::KwTheorem))    return parseTheorem(ast::DeclKind::Theorem);
+    if (check(K::KwLemma))      return parseTheorem(ast::DeclKind::Lemma);
+    if (check(K::KwImport))     return parseImport();
 
     diag_.emit({diag::Severity::Error, peek().loc,
-                "expected 'axiom', 'theorem', or 'lemma'; got '" + peek().lexeme + "'"});
+                "expected 'axiom', 'definition', 'theorem', or 'lemma'; got '"
+                + peek().lexeme + "'"});
     advance();
     return std::nullopt;
 }
