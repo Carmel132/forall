@@ -921,11 +921,22 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     return std::nullopt;
 }
 
+void Parser::syncToDeclaration() {
+    using K = lexer::TokenKind;
+    while (!isAtEnd()
+           && !check(K::KwAxiom) && !check(K::KwDefinition)
+           && !check(K::KwTheorem) && !check(K::KwLemma) && !check(K::KwImport)) {
+        advance();
+    }
+}
+
 ast::Module Parser::parse() {
     ast::Module mod;
     while (!isAtEnd()) {
         if (auto decl = parseDeclaration())
             mod.decls.push_back(std::move(*decl));
+        else
+            syncToDeclaration();
     }
     return mod;
 }

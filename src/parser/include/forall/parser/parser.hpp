@@ -88,6 +88,7 @@ private:
     [[nodiscard]] bool check(lexer::TokenKind kind) const noexcept;
     [[nodiscard]] bool isAtEnd() const noexcept;
     void consumeArticle();
+    void syncToDeclaration(); // skip to next top-level keyword after a parse error
 
     std::span<const lexer::Token> tokens_;
     diag::DiagnosticEngine&       diag_;
