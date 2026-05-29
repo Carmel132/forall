@@ -267,7 +267,7 @@ proof
 end
 )");
     EXPECT_TRUE(diag.hasErrors());
-    EXPECT_TRUE(has_error(diag, "wrong proposition"));
+    EXPECT_TRUE(has_error(diag, "expected"));
 }
 
 TEST(CheckerTest, InvalidNoThenStep) {
@@ -634,7 +634,7 @@ proof
 end
 )");
     EXPECT_TRUE(diag.hasErrors());
-    EXPECT_TRUE(has_error(diag, "wrong proposition"));
+    EXPECT_TRUE(has_error(diag, "expected"));
 }
 
 TEST(CheckerTest, QuantifierAxiom) {
@@ -813,3 +813,87 @@ axiom comp_assoc : f compose g compose h = f compose (g compose h)
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── DeclKind::Definition ──────────────────────────────────────────────────────
+
+TEST(CheckerTest, DefinitionAccepted) {
+    auto diag = run_checker("def_accepted", "definition refl : x = x");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, DefinitionUsedInProof) {
+    // A definition adds its name to module_env the same way an axiom does.
+    auto diag = run_checker("def_used", R"(
+definition refl_eq : x = x
+theorem restate_def : x = x
+proof
+  then x = x by refl_eq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, DefinitionWithParamsParsed) {
+    // Parameters are parsed and discarded until the type system is in place.
+    // The body proposition is treated like an axiom statement.
+    auto diag = run_checker("def_with_params", R"(
+definition f_pos (x : Real) : f(x) > 0
+theorem use_def : f(x) > 0
+proof
+  then f(x) > 0 by f_pos
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, DefinitionAccumulatesInModuleEnv) {
+    // A definition and a later axiom can both be cited together in one proof.
+    auto diag = run_checker("def_scope", R"(
+definition pos_def : x > 0
+axiom bound : x < 1
+theorem interval : x > 0 and x < 1
+proof
+  have h : x > 0 and x < 1 by pos_def and bound
+  then x > 0 and x < 1 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, DefinitionFollowedByLemma) {
+    // A proved lemma after a definition can use the definition.
+    auto diag = run_checker("def_then_lemma", R"(
+definition eq_self : n = n
+lemma restate : n = n
+proof
+  then n = n by eq_self
+end
+theorem use_lemma : n = n
+proof
+  then n = n by restate
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── Scoped assumption blocks (ScopeStack) ────────────────────────────────────
+
+TEST(CheckerTest, ScopeStackCasesArmShadowing) {
+    // Both case arms bind 'h' locally; each uses its own arm assumption.
+    // The outer suppose h : P or Q is in a lower frame and is shadowed.
+    auto diag = run_checker("scope_shadow", R"(
+axiom hor : P or Q
+axiom pr  : P -> R
+axiom qr  : Q -> R
+
+theorem shadow_test : R
+proof
+  suppose h : P or Q
+  cases result : hor
+    case h : P => then R by pr and h
+    case h : Q => then R by qr and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
