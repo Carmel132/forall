@@ -26,27 +26,63 @@ struct HypEntry {
     EntryKind        kind;
 };
 
-// Maps hypothesis labels to their certified judgments.
+// Module-level flat map: axioms + proved lemmas/definitions accumulate here.
 using HypEnv = std::map<std::string, HypEntry>;
+
+// ── ScopeStack ─────────────────────────────────────────────────────────────────
+//
+// Replaces the flat HypEnv for proof-local checking.  Each nested scope (cases
+// arm, future nested proof blocks) pushes a new frame; find() searches top-down
+// so inner frames shadow outer ones without overwriting them.
+
+class ScopeStack {
+    std::vector<std::map<std::string, HypEntry>> frames_;
+public:
+    // Seed from the module-level flat environment.
+    explicit ScopeStack(const HypEnv& base) : frames_{base, {}} {}
+
+    ScopeStack() : frames_{{}} {}
+
+    // Push a new scope frame (e.g. entering a cases arm).
+    void push() { frames_.emplace_back(); }
+
+    // Pop the top scope frame (does nothing if only one frame remains).
+    void pop() { if (frames_.size() > 1) frames_.pop_back(); }
+
+    // Insert or update in the top frame only.
+    void insert_or_assign(const std::string& name, HypEntry entry) {
+        frames_.back().insert_or_assign(name, std::move(entry));
+    }
+
+    // Search top-to-bottom; inner frames shadow outer ones.  Returns nullptr
+    // if not found in any frame.
+    [[nodiscard]] const HypEntry* find(const std::string& name) const {
+        for (auto it = frames_.rbegin(); it != frames_.rend(); ++it) {
+            if (auto jt = it->find(name); jt != it->end())
+                return &jt->second;
+        }
+        return nullptr;
+    }
+};
 
 // ── resolve_refs ───────────────────────────────────────────────────────────────
 
 std::optional<std::vector<const HypEntry*>>
 resolve_refs(const std::vector<std::string>& refs,
-             const HypEnv& env,
+             const ScopeStack& env,
              diag::DiagnosticEngine& diag,
              const diag::SourceLocation& loc)
 {
     std::vector<const HypEntry*> out;
     out.reserve(refs.size());
     for (const auto& name : refs) {
-        auto it = env.find(name);
-        if (it == env.end()) {
+        const auto* e = env.find(name);
+        if (!e) {
             diag.emit({diag::Severity::Error, loc,
                        "unknown hypothesis '" + name + "'"});
             return std::nullopt;
         }
-        out.push_back(&it->second);
+        out.push_back(e);
     }
     return out;
 }
@@ -176,7 +212,7 @@ infer_rule(const ast::Prop& conc,
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
 bool check_step(const ast::Step& step,
-                HypEnv& env,
+                ScopeStack& env,
                 kernel::Kernel& kernel,
                 diag::DiagnosticEngine& diag);
 
@@ -189,18 +225,18 @@ bool check_step(const ast::Step& step,
 // The result is stored in env under s.name.
 bool check_cases_step(const ast::CasesStep& s,
                       const diag::SourceLocation& loc,
-                      HypEnv& env,
+                      ScopeStack& env,
                       kernel::Kernel& kernel,
                       diag::DiagnosticEngine& diag)
 {
     // 1. Look up the disjunction
-    auto disj_it = env.find(s.disjunct_ref);
-    if (disj_it == env.end()) {
+    const auto* disj_entry = env.find(s.disjunct_ref);
+    if (!disj_entry) {
         diag.emit({diag::Severity::Error, loc,
                    "unknown hypothesis '" + s.disjunct_ref + "'"});
         return false;
     }
-    const auto* disj = std::get_if<ast::PropOr>(&disj_it->second.judgment.prop().node);
+    const auto* disj = std::get_if<ast::PropOr>(&disj_entry->judgment.prop().node);
     if (!disj) {
         diag.emit({diag::Severity::Error, loc,
                    "'" + s.disjunct_ref + "' must be a disjunction (P ∨ Q)"});
@@ -228,8 +264,11 @@ bool check_cases_step(const ast::CasesStep& s,
             continue;
         }
 
-        // Sub-environment for this arm
-        HypEnv arm_env = env;
+        // Sub-environment for this arm: copy all frames, then push an arm frame
+        // so the arm's assumption shadows (not overwrites) any outer binding with
+        // the same name.
+        ScopeStack arm_env = env;
+        arm_env.push();
         auto arm_j = kernel.introduce_axiom(arm.prop);
         arm_env.insert_or_assign(arm.name, HypEntry{std::move(*arm_j), EntryKind::Assumption});
 
@@ -294,7 +333,7 @@ bool check_cases_step(const ast::CasesStep& s,
 
     // Apply OrElim: P ∨ Q, P → R, Q → R ⊢ R
     const std::array<kernel::Judgment, 3> or_prem = {
-        disj_it->second.judgment,
+        disj_entry->judgment,
         impl_js[0],
         impl_js[1]
     };
@@ -313,7 +352,7 @@ bool check_cases_step(const ast::CasesStep& s,
 // ── check_step ─────────────────────────────────────────────────────────────────
 
 bool check_step(const ast::Step& step,
-                HypEnv& env,
+                ScopeStack& env,
                 kernel::Kernel& kernel,
                 diag::DiagnosticEngine& diag)
 {
@@ -418,7 +457,7 @@ void check_proof(const ast::Decl& decl,
         return;
     }
 
-    HypEnv env{module_env};
+    ScopeStack env{module_env};
 
     // Track the last concluding step — either a ThenStep or a CasesStep.
     enum class LastKind { None, Then, Cases };
@@ -460,8 +499,8 @@ void check_proof(const ast::Decl& decl,
                            + "`, expected `" + forall::pretty::to_string(decl.statement) + "`"});
         } else { // Cases
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
-            auto it = env.find(cs.name);
-            if (it != env.end() && !(it->second.judgment.prop() == decl.statement))
+            const auto* it = env.find(cs.name);
+            if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
         }
@@ -546,8 +585,16 @@ HypEnv check_module(const std::filesystem::path& path,
             break;
         }
 
-        case ast::DeclKind::Definition:
+        case ast::DeclKind::Definition: {
+            auto r = kernel.introduce_axiom(decl->statement);
+            if (!r)
+                diag.emit({diag::Severity::Error, decl->loc,
+                            "invalid definition: " + r.error().message});
+            else
+                module_env.insert_or_assign(decl->name,
+                                            HypEntry{std::move(*r), EntryKind::Derived});
             break;
+        }
         }
     }
     return module_env;
