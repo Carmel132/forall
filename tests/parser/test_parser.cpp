@@ -1471,3 +1471,38 @@ TEST(ParserTest, UnknownTopLevelToken) {
     auto r = parse_str("garbage");
     EXPECT_TRUE(r.diag.hasErrors());
 }
+
+// ── Error recovery: declaration-level sync ─────────────────────────────────────
+
+TEST(ParserTest, ErrorRecovery_StrayTokenThenValidDecl) {
+    // One stray token before a valid axiom: exactly one error; axiom still parsed.
+    auto r = parse_str("garbage\naxiom p : P");
+    EXPECT_TRUE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->name, "p");
+}
+
+TEST(ParserTest, ErrorRecovery_MultipleStrayTokensThenValidDecl) {
+    // Several stray tokens before a valid axiom: one error (sync skips them all).
+    auto r = parse_str("foo bar baz\naxiom p : P");
+    EXPECT_TRUE(r.diag.hasErrors());
+    EXPECT_EQ(r.diag.diagnostics().size(), 1u);
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->name, "p");
+}
+
+TEST(ParserTest, ErrorRecovery_BrokenAxiomNameThenValidDecl) {
+    // "axiom" keyword but no identifier name, followed by a valid axiom.
+    auto r = parse_str("axiom : P\naxiom q : Q");
+    EXPECT_TRUE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->name, "q");
+}
+
+TEST(ParserTest, ErrorRecovery_TwoBadDeclsThenGood) {
+    // Two bad declarations then a good theorem: the good one is always parsed.
+    auto r = parse_str("garbage1\ngarbage2\naxiom z : Z");
+    EXPECT_TRUE(r.diag.hasErrors());
+    ASSERT_GE(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls.back()->name, "z");
+}
