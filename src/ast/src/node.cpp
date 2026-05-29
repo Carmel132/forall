@@ -45,6 +45,14 @@ bool Expr::operator==(const Expr& other) const {
             if (lb && !(**x.bound == **y.bound)) return false;
             return *x.body == *y.body;
         }
+        else if constexpr (std::is_same_v<T, ExprSetLit>) {
+            if (x.elements.size() != y.elements.size()) return false;
+            for (std::size_t i = 0; i < x.elements.size(); ++i)
+                if (!(*x.elements[i] == *y.elements[i])) return false;
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, ExprSetCompr>)
+            return x.var == y.var && x.type == y.type && *x.pred == *y.pred;
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }

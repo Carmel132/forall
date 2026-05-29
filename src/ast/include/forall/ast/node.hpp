@@ -23,14 +23,14 @@ struct Step; // forward-declared so CasesStep can hold std::unique_ptr<Step>
 // Term-level arithmetic expressions, separate from Prop.
 // They enter the proposition layer via PropRel and PropPred.
 
-enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow, Compose };
-//                  +    -    *    /   div  mod   ^      ∘
+enum class BinOp { Add, Sub, Mul, Div, IDiv, Mod, Pow, Compose, Union, Inter, SetMinus };
+//                  +    -    *    /   div  mod   ^      ∘      ∪     ∩       ∖
 
 enum class UnaryOp { Neg }; // unary minus; absolute value is its own ExprAbs node
 
 // RelOp lives here (before ExprAgg which uses it) and is also used by PropRel.
-enum class RelOp { Lt, Gt, LtEq, GtEq, Eq, NotEq };
-//                  <   >   <=    >=    =   /=
+enum class RelOp { Lt, Gt, LtEq, GtEq, Eq, NotEq, In, NotIn, SubsetEq, Subset, SupersetEq };
+//                  <   >   <=    >=    =   /=    ∈    ∉      ⊆        ⊂        ⊇
 
 enum class AggOp { Sum, Prod };
 
@@ -42,6 +42,14 @@ struct ExprAbs    { ExprPtr operand; };                              // |x|
 struct ExprCall   { std::string name; std::vector<ExprPtr> args; }; // f(x, y)
 struct ExprIndex  { ExprPtr array; ExprPtr index; };                // a[n]
 struct ExprTuple  { std::vector<ExprPtr> elements; };               // (a, b, c)
+
+struct ExprSetLit  { std::vector<ExprPtr> elements; };               // {a, b, c}  or  {}
+
+struct ExprSetCompr {                                                // {x [: T] | P}
+    std::string              var;
+    std::optional<std::string> type;
+    PropPtr                  pred;
+};
 
 struct ExprLambda {                                                  // fun x [: T] => body  /  λ x, body
     std::string              var;
@@ -66,7 +74,8 @@ struct ExprAgg {                                                     // sum/prod
 
 using ExprNode = std::variant<
     ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
-    ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg
+    ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg,
+    ExprSetLit, ExprSetCompr
 >;
 
 struct Expr {
