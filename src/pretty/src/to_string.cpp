@@ -16,12 +16,17 @@ static std::string paren(bool wrap, std::string s) {
 
 static std::string rel_op_str(ast::RelOp op) {
     switch (op) {
-        case ast::RelOp::Lt:    return " < ";
-        case ast::RelOp::Gt:    return " > ";
-        case ast::RelOp::LtEq:  return " \xe2\x89\xa4 ";  // ≤
-        case ast::RelOp::GtEq:  return " \xe2\x89\xa5 ";  // ≥
-        case ast::RelOp::Eq:    return " = ";
-        case ast::RelOp::NotEq: return " \xe2\x89\xa0 ";  // ≠
+        case ast::RelOp::Lt:          return " < ";
+        case ast::RelOp::Gt:          return " > ";
+        case ast::RelOp::LtEq:        return " \xe2\x89\xa4 ";  // ≤
+        case ast::RelOp::GtEq:        return " \xe2\x89\xa5 ";  // ≥
+        case ast::RelOp::Eq:          return " = ";
+        case ast::RelOp::NotEq:       return " \xe2\x89\xa0 ";  // ≠
+        case ast::RelOp::In:          return " \xe2\x88\x88 ";  // ∈
+        case ast::RelOp::NotIn:       return " \xe2\x88\x89 ";  // ∉
+        case ast::RelOp::SubsetEq:    return " \xe2\x8a\x86 ";  // ⊆
+        case ast::RelOp::Subset:      return " \xe2\x8a\x82 ";  // ⊂
+        case ast::RelOp::SupersetEq:  return " \xe2\x8a\x87 ";  // ⊇
     }
     return " ? ";
 }
@@ -41,7 +46,9 @@ static bool is_expr_atom(const ast::ExprNode& n) {
         || std::holds_alternative<ast::ExprCall>(n)
         || std::holds_alternative<ast::ExprAbs>(n)
         || std::holds_alternative<ast::ExprIndex>(n)
-        || std::holds_alternative<ast::ExprTuple>(n);
+        || std::holds_alternative<ast::ExprTuple>(n)
+        || std::holds_alternative<ast::ExprSetLit>(n)
+        || std::holds_alternative<ast::ExprSetCompr>(n);
 }
 
 static int expr_prec(const ast::ExprNode& n) {
@@ -52,8 +59,10 @@ static int expr_prec(const ast::ExprNode& n) {
             case ast::BinOp::Pow:                          return 3;
             case ast::BinOp::Mul:  case ast::BinOp::Div:
             case ast::BinOp::IDiv: case ast::BinOp::Mod:
-            case ast::BinOp::Compose:                      return 2;
-            case ast::BinOp::Add:  case ast::BinOp::Sub:  return 1;
+            case ast::BinOp::Compose:
+            case ast::BinOp::Inter:                        return 2;  // ∩ binds like *
+            case ast::BinOp::Add:  case ast::BinOp::Sub:
+            case ast::BinOp::Union: case ast::BinOp::SetMinus: return 1; // ∪ ∖ bind like +
         }
     }
     return 0;
@@ -129,6 +138,20 @@ std::string ts_expr(const ast::Expr& e) {
             }
             return s + ")";
         }
+        else if constexpr (std::is_same_v<T, ast::ExprSetLit>) {
+            if (n.elements.empty()) return "{}";
+            std::string s = "{";
+            for (std::size_t i = 0; i < n.elements.size(); ++i) {
+                if (i > 0) s += ", ";
+                s += ts_expr(*n.elements[i]);
+            }
+            return s + "}";
+        }
+        else if constexpr (std::is_same_v<T, ast::ExprSetCompr>) {
+            std::string s = "{" + n.var;
+            if (n.type) s += " : " + *n.type;
+            return s + " | " + ts_prop(*n.pred) + "}";
+        }
         else if constexpr (std::is_same_v<T, ast::ExprLambda>) {
             std::string s = "fun " + n.var;
             if (n.type) s += " : " + *n.type;
@@ -170,14 +193,17 @@ std::string ts_expr(const ast::Expr& e) {
             const char* op_str = "?";
             int cur_prec = 0;
             switch (n.op) {
-                case ast::BinOp::Add:     op_str = " + ";             cur_prec = 1; break;
-                case ast::BinOp::Sub:     op_str = " - ";             cur_prec = 1; break;
-                case ast::BinOp::Mul:     op_str = " * ";             cur_prec = 2; break;
-                case ast::BinOp::Div:     op_str = " / ";             cur_prec = 2; break;
-                case ast::BinOp::IDiv:    op_str = " div ";           cur_prec = 2; break;
-                case ast::BinOp::Mod:     op_str = " mod ";           cur_prec = 2; break;
-                case ast::BinOp::Compose: op_str = " \xe2\x88\x98 "; cur_prec = 2; break; // ∘ U+2218
-                case ast::BinOp::Pow:     break; // handled above
+                case ast::BinOp::Add:      op_str = " + ";             cur_prec = 1; break;
+                case ast::BinOp::Sub:      op_str = " - ";             cur_prec = 1; break;
+                case ast::BinOp::Union:    op_str = " \xe2\x88\xaa "; cur_prec = 1; break; // ∪ U+222A
+                case ast::BinOp::SetMinus: op_str = " \xe2\x88\x96 "; cur_prec = 1; break; // ∖ U+2216
+                case ast::BinOp::Mul:      op_str = " * ";             cur_prec = 2; break;
+                case ast::BinOp::Div:      op_str = " / ";             cur_prec = 2; break;
+                case ast::BinOp::IDiv:     op_str = " div ";           cur_prec = 2; break;
+                case ast::BinOp::Mod:      op_str = " mod ";           cur_prec = 2; break;
+                case ast::BinOp::Inter:    op_str = " \xe2\x88\xa9 "; cur_prec = 2; break; // ∩ U+2229
+                case ast::BinOp::Compose:  op_str = " \xe2\x88\x98 "; cur_prec = 2; break; // ∘ U+2218
+                case ast::BinOp::Pow:      break; // handled above
             }
             return paren(lp < cur_prec, ts_expr(*n.lhs))
                    + op_str
