@@ -58,8 +58,18 @@ ast::Expr Parser::parseExpr() {
         return parseAggregate();
     const auto loc = peek().loc;
     auto lhs = parseExprMul();
-    while (check(lexer::TokenKind::Plus) || check(lexer::TokenKind::Minus)) {
-        const ast::BinOp op = check(lexer::TokenKind::Plus) ? ast::BinOp::Add : ast::BinOp::Sub;
+    while (check(lexer::TokenKind::Plus)       || check(lexer::TokenKind::Minus)
+        || check(lexer::TokenKind::KwUnion)    || check(lexer::TokenKind::CupSym)
+        || check(lexer::TokenKind::KwSetMinus) || check(lexer::TokenKind::Backslash))
+    {
+        ast::BinOp op;
+        switch (peek().kind) {
+            case lexer::TokenKind::Plus:        op = ast::BinOp::Add;      break;
+            case lexer::TokenKind::Minus:       op = ast::BinOp::Sub;      break;
+            case lexer::TokenKind::KwUnion:
+            case lexer::TokenKind::CupSym:      op = ast::BinOp::Union;    break;
+            default:                            op = ast::BinOp::SetMinus; break; // setminus / backslash
+        }
         advance();
         auto rhs = parseExprMul();
         lhs = {loc, ast::ExprBinary{op, ast::make_expr(std::move(lhs)),
@@ -71,9 +81,10 @@ ast::Expr Parser::parseExpr() {
 ast::Expr Parser::parseExprMul() {
     const auto loc = peek().loc;
     auto lhs = parseExprUnary();
-    while (check(lexer::TokenKind::Star)      || check(lexer::TokenKind::Slash) ||
-           check(lexer::TokenKind::KwDiv)     || check(lexer::TokenKind::KwMod) ||
-           check(lexer::TokenKind::KwCompose) || check(lexer::TokenKind::Circ))
+    while (check(lexer::TokenKind::Star)      || check(lexer::TokenKind::Slash)  ||
+           check(lexer::TokenKind::KwDiv)     || check(lexer::TokenKind::KwMod)  ||
+           check(lexer::TokenKind::KwCompose) || check(lexer::TokenKind::Circ)   ||
+           check(lexer::TokenKind::KwInter)   || check(lexer::TokenKind::CapSym))
     {
         ast::BinOp op;
         switch (peek().kind) {
@@ -81,6 +92,8 @@ ast::Expr Parser::parseExprMul() {
             case lexer::TokenKind::Slash:     op = ast::BinOp::Div;     break;
             case lexer::TokenKind::KwDiv:     op = ast::BinOp::IDiv;    break;
             case lexer::TokenKind::KwMod:     op = ast::BinOp::Mod;     break;
+            case lexer::TokenKind::KwInter:
+            case lexer::TokenKind::CapSym:    op = ast::BinOp::Inter;   break; // inter / ∩
             default:                          op = ast::BinOp::Compose; break; // compose / ∘
         }
         advance();
@@ -104,6 +117,13 @@ ast::Expr Parser::parseExprUnary() {
         auto operand = parseExprPow(); // inv applies to the immediately following atom/pow
         std::vector<ast::ExprPtr> args{ast::make_expr(std::move(operand))};
         return {loc, ast::ExprCall{"inv", std::move(args)}};
+    }
+    if (check(lexer::TokenKind::KwCompl)) {
+        const auto loc = peek().loc;
+        advance();
+        auto operand = parseExprPow(); // compl applies to the immediately following atom/pow
+        std::vector<ast::ExprPtr> args{ast::make_expr(std::move(operand))};
+        return {loc, ast::ExprCall{"compl", std::move(args)}};
     }
     return parseExprPow();
 }
@@ -184,6 +204,11 @@ ast::Expr Parser::parseExprAtom() {
             base = {loc, ast::ExprVar{std::move(name)}};
         }
     }
+    // Set literal  {a, b, c}  /  {} (empty)
+    // Set comprehension  {x : T | P}  /  {x | P}
+    else if (check(lexer::TokenKind::LBrace)) {
+        base = parseSetExpr();
+    }
     else {
         diag_.emit({diag::Severity::Error, loc,
                     "expected expression; got '" + peek().lexeme + "'"});
@@ -209,6 +234,55 @@ ast::Expr Parser::parseExprAtom() {
     }
 
     return base;
+}
+
+// parseSetExpr — called from parseExprAtom when "{" is seen.
+// Disambiguates between:
+//   {}                        empty set literal
+//   {expr, ...}               set literal
+//   {id : type | prop}        set comprehension with type annotation
+//   {id | prop}               set comprehension without type
+// Lookahead: after "{", if identifier is followed by ":" or "|" → comprehension.
+ast::Expr Parser::parseSetExpr() {
+    const auto loc = peek().loc;
+    advance(); // consume {
+
+    if (check(lexer::TokenKind::RBrace)) {
+        advance();
+        return {loc, ast::ExprSetLit{}};
+    }
+
+    // Two-token lookahead: {id : type | P} or {id | P}
+    if (check(lexer::TokenKind::Identifier) && pos_ + 1 < tokens_.size()) {
+        const auto next_kind = tokens_[pos_ + 1].kind;
+        if (next_kind == lexer::TokenKind::Colon || next_kind == lexer::TokenKind::Pipe) {
+            std::string var = std::string{advance().lexeme};
+            std::optional<std::string> type;
+            if (check(lexer::TokenKind::Colon)) {
+                advance();
+                if (check(lexer::TokenKind::Identifier))
+                    type = std::string{advance().lexeme};
+                else
+                    diag_.emit({diag::Severity::Error, peek().loc,
+                                "expected type name after ':' in set comprehension"});
+            }
+            expect(lexer::TokenKind::Pipe, "expected '|' in set comprehension");
+            auto pred = parseProp();
+            expect(lexer::TokenKind::RBrace, "expected '}' to close set comprehension");
+            return {loc, ast::ExprSetCompr{std::move(var), std::move(type),
+                                           ast::make_prop(std::move(pred))}};
+        }
+    }
+
+    // Set literal: {expr, expr, ...}
+    std::vector<ast::ExprPtr> elements;
+    elements.push_back(ast::make_expr(parseExpr()));
+    while (check(lexer::TokenKind::Comma)) {
+        advance();
+        elements.push_back(ast::make_expr(parseExpr()));
+    }
+    expect(lexer::TokenKind::RBrace, "expected '}' to close set literal");
+    return {loc, ast::ExprSetLit{std::move(elements)}};
 }
 
 // lambda = ("fun" | "λ") id [":" type] ("=>" | ",") expr
@@ -482,6 +556,7 @@ static std::optional<ast::RelOp> as_rel_op(lexer::TokenKind k) {
 }
 
 ast::Prop Parser::parseAtomicProp() {
+    using K = lexer::TokenKind;
     const auto loc = peek().loc;
 
     // "false" / ⊥
@@ -513,6 +588,47 @@ ast::Prop Parser::parseAtomicProp() {
         auto rhs = parseExpr();
         return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
                                    ast::make_expr(std::move(rhs)), *rel}};
+    }
+
+    // Set membership: x in S / x ∈ S
+    if (check(K::KwIn) || check(K::MemberOf)) {
+        advance();
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::In}};
+    }
+    // x not in S / x ∉ S
+    if (check(K::NotMemberOf)) {
+        advance();
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+    }
+    if (check(K::Not) && pos_ + 1 < tokens_.size()
+        && tokens_[pos_ + 1].kind == K::KwIn) {
+        advance(); advance(); // consume "not" then "in"
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+    }
+    // Subset relations
+    if (check(K::KwSubseteq) || check(K::SubseteqSym)) {
+        advance();
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::SubsetEq}};
+    }
+    if (check(K::KwSubset) || check(K::SubsetSym)) {
+        advance();
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::Subset}};
+    }
+    if (check(K::KwSupseteq) || check(K::SuperseteqSym)) {
+        advance();
+        auto rhs = parseExpr();
+        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                   ast::make_expr(std::move(rhs)), ast::RelOp::SupersetEq}};
     }
 
     // Convert a no-rel expression to a propositional atom.

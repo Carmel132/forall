@@ -41,9 +41,9 @@ private:
     //           lambda    = ("fun" | "λ") id [":" type] ("=>" | ",") expr
     //           condExpr  = "if" prop "then" expr "else" expr
     //           aggregate = ("sum"|"∑"|"prod"|"∏") id (":" type | rel expr) "," expr
-    //           exprAdd   = exprMul { ("+" | "-") exprMul }
-    //           exprMul   = exprUnary { ("*" | "/" | "div" | "mod" | "compose" | "circ" | "∘") exprUnary }
-    //           exprUnary = ["-"] exprPow | "inv" exprPow   (→ ExprCall{"inv",[…]})
+    //           exprAdd   = exprMul { ("+" | "-" | "union" | "∪" | "setminus" | "\") exprMul }
+    //           exprMul   = exprUnary { ("*" | "/" | "div" | "mod" | "compose" | "circ" | "∘" | "inter" | "∩") exprUnary }
+    //           exprUnary = ["-"] exprPow | "inv" exprPow | "compl" exprPow   (→ ExprCall{…})
     //           exprPow   = exprAtom [ "^" exprUnary ]  (right-associative)
     //           exprAtom  = base { "[" expr "]" | "!" }  (postfix, left-assoc)
     //           base = number
@@ -51,8 +51,11 @@ private:
     //                | "|" expr "|"
     //                | "⌊" expr "⌋"  (→ floor(expr))
     //                | "⌈" expr "⌉"  (→ ceil(expr))
-    //                | "(" expr ")"                          (grouping)
-    //                | "(" expr "," expr {"," expr} ")"      (tuple)
+    //                | "(" expr ")"                                (grouping)
+    //                | "(" expr "," expr {"," expr} ")"            (tuple)
+    //                | "{" "}"                                     (empty set)
+    //                | "{" expr {"," expr} "}"                     (set literal)
+    //                | "{" id [":" type] "|" prop "}"              (set comprehension)
     [[nodiscard]] ast::Expr parseExpr();
     [[nodiscard]] ast::Expr parseLambda();
     [[nodiscard]] ast::Expr parseCondExpr();
@@ -61,6 +64,7 @@ private:
     [[nodiscard]] ast::Expr parseExprUnary();
     [[nodiscard]] ast::Expr parseExprPow();
     [[nodiscard]] ast::Expr parseExprAtom();
+    [[nodiscard]] ast::Expr parseSetExpr();
     [[nodiscard]] std::vector<ast::ExprPtr> parseArgList();
 
     // Propositions (precedence climbing)
