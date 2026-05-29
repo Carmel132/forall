@@ -65,7 +65,26 @@ enum class TokenKind {
     And,                        // ∧  (or /\  or "and")
     Or,                         // ∨  (or \/  or "or")
     Not,                        // ¬  (or ~   or "not")
-    Pipe,                       // |  (absolute value)
+    Pipe,                       // |  (absolute value / set-comprehension separator)
+
+    // Set relation operators (proposition level)
+    MemberOf,                   // ∈  U+2208  (or "in")
+    NotMemberOf,                // ∉  U+2209  (or "not in")
+    KwSubseteq,                 // "subseteq"
+    SubseteqSym,                // ⊆  U+2286
+    KwSubset,                   // "subset"  (strict subset)
+    SubsetSym,                  // ⊂  U+2282
+    KwSupseteq,                 // "supseteq"
+    SuperseteqSym,              // ⊇  U+2287
+
+    // Set binary operators (expression level)
+    KwUnion,                    // "union"
+    CupSym,                     // ∪  U+222A
+    KwInter,                    // "inter"
+    CapSym,                     // ∩  U+2229
+    KwSetMinus,                 // "setminus"
+    Backslash,                  // \  (set difference ASCII alternative)
+    KwCompl,                    // "compl"  (set complement prefix)
 
     // Brackets
     LParen, RParen,             // ( )

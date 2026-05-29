@@ -70,19 +70,29 @@ Token Lexer::nextToken() {
             if (b2 == 0x94) { consume(3); return make(TokenKind::Iff);    }
         }
         if (b1 == 0x88) {
-            if (b2 == 0x80) { consume(3); return make(TokenKind::Forall); }
-            if (b2 == 0x83) { consume(3); return make(TokenKind::Exists); }
-            if (b2 == 0x8F) { consume(3); return make(TokenKind::Pi);     } // ∏ U+220F
-            if (b2 == 0x91) { consume(3); return make(TokenKind::Sigma);  } // ∑ U+2211
-            if (b2 == 0x98) { consume(3); return make(TokenKind::Circ);   } // ∘ U+2218
-            if (b2 == 0xA7) { consume(3); return make(TokenKind::And);    }
-            if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);     }
+            if (b2 == 0x80) { consume(3); return make(TokenKind::Forall);      } // ∀ U+2200
+            if (b2 == 0x83) { consume(3); return make(TokenKind::Exists);      } // ∃ U+2203
+            if (b2 == 0x88) { consume(3); return make(TokenKind::MemberOf);    } // ∈ U+2208
+            if (b2 == 0x89) { consume(3); return make(TokenKind::NotMemberOf); } // ∉ U+2209
+            if (b2 == 0x8F) { consume(3); return make(TokenKind::Pi);          } // ∏ U+220F
+            if (b2 == 0x91) { consume(3); return make(TokenKind::Sigma);       } // ∑ U+2211
+            if (b2 == 0x98) { consume(3); return make(TokenKind::Circ);        } // ∘ U+2218
+            if (b2 == 0xA7) { consume(3); return make(TokenKind::And);         } // ∧ U+2227
+            if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);          } // ∨ U+2228
+            if (b2 == 0xA9) { consume(3); return make(TokenKind::CapSym);      } // ∩ U+2229
+            if (b2 == 0xAA) { consume(3); return make(TokenKind::CupSym);      } // ∪ U+222A
         }
         // ≤  U+2264  →  E2 89 A4   ≥  U+2265  →  E2 89 A5   ≠  U+2260  →  E2 89 A0
         if (b1 == 0x89) {
             if (b2 == 0xA4) { consume(3); return make(TokenKind::LessEq);    }
             if (b2 == 0xA5) { consume(3); return make(TokenKind::GreaterEq); }
             if (b2 == 0xA0) { consume(3); return make(TokenKind::NotEq);     }
+        }
+        // ⊂  U+2282  →  E2 8A 82   ⊆  U+2286  →  E2 8A 86   ⊇  U+2287  →  E2 8A 87
+        if (b1 == 0x8A) {
+            if (b2 == 0x82) { consume(3); return make(TokenKind::SubsetSym);      } // ⊂
+            if (b2 == 0x86) { consume(3); return make(TokenKind::SubseteqSym);    } // ⊆
+            if (b2 == 0x87) { consume(3); return make(TokenKind::SuperseteqSym);  } // ⊇
         }
         // ⌊ U+230A → E2 8C 8A   ⌋ U+230B → E2 8C 8B   ⌈ U+2308 → E2 8C 88   ⌉ U+2309 → E2 8C 89
         if (b1 == 0x8C) {
@@ -157,7 +167,7 @@ Token Lexer::nextToken() {
             return make(TokenKind::Slash);
         case '\\':
             if (!isAtEnd() && source_[pos_] == '/') { consume(1); return make(TokenKind::Or); }
-            break;
+            return make(TokenKind::Backslash); // bare \ for set difference A \ B
     }
 
     // ── Identifiers and keywords ──────────────────────────────────────────────
@@ -209,6 +219,14 @@ Token Lexer::nextToken() {
             {"compose",      TokenKind::KwCompose},
             {"circ",         TokenKind::KwCompose},  // alias for compose
             {"inv",          TokenKind::KwInv},
+            // Set terms
+            {"subseteq",     TokenKind::KwSubseteq},
+            {"subset",       TokenKind::KwSubset},
+            {"supseteq",     TokenKind::KwSupseteq},
+            {"union",        TokenKind::KwUnion},
+            {"inter",        TokenKind::KwInter},
+            {"setminus",     TokenKind::KwSetMinus},
+            {"compl",        TokenKind::KwCompl},
             // Connective words (share tokens with symbols)
             {"and",          TokenKind::And},
             {"or",           TokenKind::Or},
