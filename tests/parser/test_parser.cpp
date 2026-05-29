@@ -1223,6 +1223,238 @@ TEST(ParserTest, InvBindsTighterThanCompose) {
     EXPECT_NE(std::get_if<ExprVar>(&comp->rhs->node), nullptr);
 }
 
+// ── Item 14: Set terms ─────────────────────────────────────────────────────────
+
+TEST(ParserTest, SetMembershipKeyword) {
+    // x in S  →  PropRel{x, S, RelOp::In}
+    auto r = parse_str("axiom a : x in S");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::In);
+    EXPECT_NE(std::get_if<ExprVar>(&rel->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&rel->rhs->node), nullptr);
+}
+
+TEST(ParserTest, SetMembershipUnicode) {
+    // x ∈ S  — identical AST to keyword form
+    auto r1 = parse_str("axiom a : x in S");
+    auto r2 = parse_str("axiom a : x \xe2\x88\x88 S"); // ∈ U+2208
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SetNonMembershipKeyword) {
+    // x not in S  →  PropRel{x, S, RelOp::NotIn}
+    auto r = parse_str("axiom a : x not in S");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::NotIn);
+}
+
+TEST(ParserTest, SetNonMembershipUnicode) {
+    // x ∉ S  — identical AST to "x not in S"
+    auto r1 = parse_str("axiom a : x not in S");
+    auto r2 = parse_str("axiom a : x \xe2\x88\x89 S"); // ∉ U+2209
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SubsetEqKeyword) {
+    // A subseteq B  →  PropRel{A, B, RelOp::SubsetEq}
+    auto r = parse_str("axiom a : A subseteq B");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::SubsetEq);
+}
+
+TEST(ParserTest, SubsetEqUnicode) {
+    // A ⊆ B  — identical AST to "A subseteq B"
+    auto r1 = parse_str("axiom a : A subseteq B");
+    auto r2 = parse_str("axiom a : A \xe2\x8a\x86 B"); // ⊆ U+2286
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, StrictSubsetKeyword) {
+    // A subset B  →  PropRel{A, B, RelOp::Subset}
+    auto r = parse_str("axiom a : A subset B");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Subset);
+}
+
+TEST(ParserTest, SupersetEqKeyword) {
+    // A supseteq B  →  PropRel{A, B, RelOp::SupersetEq}
+    auto r = parse_str("axiom a : A supseteq B");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::SupersetEq);
+}
+
+TEST(ParserTest, SetLiteralEmpty) {
+    // {} as lhs of relational prop — empty ExprSetLit
+    auto r = parse_str("axiom a : {} = empty");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* sl = std::get_if<ExprSetLit>(&rel->lhs->node);
+    ASSERT_NE(sl, nullptr);
+    EXPECT_TRUE(sl->elements.empty());
+}
+
+TEST(ParserTest, SetLiteralThreeElements) {
+    // {1, 2, 3} — set literal with three numeric elements
+    auto r = parse_str("axiom a : {1, 2, 3} = S");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* sl = std::get_if<ExprSetLit>(&rel->lhs->node);
+    ASSERT_NE(sl, nullptr);
+    ASSERT_EQ(sl->elements.size(), 3u);
+    for (const auto& e : sl->elements)
+        EXPECT_NE(std::get_if<ExprLit>(&e->node), nullptr);
+}
+
+TEST(ParserTest, SetComprehensionWithType) {
+    // {x : Nat | x > 0}  — set comprehension with type annotation
+    auto r = parse_str("axiom a : {x : Nat | x > 0} = S");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* sc = std::get_if<ExprSetCompr>(&rel->lhs->node);
+    ASSERT_NE(sc, nullptr);
+    EXPECT_EQ(sc->var, "x");
+    ASSERT_TRUE(sc->type.has_value());
+    EXPECT_EQ(*sc->type, "Nat");
+    // predicate is x > 0
+    const auto* pred = std::get_if<PropRel>(&sc->pred->node);
+    ASSERT_NE(pred, nullptr);
+    EXPECT_EQ(pred->op, RelOp::Gt);
+}
+
+TEST(ParserTest, SetComprehensionWithoutType) {
+    // {x | P}  — set comprehension without type, predicate is Atomic{P}
+    auto r = parse_str("axiom a : {x | P} = S");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* sc = std::get_if<ExprSetCompr>(&rel->lhs->node);
+    ASSERT_NE(sc, nullptr);
+    EXPECT_EQ(sc->var, "x");
+    EXPECT_FALSE(sc->type.has_value());
+    EXPECT_NE(std::get_if<Atomic>(&sc->pred->node), nullptr);
+}
+
+TEST(ParserTest, SetUnionKeyword) {
+    // A union B  →  ExprBinary{Union, A, B}
+    auto r = parse_str("axiom a : A union B = C");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* un = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(un, nullptr);
+    EXPECT_EQ(un->op, BinOp::Union);
+    EXPECT_NE(std::get_if<ExprVar>(&un->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<ExprVar>(&un->rhs->node), nullptr);
+}
+
+TEST(ParserTest, SetUnionUnicode) {
+    // A ∪ B  — identical AST to keyword form
+    auto r1 = parse_str("axiom a : A union B = C");
+    auto r2 = parse_str("axiom a : A \xe2\x88\xaa B = C"); // ∪ U+222A
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SetIntersectionKeyword) {
+    // A inter B  →  ExprBinary{Inter, A, B}
+    auto r = parse_str("axiom a : A inter B = C");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* it = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->op, BinOp::Inter);
+}
+
+TEST(ParserTest, SetIntersectionUnicode) {
+    // A ∩ B  — identical AST to keyword form
+    auto r1 = parse_str("axiom a : A inter B = C");
+    auto r2 = parse_str("axiom a : A \xe2\x88\xa9 B = C"); // ∩ U+2229
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SetDifferenceKeyword) {
+    // A setminus B  →  ExprBinary{SetMinus, A, B}
+    auto r = parse_str("axiom a : A setminus B = C");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* sm = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(sm, nullptr);
+    EXPECT_EQ(sm->op, BinOp::SetMinus);
+}
+
+TEST(ParserTest, SetDifferenceBackslash) {
+    // A \ B  — identical AST to "A setminus B"
+    auto r1 = parse_str("axiom a : A setminus B = C");
+    auto r2 = parse_str("axiom a : A \\ B = C");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    EXPECT_EQ(r1.mod.decls[0]->statement, r2.mod.decls[0]->statement);
+}
+
+TEST(ParserTest, SetComplementKeyword) {
+    // compl A  →  ExprCall{"compl", [A]}
+    auto r = parse_str("axiom a : compl A = B");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* call = std::get_if<ExprCall>(&rel->lhs->node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "compl");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_NE(std::get_if<ExprVar>(&call->args[0]->node), nullptr);
+}
+
+TEST(ParserTest, SetInterBindsTighterThanUnion) {
+    // A inter B union C  =  (A ∩ B) ∪ C  (inter is mul-level, union is add-level)
+    auto r = parse_str("axiom a : A inter B union C = D");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* un = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(un, nullptr);
+    EXPECT_EQ(un->op, BinOp::Union);
+    // lhs of union is the intersection
+    const auto* it = std::get_if<ExprBinary>(&un->lhs->node);
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->op, BinOp::Inter);
+    // rhs of union is C
+    EXPECT_NE(std::get_if<ExprVar>(&un->rhs->node), nullptr);
+}
+
+TEST(ParserTest, SetMembershipInConjunction) {
+    // x in S and y in T  —  membership inside conjunction
+    auto r = parse_str("axiom a : x in S and y in T");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+    EXPECT_EQ(std::get_if<PropRel>(&conj->lhs->node)->op, RelOp::In);
+    EXPECT_EQ(std::get_if<PropRel>(&conj->rhs->node)->op, RelOp::In);
+}
+
 // ── Error recovery ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, MissingColonAfterAxiomName) {

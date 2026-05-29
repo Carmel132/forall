@@ -65,3 +65,68 @@ TEST(LexerTest, SourceLocationTracksLineAndColumn) {
     EXPECT_EQ(toks[1].loc.line, 2u);
     EXPECT_EQ(toks[1].loc.col,  1u);
 }
+
+// ── Set terms ──────────────────────────────────────────────────────────────────
+
+TEST(LexerTest, SetTermUnicodeSymbols) {
+    diag::DiagnosticEngine diag;
+    // ∈  ∉  ⊆  ⊂  ⊇  ∪  ∩  (raw UTF-8)
+    lexer::Lexer lex{
+        "\xe2\x88\x88 "   // ∈ U+2208
+        "\xe2\x88\x89 "   // ∉ U+2209
+        "\xe2\x8a\x86 "   // ⊆ U+2286
+        "\xe2\x8a\x82 "   // ⊂ U+2282
+        "\xe2\x8a\x87 "   // ⊇ U+2287
+        "\xe2\x88\xaa "   // ∪ U+222A
+        "\xe2\x88\xa9",   // ∩ U+2229
+        "test", diag};
+    auto toks = lex.tokenize();
+
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::MemberOf);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::NotMemberOf);
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::SubseteqSym);
+    EXPECT_EQ(toks[3].kind, lexer::TokenKind::SubsetSym);
+    EXPECT_EQ(toks[4].kind, lexer::TokenKind::SuperseteqSym);
+    EXPECT_EQ(toks[5].kind, lexer::TokenKind::CupSym);
+    EXPECT_EQ(toks[6].kind, lexer::TokenKind::CapSym);
+}
+
+TEST(LexerTest, SetTermKeywords) {
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"subseteq subset supseteq union inter setminus compl in", "test", diag};
+    auto toks = lex.tokenize();
+
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwSubseteq);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::KwSubset);
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::KwSupseteq);
+    EXPECT_EQ(toks[3].kind, lexer::TokenKind::KwUnion);
+    EXPECT_EQ(toks[4].kind, lexer::TokenKind::KwInter);
+    EXPECT_EQ(toks[5].kind, lexer::TokenKind::KwSetMinus);
+    EXPECT_EQ(toks[6].kind, lexer::TokenKind::KwCompl);
+    EXPECT_EQ(toks[7].kind, lexer::TokenKind::KwIn);
+}
+
+TEST(LexerTest, BackslashTokenForSetDifference) {
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"A \\ B", "test", diag};
+    auto toks = lex.tokenize();
+
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::Identifier);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::Backslash);
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::Identifier);
+}
+
+TEST(LexerTest, BackslashSlashIsOrNotBackslash) {
+    // "\/" is the ASCII alternative for ∨; a lone "\" is Backslash
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"P \\/ Q", "test", diag};
+    auto toks = lex.tokenize();
+
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::Identifier); // P
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::Or);          // \/
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::Identifier); // Q
+}

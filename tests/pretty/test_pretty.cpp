@@ -307,3 +307,93 @@ TEST(PrettyProp, Pred) {
     args.push_back(EP(ExprVar{"n"}));
     EXPECT_EQ(ts(PropPred{"isPrime", std::move(args)}), "isPrime(n)");
 }
+
+// ── Set terms ─────────────────────────────────────────────────────────────────
+
+TEST(PrettyProp, SetMembership) {
+    EXPECT_EQ(ts(PropRel{EP(ExprVar{"x"}), EP(ExprVar{"S"}), RelOp::In}),
+              "x \xe2\x88\x88 S");  // x ∈ S
+}
+
+TEST(PrettyProp, SetNonMembership) {
+    EXPECT_EQ(ts(PropRel{EP(ExprVar{"x"}), EP(ExprVar{"S"}), RelOp::NotIn}),
+              "x \xe2\x88\x89 S");  // x ∉ S
+}
+
+TEST(PrettyProp, SubsetEq) {
+    EXPECT_EQ(ts(PropRel{EP(ExprVar{"A"}), EP(ExprVar{"B"}), RelOp::SubsetEq}),
+              "A \xe2\x8a\x86 B");  // A ⊆ B
+}
+
+TEST(PrettyProp, StrictSubset) {
+    EXPECT_EQ(ts(PropRel{EP(ExprVar{"A"}), EP(ExprVar{"B"}), RelOp::Subset}),
+              "A \xe2\x8a\x82 B");  // A ⊂ B
+}
+
+TEST(PrettyProp, SupersetEq) {
+    EXPECT_EQ(ts(PropRel{EP(ExprVar{"A"}), EP(ExprVar{"B"}), RelOp::SupersetEq}),
+              "A \xe2\x8a\x87 B");  // A ⊇ B
+}
+
+TEST(PrettyExpr, SetLiteralEmpty) {
+    EXPECT_EQ(ts(ExprSetLit{}), "{}");
+}
+
+TEST(PrettyExpr, SetLiteralElements) {
+    std::vector<ExprPtr> elems;
+    elems.push_back(EP(ExprVar{"a"}));
+    elems.push_back(EP(ExprVar{"b"}));
+    elems.push_back(EP(ExprVar{"c"}));
+    EXPECT_EQ(ts(ExprSetLit{std::move(elems)}), "{a, b, c}");
+}
+
+TEST(PrettyExpr, SetComprehensionNoType) {
+    EXPECT_EQ(ts(ExprSetCompr{"x", std::nullopt,
+                               PP(PropRel{EP(ExprVar{"x"}), EP(ExprLit{"0"}), RelOp::Gt})}),
+              "{x | x > 0}");
+}
+
+TEST(PrettyExpr, SetComprehensionWithType) {
+    EXPECT_EQ(ts(ExprSetCompr{"x", std::string{"Nat"},
+                               PP(PropRel{EP(ExprVar{"x"}), EP(ExprLit{"0"}), RelOp::Gt})}),
+              "{x : Nat | x > 0}");
+}
+
+TEST(PrettyExpr, SetUnion) {
+    EXPECT_EQ(ts(ExprBinary{BinOp::Union, EP(ExprVar{"A"}), EP(ExprVar{"B"})}),
+              "A \xe2\x88\xaa B");  // A ∪ B
+}
+
+TEST(PrettyExpr, SetInter) {
+    EXPECT_EQ(ts(ExprBinary{BinOp::Inter, EP(ExprVar{"A"}), EP(ExprVar{"B"})}),
+              "A \xe2\x88\xa9 B");  // A ∩ B
+}
+
+TEST(PrettyExpr, SetMinus) {
+    EXPECT_EQ(ts(ExprBinary{BinOp::SetMinus, EP(ExprVar{"A"}), EP(ExprVar{"B"})}),
+              "A \xe2\x88\x96 B");  // A ∖ B
+}
+
+TEST(PrettyExpr, SetInterBindsTighterThanUnion) {
+    // (A ∩ B) ∪ C — no extra parens needed; inter (prec 2) > union (prec 1)
+    auto e = ExprBinary{BinOp::Union,
+                EP(ExprBinary{BinOp::Inter, EP(ExprVar{"A"}), EP(ExprVar{"B"})}),
+                EP(ExprVar{"C"})};
+    EXPECT_EQ(ts(std::move(e)), "A \xe2\x88\xa9 B \xe2\x88\xaa C");
+}
+
+TEST(PrettyExpr, SetUnionLhsOfInterNeedsParens) {
+    // (A ∪ B) ∩ C — lhs of inter is union (prec 1 < 2), needs parens
+    auto e = ExprBinary{BinOp::Inter,
+                EP(ExprBinary{BinOp::Union, EP(ExprVar{"A"}), EP(ExprVar{"B"})}),
+                EP(ExprVar{"C"})};
+    EXPECT_EQ(ts(std::move(e)), "(A \xe2\x88\xaa B) \xe2\x88\xa9 C");
+}
+
+TEST(PrettyExpr, SetLiteralIsAtomicNoParensInIndex) {
+    // {a}[0]  — set literal is atomic, no extra parens needed
+    std::vector<ExprPtr> elems;
+    elems.push_back(EP(ExprVar{"a"}));
+    auto base = EP(ExprSetLit{std::move(elems)});
+    EXPECT_EQ(ts(ExprIndex{std::move(base), EP(ExprLit{"0"})}), "{a}[0]");
+}
