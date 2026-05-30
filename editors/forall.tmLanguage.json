@@ -43,12 +43,12 @@
 
     "proof-structure": {
       "name": "keyword.control.proof.forall",
-      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|let|be|we|on)\\b|□"
+      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|done|let|be|we|on)\\b|□"
     },
 
     "proof-justification": {
       "name": "keyword.operator.proof.forall",
-      "match": "\\b(by|with)\\b"
+      "match": "\\b(by|with|at)\\b"
     },
 
     "logical-connective": {
