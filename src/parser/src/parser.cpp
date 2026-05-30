@@ -827,8 +827,13 @@ ast::Step Parser::parseCasesStep() {
         expect(lexer::TokenKind::FatArrow, "expected '=>' after arm proposition");
 
         std::vector<std::unique_ptr<ast::Step>> arm_steps;
-        while (!isAtEnd() && !check(lexer::TokenKind::KwCase) && !check(lexer::TokenKind::KwEnd))
+        while (!isAtEnd()
+               && !check(lexer::TokenKind::KwCase)
+               && !check(lexer::TokenKind::KwEnd)
+               && !check(lexer::TokenKind::KwDone))
             arm_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+        if (check(lexer::TokenKind::KwDone))
+            advance(); // consume optional per-arm "done" terminator
 
         arms.push_back(ast::CaseArm{std::move(arm_name), std::move(arm_prop), std::move(arm_steps)});
     }
