@@ -210,6 +210,41 @@ infer_rule(const ast::Prop& conc,
     return std::nullopt;
 }
 
+// ── infer_quantifier_rule ──────────────────────────────────────────────────────
+//
+// Selected when the step carries an "at <expr>" witness.
+// Exactly one premise ref is expected.
+//   ForallElim:  premise is ∀x.P;  conclusion is P[x:=t]
+//   ExistsIntro: conclusion is ∃x.P; premise is P[x:=t]
+
+std::optional<RuleApp>
+infer_quantifier_rule(const ast::Prop& conc,
+                      const std::vector<const HypEntry*>& es,
+                      const ast::Expr* /*witness*/,
+                      diag::DiagnosticEngine& diag,
+                      const diag::SourceLocation& loc)
+{
+    using R = kernel::Rule;
+
+    if (es.size() != 1) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'at' witness requires exactly one hypothesis reference"});
+        return std::nullopt;
+    }
+    const auto& p0 = es[0]->judgment.prop();
+
+    if (std::get_if<ast::PropForall>(&p0.node))
+        return RuleApp{R::ForallElim, {es[0]->judgment}};
+
+    if (std::get_if<ast::PropExists>(&conc.node))
+        return RuleApp{R::ExistsIntro, {es[0]->judgment}};
+
+    diag.emit({diag::Severity::Error, loc,
+               "'at' witness is only valid when the hypothesis is ∀x.P (ForallElim) "
+               "or the conclusion is ∃x.P (ExistsIntro)"});
+    return std::nullopt;
+}
+
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
 bool check_step(const ast::Step& step,
                 ScopeStack& env,
@@ -378,13 +413,19 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
-        // have <name> : <prop> by <refs>
+        // have <name> : <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            auto app = infer_rule(s.prop, *es, diag, step.loc);
+            const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
+            std::optional<RuleApp> app;
+            if (witness_ptr) {
+                app = infer_quantifier_rule(s.prop, *es, witness_ptr, diag, step.loc);
+            } else {
+                app = infer_rule(s.prop, *es, diag, step.loc);
+            }
             if (!app) return false;
-            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected '" + s.name + "': " + r.error().message});
@@ -394,7 +435,7 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
-        // then <prop> by <refs>
+        // then <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::ThenStep>) {
             if (s.justification.empty()) {
                 diag.emit({diag::Severity::Error, step.loc,
@@ -403,9 +444,15 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            auto app = infer_rule(s.prop, *es, diag, step.loc);
+            const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
+            std::optional<RuleApp> app;
+            if (witness_ptr) {
+                app = infer_quantifier_rule(s.prop, *es, witness_ptr, diag, step.loc);
+            } else {
+                app = infer_rule(s.prop, *es, diag, step.loc);
+            }
             if (!app) return false;
-            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected 'then' step: " + r.error().message});
