@@ -168,6 +168,14 @@ struct LetStep {
     std::optional<std::string> type; // "let P be a Prop"
 };
 
+// take x [: T] — introduces a fresh term variable for ∀-intro.
+// The checker verifies x does not appear free in any undischarged assumption,
+// records x as "taken", and allows ForallIntro for any ∀ x, P proven afterward.
+struct TakeStep {
+    std::string                var;
+    std::optional<std::string> type; // optional type annotation
+};
+
 struct SupposeStep {
     bool                  for_contradiction{false};
     std::optional<std::string> name;  // the hypothesis label
@@ -192,7 +200,7 @@ struct ContradictionStep {
 };
 
 using StepNode = std::variant<
-    LetStep, SupposeStep, HaveStep, ThenStep, ContradictionStep, CasesStep
+    LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep, CasesStep
 >;
 
 struct Step {
