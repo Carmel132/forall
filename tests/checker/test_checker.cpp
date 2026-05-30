@@ -661,6 +661,111 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── Quantifier rules: ForallElim and ExistsIntro via "by h at t" ───────────────
+
+TEST(CheckerTest, ForallElimHaveStep) {
+    // ∀x. P(x) + witness n → P(n) via ForallElim.
+    // Uses predicate application: P(x) parsed as PropPred{"P", [ExprVar{x}]}.
+    auto diag = run_checker("forall_elim_have", R"(
+axiom univ : for all x, P(x)
+theorem inst : P(n)
+proof
+  have hn : P(n) by univ at n
+  then P(n) by hn
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ForallElimThenStep) {
+    // ForallElim directly in the concluding "then" step.
+    auto diag = run_checker("forall_elim_then", R"(
+axiom all_pos : for all x, x > 0
+theorem n_pos : n > 0
+proof
+  then n > 0 by all_pos at n
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExistsIntroHaveStep) {
+    // P(n) + witness n → ∃x. P(x) via ExistsIntro.
+    auto diag = run_checker("exists_intro_have", R"(
+axiom fact : P(n)
+theorem witness : there exists x, P(x)
+proof
+  have ex : there exists x, P(x) by fact at n
+  then there exists x, P(x) by ex
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExistsIntroThenStep) {
+    // ExistsIntro directly in the concluding "then" step.
+    auto diag = run_checker("exists_intro_then", R"(
+axiom fact : n > 0
+theorem some_pos : there exists x, x > 0
+proof
+  then there exists x, x > 0 by fact at n
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ForallElimAndThenUse) {
+    // ForallElim result used as a premise in a later step.
+    auto diag = run_checker("forall_elim_chain", R"(
+axiom all_p_imp_q : for all x, P(x) -> Q(x)
+axiom pn : P(n)
+theorem qn : Q(n)
+proof
+  have impl : P(n) -> Q(n) by all_p_imp_q at n
+  have hqn  : Q(n)         by impl and pn
+  then Q(n) by hqn
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidForallElimWrongConclusion) {
+    // Witness n given, but conclusion P(m) != P(n) — kernel should reject.
+    auto diag = run_checker("forall_elim_wrong_conc", R"(
+axiom univ : for all x, P(x)
+theorem bad : P(m)
+proof
+  then P(m) by univ at n
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidAtWitnessNotForallOrExists) {
+    // "at" witness given but hypothesis is not ∀x.P and conclusion is not ∃x.P.
+    auto diag = run_checker("at_wrong_form", R"(
+axiom plain : P -> Q
+theorem bad : P -> Q
+proof
+  then P -> Q by plain at n
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidAtWitnessTwoRefs) {
+    // "at" witness requires exactly one ref; two refs should produce an error.
+    auto diag = run_checker("at_two_refs", R"(
+axiom ax1 : P
+axiom ax2 : Q
+theorem bad : there exists x, P
+proof
+  then there exists x, P by ax1 and ax2 at n
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
 TEST(CheckerTest, InvalidContradictionWithNoJustification) {
     auto diag = run_checker("invalid_contradiction_no_by", R"(
 theorem bad : P

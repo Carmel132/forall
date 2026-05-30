@@ -1506,3 +1506,83 @@ TEST(ParserTest, ErrorRecovery_TwoBadDeclsThenGood) {
     ASSERT_GE(r.mod.decls.size(), 1u);
     EXPECT_EQ(r.mod.decls.back()->name, "z");
 }
+
+// ── Quantifier witness syntax: "by h at t" ─────────────────────────────────────
+
+TEST(ParserTest, HaveStepWithWitness) {
+    // "have q : P(n) by forall_h at n" — HaveStep with witness ExprVar{n}
+    auto r = parse_str(R"(
+theorem t : P(n)
+proof
+  suppose forall_h : for all x, P(x)
+  have q : P(n) by forall_h at n
+  then P(n) by q
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* h = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(h, nullptr);
+    EXPECT_EQ(h->name, "q");
+    ASSERT_EQ(h->justification.size(), 1u);
+    EXPECT_EQ(h->justification[0], "forall_h");
+    ASSERT_TRUE(h->witness.has_value());
+    const auto* var = std::get_if<ExprVar>(&(*h->witness)->node);
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->name, "n");
+}
+
+TEST(ParserTest, HaveStepWithoutWitnessNoChange) {
+    // A regular "have" step without "at" still has witness == nullopt.
+    auto r = parse_str(R"(
+theorem t : P and Q
+proof
+  suppose hp : P
+  suppose hq : Q
+  have hpq : P and Q by hp and hq
+  then P and Q by hpq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* h = get_step<HaveStep>(*r.mod.decls[0]->proof, 2);
+    ASSERT_NE(h, nullptr);
+    EXPECT_FALSE(h->witness.has_value());
+}
+
+TEST(ParserTest, ThenStepWithWitness) {
+    // "then there exists x, P(x) by fact at n" — ThenStep with witness ExprVar{n}
+    auto r = parse_str(R"(
+theorem t : there exists x, P(x)
+proof
+  suppose fact : P(n)
+  then there exists x, P(x) by fact at n
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ts = get_step<ThenStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(ts, nullptr);
+    ASSERT_EQ(ts->justification.size(), 1u);
+    EXPECT_EQ(ts->justification[0], "fact");
+    ASSERT_TRUE(ts->witness.has_value());
+    const auto* var = std::get_if<ExprVar>(&(*ts->witness)->node);
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->name, "n");
+}
+
+TEST(ParserTest, WitnessExprIsArithmetic) {
+    // "by h at n + 1" — witness is a full expression, not just a variable
+    auto r = parse_str(R"(
+theorem t : P(n + 1)
+proof
+  suppose forall_h : for all x, P(x)
+  have q : P(n + 1) by forall_h at n + 1
+  then P(n + 1) by q
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* h = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_TRUE(h->witness.has_value());
+    const auto* add = std::get_if<ExprBinary>(&(*h->witness)->node);
+    ASSERT_NE(add, nullptr);
+    EXPECT_EQ(add->op, BinOp::Add);
+}
