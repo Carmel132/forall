@@ -268,3 +268,51 @@ TEST(KernelTest, ExistsIntro_ConclusionMustBeExists) {
     auto r = k.apply(kernel::Rule::ExistsIntro, prem, not_exists, &five);
     EXPECT_FALSE(r.has_value());
 }
+
+// ── ForallIntro ────────────────────────────────────────────────────────────────
+
+TEST(KernelTest, ForallIntro_Valid) {
+    // premise: n > 0   conclusion: ∀ n, n > 0
+    kernel::Kernel k;
+    Prop body = prop_rel(evar("n"), RelOp::Gt, elit("0"));
+    auto j = k.introduce_axiom(body); ASSERT_TRUE(j);
+    Prop conclusion = prop_forall("n", body);
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallIntro, prem, conclusion);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->prop(), conclusion);
+}
+
+TEST(KernelTest, ForallIntro_PremiseMustMatchBody) {
+    // premise: n > 0   but conclusion body is n > 1 — mismatch
+    kernel::Kernel k;
+    Prop body_premise = prop_rel(evar("n"), RelOp::Gt, elit("0"));
+    Prop body_conc    = prop_rel(evar("n"), RelOp::Gt, elit("1"));
+    auto j = k.introduce_axiom(body_premise); ASSERT_TRUE(j);
+    Prop conclusion = prop_forall("n", body_conc);
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallIntro, prem, conclusion);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ForallIntro_ConclusionMustBeForall) {
+    // conclusion is not ∀ — should fail
+    kernel::Kernel k;
+    Prop body = prop_rel(evar("n"), RelOp::Gt, elit("0"));
+    auto j = k.introduce_axiom(body); ASSERT_TRUE(j);
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::ForallIntro, prem, body); // body is not PropForall
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ForallIntro_WrongArity) {
+    // ForallIntro requires exactly 1 premise
+    kernel::Kernel k;
+    Prop body = prop_rel(evar("n"), RelOp::Gt, elit("0"));
+    auto j1 = k.introduce_axiom(body); ASSERT_TRUE(j1);
+    auto j2 = k.introduce_axiom(body); ASSERT_TRUE(j2);
+    Prop conclusion = prop_forall("n", body);
+    std::vector<kernel::Judgment> prem{*j1, *j2};
+    auto r = k.apply(kernel::Rule::ForallIntro, prem, conclusion);
+    EXPECT_FALSE(r.has_value());
+}

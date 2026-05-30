@@ -1712,3 +1712,57 @@ end
     // 2 steps: suppose, cases (no trailing then — arms consumed everything up to end)
     ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 2u);
 }
+
+// ── TakeStep (∀-intro variable introduction) ──────────────────────────────────
+
+TEST(ParserTest, TakeStep_NoType) {
+    auto r = parse_str(R"(
+theorem t : P
+proof
+  take x
+  then P by ax
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s = get_step<TakeStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->var, "x");
+    EXPECT_FALSE(s->type.has_value());
+}
+
+TEST(ParserTest, TakeStep_WithType) {
+    auto r = parse_str(R"(
+theorem t : P
+proof
+  take n : Nat
+  then P by ax
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s = get_step<TakeStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->var, "n");
+    ASSERT_TRUE(s->type.has_value());
+    EXPECT_EQ(*s->type, "Nat");
+}
+
+TEST(ParserTest, TakeStep_InFullForallProof) {
+    // take + have + then ∀ — parse succeeds and produces 3 steps
+    auto r = parse_str(R"(
+theorem all_p : for all n : Nat, P(n)
+proof
+  take n : Nat
+  have h : P(n) by ax
+  then for all n : Nat, P(n) by h
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 3u);
+    EXPECT_NE(std::get_if<TakeStep>  (&r.mod.decls[0]->proof->steps[0].node), nullptr);
+    EXPECT_NE(std::get_if<HaveStep>  (&r.mod.decls[0]->proof->steps[1].node), nullptr);
+    EXPECT_NE(std::get_if<ThenStep>  (&r.mod.decls[0]->proof->steps[2].node), nullptr);
+    // verify the ThenStep conclusion is a PropForall
+    const auto* ts = std::get_if<ThenStep>(&r.mod.decls[0]->proof->steps[2].node);
+    ASSERT_NE(ts, nullptr);
+    EXPECT_NE(std::get_if<PropForall>(&ts->prop.node), nullptr);
+}

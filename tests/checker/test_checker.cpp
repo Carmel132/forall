@@ -1060,3 +1060,90 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// ── ForallIntro via TakeStep ───────────────────────────────────────────────────
+
+TEST(CheckerTest, ValidForallIntro) {
+    // Simplest ∀-intro: take n, assume P(n) as axiom, generalize.
+    auto diag = run_checker("forall_intro_valid", R"(
+axiom base : for all n : Nat, P(n)
+theorem all_p : for all n : Nat, P(n)
+proof
+  take n : Nat
+  have h : P(n) by base at n
+  then for all n : Nat, P(n) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidForallIntroNoType) {
+    // take without type annotation — both the take and the ∀ omit type.
+    auto diag = run_checker("forall_intro_no_type", R"(
+axiom px : P(x)
+theorem all_p : for all x, P(x)
+proof
+  take x
+  have h : P(x) by px
+  then for all x, P(x) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidForallIntroWithHaveStep) {
+    // ForallIntro result stored in a have step (not then).
+    auto diag = run_checker("forall_intro_have", R"(
+axiom base : for all n : Nat, P(n)
+theorem all_p : for all n : Nat, P(n)
+proof
+  take n : Nat
+  have pn : P(n) by base at n
+  have result : for all n : Nat, P(n) by pn
+  then for all n : Nat, P(n) by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidForallIntro_MissingTake) {
+    // Trying to use ForallIntro without a preceding TakeStep — error.
+    auto diag = run_checker("forall_intro_missing_take", R"(
+axiom pn : P(n)
+theorem all_p : for all n, P(n)
+proof
+  have h : P(n) by pn
+  then for all n, P(n) by h
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidForallIntro_TakeVarNotFresh) {
+    // n appears free in an assumption — take n should fail the freshness check.
+    auto diag = run_checker("forall_intro_not_fresh", R"(
+theorem bad : for all n, P(n)
+proof
+  suppose hn : P(n)
+  take n
+  then for all n, P(n) by hn
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidForallIntroAfterOtherSteps) {
+    // Unrelated hypotheses that don't mention n are fine before take n.
+    auto diag = run_checker("forall_intro_unrelated_hyp", R"(
+axiom pa : P(a)
+axiom base : for all n : Nat, P(n)
+theorem all_p : for all n : Nat, P(n)
+proof
+  suppose ha : P(a)
+  take n : Nat
+  have h : P(n) by base at n
+  then for all n : Nat, P(n) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
