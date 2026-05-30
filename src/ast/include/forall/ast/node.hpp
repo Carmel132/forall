@@ -176,11 +176,13 @@ struct HaveStep {
     std::string              name;
     Prop                     prop;
     std::vector<std::string> justification; // ref names after "by"
+    std::optional<ExprPtr>   witness;       // term after "at" — for ForallElim / ExistsIntro
 };
 
 struct ThenStep {
     Prop                     prop;
     std::vector<std::string> justification;
+    std::optional<ExprPtr>   witness;       // term after "at" — for ForallElim / ExistsIntro
 };
 
 struct ContradictionStep {
