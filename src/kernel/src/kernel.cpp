@@ -226,6 +226,21 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── ∀x.P from P(x)  ──────────────────────────────────────────────────────
+    // ForallIntro (universal introduction):
+    //   Γ ⊢ P(x)   x does not appear free in Γ  (freshness checked by checker)
+    //   ─────────────────────────────────────────────────────────────────────
+    //   Γ ⊢ ∀ x [: T], P(x)
+    case Rule::ForallIntro: {
+        if (premises.size() != 1) return wrong_arity(1);
+        const auto* fa = std::get_if<PropForall>(&conclusion.node);
+        if (!fa)
+            return mismatch("ForallIntro: conclusion must be ∀ x, P");
+        if (!(premises[0].prop() == *fa->body))
+            return mismatch("ForallIntro: premise must equal the body of ∀ x, P");
+        return make(conclusion);
+    }
+
     } // switch
     return std::unexpected(err(rule, "unhandled rule"));
 }

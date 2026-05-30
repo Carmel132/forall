@@ -27,6 +27,7 @@ namespace forall::kernel {
 //   FalseElim  : Γ ⊢ ⊥                                      →  Γ ⊢ P  (ex falso)
 //   ForallElim : Γ ⊢ ∀x.P,  witness t                      →  Γ ⊢ P[x:=t]
 //   ExistsIntro: Γ ⊢ P[x:=t],  witness t                   →  Γ ⊢ ∃x.P
+//   ForallIntro: Γ ⊢ P(x),  x fresh in Γ                   →  Γ ⊢ ∀x.P
 enum class Rule {
     Axiom,
     Assumption,
@@ -37,6 +38,7 @@ enum class Rule {
     FalseElim,
     ForallElim,
     ExistsIntro,
+    ForallIntro,
 };
 
 } // namespace forall::kernel
