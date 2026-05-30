@@ -202,6 +202,7 @@ Token Lexer::nextToken() {
             {"with",         TokenKind::KwWith},
             {"at",           TokenKind::KwAt},
             {"done",         TokenKind::KwDone},
+            {"take",         TokenKind::KwTake},
             // Logic keywords (natural-language symbols)
             {"if",           TokenKind::KwIf},
             {"for",          TokenKind::KwFor},
