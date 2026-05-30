@@ -711,6 +711,28 @@ ast::Step Parser::parseLetStep() {
     return {loc, ast::LetStep{std::move(var), std::move(type)}};
 }
 
+// take <var> [: <type>]
+// Introduces a fresh term variable for ∀-intro.
+ast::Step Parser::parseTakeStep() {
+    const auto loc = peek().loc;
+    advance(); // consume "take"
+    std::string var;
+    if (check(lexer::TokenKind::Identifier))
+        var = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after 'take'"});
+
+    std::optional<std::string> type;
+    if (check(lexer::TokenKind::Colon)) {
+        advance(); // consume ':'
+        if (check(lexer::TokenKind::Identifier))
+            type = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
+    }
+    return {loc, ast::TakeStep{std::move(var), std::move(type)}};
+}
+
 // suppose [for contradiction :] [name :] prop
 ast::Step Parser::parseSupposeStep() {
     const auto loc = peek().loc;
@@ -844,6 +866,7 @@ ast::Step Parser::parseCasesStep() {
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
     if (check(K::KwLet))          return parseLetStep();
+    if (check(K::KwTake))         return parseTakeStep();
     if (check(K::KwSuppose))      return parseSupposeStep();
     // "we have" — two-token phrase aliasing "have"
     if (check(K::Identifier) && peek().lexeme == "we"

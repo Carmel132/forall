@@ -31,6 +31,7 @@ private:
     [[nodiscard]] ast::ProofBlock parseProofBlock();
     [[nodiscard]] ast::Step       parseStep();
     [[nodiscard]] ast::Step       parseLetStep();
+    [[nodiscard]] ast::Step       parseTakeStep();
     [[nodiscard]] ast::Step       parseSupposeStep();
     [[nodiscard]] ast::Step       parseHaveStep();
     [[nodiscard]] ast::Step       parseThenStep();
