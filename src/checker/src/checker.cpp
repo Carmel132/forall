@@ -37,6 +37,7 @@ using HypEnv = std::map<std::string, HypEntry>;
 
 class ScopeStack {
     std::vector<std::map<std::string, HypEntry>> frames_;
+    std::set<std::string> taken_vars_; // variables introduced via TakeStep
 public:
     // Seed from the module-level flat environment.
     explicit ScopeStack(const HypEnv& base) : frames_{base, {}} {}
@@ -62,6 +63,24 @@ public:
                 return &jt->second;
         }
         return nullptr;
+    }
+
+    // Record a variable introduced via TakeStep.
+    void take_var(const std::string& var) { taken_vars_.insert(var); }
+
+    // Returns true if var was introduced via TakeStep in this scope.
+    [[nodiscard]] bool is_taken(const std::string& var) const {
+        return taken_vars_.count(var) > 0;
+    }
+
+    // Calls f(name, entry) for every Assumption-kind entry across all frames.
+    // Used for the ∀-intro freshness check.
+    template<typename F>
+    void for_each_assumption(F&& f) const {
+        for (const auto& frame : frames_)
+            for (const auto& [name, entry] : frame)
+                if (entry.kind == EntryKind::Assumption)
+                    f(name, entry);
     }
 };
 
@@ -146,6 +165,11 @@ infer_rule(const ast::Prop& conc,
         if (const auto* d = std::get_if<ast::PropOr>(&conc.node))
             if (p == *d->rhs)
                 return RuleApp{R::OrIntroR, {es[0]->judgment}};
+
+        // ForallIntro: P(x) ⊢ ∀ x, P  (freshness side condition checked in check_step)
+        if (const auto* fa = std::get_if<ast::PropForall>(&conc.node))
+            if (p == *fa->body)
+                return RuleApp{R::ForallIntro, {es[0]->judgment}};
     }
 
     // ── 2 premises ────────────────────────────────────────────────────────────
@@ -399,6 +423,25 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
+        // take x [: T] — introduce a fresh term variable for ∀-intro
+        else if constexpr (std::is_same_v<T, ast::TakeStep>) {
+            // Freshness: x must not appear free in any undischarged assumption.
+            // If it does, the subsequent ForallIntro would be unsound (x is not
+            // truly arbitrary — it was fixed by a hypothesis).
+            bool fresh = true;
+            env.for_each_assumption([&](const std::string& hname, const HypEntry& e) {
+                if (ast::free_vars(e.judgment.prop()).count(s.var)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'take " + s.var + "': variable appears free in assumption '"
+                               + hname + "' — not a fresh variable"});
+                    fresh = false;
+                }
+            });
+            if (!fresh) return false;
+            env.take_var(s.var);
+            return true;
+        }
+
         // suppose [name :] prop — introduces a local assumption
         else if constexpr (std::is_same_v<T, ast::SupposeStep>) {
             auto r = kernel.introduce_axiom(s.prop);
@@ -425,6 +468,16 @@ bool check_step(const ast::Step& step,
                 app = infer_rule(s.prop, *es, diag, step.loc);
             }
             if (!app) return false;
+            // ForallIntro requires the bound variable to have been introduced via TakeStep.
+            if (app->rule == kernel::Rule::ForallIntro) {
+                const auto* fa = std::get_if<ast::PropForall>(&s.prop.node);
+                if (!env.is_taken(fa->var)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "∀-intro: variable '" + fa->var
+                               + "' must be introduced via 'take' before generalizing"});
+                    return false;
+                }
+            }
             auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
@@ -452,6 +505,16 @@ bool check_step(const ast::Step& step,
                 app = infer_rule(s.prop, *es, diag, step.loc);
             }
             if (!app) return false;
+            // ForallIntro requires the bound variable to have been introduced via TakeStep.
+            if (app->rule == kernel::Rule::ForallIntro) {
+                const auto* fa = std::get_if<ast::PropForall>(&s.prop.node);
+                if (!env.is_taken(fa->var)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "∀-intro: variable '" + fa->var
+                               + "' must be introduced via 'take' before generalizing"});
+                    return false;
+                }
+            }
             auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
