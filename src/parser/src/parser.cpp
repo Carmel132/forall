@@ -706,7 +706,7 @@ ast::Step Parser::parseSupposeStep() {
     return {loc, ast::SupposeStep{for_contradiction, std::move(name), std::move(prop)}};
 }
 
-// have <name> : <prop> by <justification>
+// have <name> : <prop> by <justification> [at <expr>]
 ast::Step Parser::parseHaveStep() {
     const auto loc = peek().loc;
     advance(); // consume "have"
@@ -721,20 +721,30 @@ ast::Step Parser::parseHaveStep() {
     auto prop = parseProp();
     expect(lexer::TokenKind::KwBy, "expected 'by' after proposition");
     auto refs = parseJustification();
-    return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs)}};
+    std::optional<ast::ExprPtr> witness;
+    if (check(lexer::TokenKind::KwAt)) {
+        advance();
+        witness = ast::make_expr(parseExpr());
+    }
+    return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::move(witness)}};
 }
 
-// then <prop> [by <justification>]
+// then <prop> [by <justification> [at <expr>]]
 ast::Step Parser::parseThenStep() {
     const auto loc = peek().loc;
     advance(); // consume "then"
     auto prop = parseProp();
     std::vector<std::string> refs;
+    std::optional<ast::ExprPtr> witness;
     if (check(lexer::TokenKind::KwBy)) {
         advance();
         refs = parseJustification();
+        if (check(lexer::TokenKind::KwAt)) {
+            advance();
+            witness = ast::make_expr(parseExpr());
+        }
     }
-    return {loc, ast::ThenStep{std::move(prop), std::move(refs)}};
+    return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::move(witness)}};
 }
 
 // contradiction : <justification>
