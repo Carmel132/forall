@@ -1002,3 +1002,61 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── Cases step: "done" arm terminator allows subsequent steps ─────────────────
+
+TEST(CheckerTest, ValidCasesWithDoneAndFollowingThen) {
+    // With "done" on each arm, a "then" step after "cases" uses the stored result.
+    auto diag = run_checker("cases_done_following_then", R"(
+axiom pr  : P -> R
+axiom qr  : Q -> R
+axiom rs  : R -> S
+axiom hor : P or Q
+
+theorem or_then_s : S
+proof
+  cases result : hor
+    case hp : P => then R by pr and hp done
+    case hq : Q => then R by qr and hq done
+  then S by rs and result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidCasesWithDoneHaveArmsAndFollowingThen) {
+    // Multi-step arms with done, followed by a then step.
+    auto diag = run_checker("cases_done_have_then", R"(
+axiom pr  : P -> R
+axiom rs  : R -> S
+axiom qr  : Q -> R
+axiom hor : P or Q
+
+theorem or_to_s : S
+proof
+  cases result : hor
+    case hp : P =>
+      have hr : R by pr and hp
+      then R by hr
+    done
+    case hq : Q =>
+      then R by qr and hq
+    done
+  then S by rs and result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidDoneOutsideCases) {
+    // "done" as a standalone step is not a valid proof step; expect a parse error.
+    auto diag = run_checker("done_outside_cases", R"(
+theorem bad : P
+proof
+  suppose h : P
+  done
+  then P by h
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+

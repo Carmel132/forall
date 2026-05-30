@@ -1648,3 +1648,67 @@ end
     ASSERT_NE(add, nullptr);
     EXPECT_EQ(add->op, BinOp::Add);
 }
+
+// ── Cases step: "done" arm terminator ─────────────────────────────────────────
+
+TEST(ParserTest, CasesWithDoneAllowsFollowingStep) {
+    // "done" terminates each arm; the trailing "then" is NOT consumed by the last arm.
+    auto r = parse_str(R"(
+theorem t : S
+proof
+  suppose h : P or Q
+  cases result : h
+    case hp : P => then R by pr and hp done
+    case hq : Q => then R by qr and hq done
+  then S by result
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    // 3 steps: suppose, cases, then
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 3u);
+    EXPECT_NE(std::get_if<SupposeStep>(&r.mod.decls[0]->proof->steps[0].node), nullptr);
+    EXPECT_NE(std::get_if<CasesStep> (&r.mod.decls[0]->proof->steps[1].node), nullptr);
+    EXPECT_NE(std::get_if<ThenStep>  (&r.mod.decls[0]->proof->steps[2].node), nullptr);
+}
+
+TEST(ParserTest, CasesWithDoneMultiStepArms) {
+    // Arms with multiple steps work with "done": each arm has have+then before done.
+    auto r = parse_str(R"(
+theorem t : S
+proof
+  suppose h : P or Q
+  cases result : h
+    case hp : P =>
+      have hr : R by pr and hp
+      then R by hr
+    done
+    case hq : Q =>
+      then R by qr and hq
+    done
+  then S by result
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 3u);
+    const auto* cs = std::get_if<CasesStep>(&r.mod.decls[0]->proof->steps[1].node);
+    ASSERT_NE(cs, nullptr);
+    EXPECT_EQ(cs->arms.size(), 2u);
+    EXPECT_EQ(cs->arms[0].steps.size(), 2u); // have + then
+    EXPECT_EQ(cs->arms[1].steps.size(), 1u); // then only
+}
+
+TEST(ParserTest, CasesWithoutDoneBackwardCompat) {
+    // Without "done", existing behavior is preserved: arms stop at "case"/"end".
+    auto r = parse_str(R"(
+theorem t : R
+proof
+  suppose h : P or Q
+  cases result : h
+    case hp : P => then R by pr and hp
+    case hq : Q => then R by qr and hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    // 2 steps: suppose, cases (no trailing then — arms consumed everything up to end)
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 2u);
+}
