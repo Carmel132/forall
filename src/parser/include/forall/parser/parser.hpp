@@ -81,6 +81,11 @@ private:
     // Justification refs
     [[nodiscard]] std::vector<std::string> parseJustification();
 
+    // Source range helper: records peek().loc as end_loc on the node just returned.
+    // Call immediately before every `return` that constructs a new Expr or Prop.
+    void mark_end(ast::Expr& e) const noexcept { e.end_loc = peek().loc; }
+    void mark_end(ast::Prop& p) const noexcept { p.end_loc = peek().loc; }
+
     // Token stream helpers
     [[nodiscard]] const lexer::Token& peek() const noexcept;
     const lexer::Token& advance() noexcept;

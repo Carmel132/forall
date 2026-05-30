@@ -75,6 +75,7 @@ ast::Expr Parser::parseExpr() {
         lhs = {loc, ast::ExprBinary{op, ast::make_expr(std::move(lhs)),
                                         ast::make_expr(std::move(rhs))}};
     }
+    mark_end(lhs);
     return lhs;
 }
 
@@ -101,6 +102,7 @@ ast::Expr Parser::parseExprMul() {
         lhs = {loc, ast::ExprBinary{op, ast::make_expr(std::move(lhs)),
                                         ast::make_expr(std::move(rhs))}};
     }
+    mark_end(lhs);
     return lhs;
 }
 
@@ -109,21 +111,24 @@ ast::Expr Parser::parseExprUnary() {
         const auto loc = peek().loc;
         advance();
         auto operand = parseExprPow();
-        return {loc, ast::ExprUnary{ast::UnaryOp::Neg, ast::make_expr(std::move(operand))}};
+        ast::Expr e{loc, ast::ExprUnary{ast::UnaryOp::Neg, ast::make_expr(std::move(operand))}};
+        mark_end(e); return e;
     }
     if (check(lexer::TokenKind::KwInv)) {
         const auto loc = peek().loc;
         advance();
         auto operand = parseExprPow(); // inv applies to the immediately following atom/pow
         std::vector<ast::ExprPtr> args{ast::make_expr(std::move(operand))};
-        return {loc, ast::ExprCall{"inv", std::move(args)}};
+        ast::Expr e{loc, ast::ExprCall{"inv", std::move(args)}};
+        mark_end(e); return e;
     }
     if (check(lexer::TokenKind::KwCompl)) {
         const auto loc = peek().loc;
         advance();
         auto operand = parseExprPow(); // compl applies to the immediately following atom/pow
         std::vector<ast::ExprPtr> args{ast::make_expr(std::move(operand))};
-        return {loc, ast::ExprCall{"compl", std::move(args)}};
+        ast::Expr e{loc, ast::ExprCall{"compl", std::move(args)}};
+        mark_end(e); return e;
     }
     return parseExprPow();
 }
@@ -136,8 +141,9 @@ ast::Expr Parser::parseExprPow() {
     if (check(lexer::TokenKind::Caret)) {
         advance();
         auto exp = parseExprUnary(); // right-recursive via unary
-        return {loc, ast::ExprBinary{ast::BinOp::Pow, ast::make_expr(std::move(base)),
-                                                       ast::make_expr(std::move(exp))}};
+        ast::Expr e{loc, ast::ExprBinary{ast::BinOp::Pow, ast::make_expr(std::move(base)),
+                                                            ast::make_expr(std::move(exp))}};
+        mark_end(e); return e;
     }
     return base;
 }
@@ -213,7 +219,8 @@ ast::Expr Parser::parseExprAtom() {
         diag_.emit({diag::Severity::Error, loc,
                     "expected expression; got '" + peek().lexeme + "'"});
         advance();
-        return {loc, ast::ExprLit{"0"}}; // error sentinel — skip indexing
+        ast::Expr sentinel{loc, ast::ExprLit{"0"}};
+        mark_end(sentinel); return sentinel; // error sentinel — skip indexing
     }
 
     // Postfix operators (left-associative, tightest binding):
@@ -233,6 +240,7 @@ ast::Expr Parser::parseExprAtom() {
         }
     }
 
+    mark_end(base);
     return base;
 }
 
@@ -249,7 +257,7 @@ ast::Expr Parser::parseSetExpr() {
 
     if (check(lexer::TokenKind::RBrace)) {
         advance();
-        return {loc, ast::ExprSetLit{}};
+        ast::Expr e{loc, ast::ExprSetLit{}}; mark_end(e); return e;
     }
 
     // Two-token lookahead: {id : type | P} or {id | P}
@@ -269,8 +277,9 @@ ast::Expr Parser::parseSetExpr() {
             expect(lexer::TokenKind::Pipe, "expected '|' in set comprehension");
             auto pred = parseProp();
             expect(lexer::TokenKind::RBrace, "expected '}' to close set comprehension");
-            return {loc, ast::ExprSetCompr{std::move(var), std::move(type),
-                                           ast::make_prop(std::move(pred))}};
+            ast::Expr e{loc, ast::ExprSetCompr{std::move(var), std::move(type),
+                                               ast::make_prop(std::move(pred))}};
+            mark_end(e); return e;
         }
     }
 
@@ -282,7 +291,8 @@ ast::Expr Parser::parseSetExpr() {
         elements.push_back(ast::make_expr(parseExpr()));
     }
     expect(lexer::TokenKind::RBrace, "expected '}' to close set literal");
-    return {loc, ast::ExprSetLit{std::move(elements)}};
+    ast::Expr e{loc, ast::ExprSetLit{std::move(elements)}};
+    mark_end(e); return e;
 }
 
 // lambda = ("fun" | "λ") id [":" type] ("=>" | ",") expr
@@ -316,8 +326,9 @@ ast::Expr Parser::parseLambda() {
                     "expected '=>' or ',' after lambda parameter"});
 
     auto body = parseExpr(); // body extends right as far as possible
-    return {loc, ast::ExprLambda{std::move(var), std::move(type),
-                                  ast::make_expr(std::move(body))}};
+    ast::Expr e{loc, ast::ExprLambda{std::move(var), std::move(type),
+                                     ast::make_expr(std::move(body))}};
+    mark_end(e); return e;
 }
 
 // condExpr = "if" prop "then" expr "else" expr
@@ -334,9 +345,10 @@ ast::Expr Parser::parseCondExpr() {
     expect(lexer::TokenKind::KwElse, "expected 'else' after then-branch");
     auto else_ = parseExpr(); // else-branch extends right
 
-    return {loc, ast::ExprIf{ast::make_prop(std::move(cond)),
-                              ast::make_expr(std::move(then_)),
-                              ast::make_expr(std::move(else_))}};
+    ast::Expr e{loc, ast::ExprIf{ast::make_prop(std::move(cond)),
+                                 ast::make_expr(std::move(then_)),
+                                 ast::make_expr(std::move(else_))}};
+    mark_end(e); return e;
 }
 
 static std::optional<ast::RelOp> as_rel_op(lexer::TokenKind k); // defined in prop section below
@@ -381,8 +393,9 @@ ast::Expr Parser::parseAggregate() {
     auto body = parseExpr(); // body extends right as far as possible
 
     const ast::AggOp op = is_sum ? ast::AggOp::Sum : ast::AggOp::Prod;
-    return {loc, ast::ExprAgg{op, std::move(var), std::move(type), rel, std::move(bound),
-                               ast::make_expr(std::move(body))}};
+    ast::Expr e{loc, ast::ExprAgg{op, std::move(var), std::move(type), rel, std::move(bound),
+                                   ast::make_expr(std::move(body))}};
+    mark_end(e); return e;
 }
 
 // argList = expr { "," expr }
@@ -454,9 +467,12 @@ ast::Prop Parser::parseQuantifier() {
     expect(lexer::TokenKind::Comma, "expected ',' after quantifier binder");
     auto body = parseProp();
 
-    if (is_forall)
-        return {loc, ast::PropForall{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
-    return {loc, ast::PropExists{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
+    if (is_forall) {
+        ast::Prop p{loc, ast::PropForall{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
+        mark_end(p); return p;
+    }
+    ast::Prop p{loc, ast::PropExists{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
+    mark_end(p); return p;
 }
 
 // A ↔ B  →  (A→B) ∧ (B→A)   (right-associative, desugared at parse time)
@@ -471,7 +487,8 @@ ast::Prop Parser::parseBiconditional() {
         auto rp = ast::make_prop(rhs);
         auto ab = ast::make_prop({loc, ast::PropImpl{lp, rp}});
         auto ba = ast::make_prop({loc, ast::PropImpl{rp, lp}});
-        return {loc, ast::PropAnd{std::move(ab), std::move(ba)}};
+        ast::Prop p{loc, ast::PropAnd{std::move(ab), std::move(ba)}};
+        mark_end(p); return p;
     }
     return lhs;
 }
@@ -492,8 +509,9 @@ ast::Prop Parser::parseImplication() {
         auto lhs = parseProp();
         expect(lexer::TokenKind::KwThen, "expected 'then' after 'if <prop>'");
         auto rhs = parseProp();
-        return {loc, ast::PropImpl{ast::make_prop(std::move(lhs)),
-                                   ast::make_prop(std::move(rhs))}};
+        ast::Prop p{loc, ast::PropImpl{ast::make_prop(std::move(lhs)),
+                                       ast::make_prop(std::move(rhs))}};
+        mark_end(p); return p;
     }
 
     // disjunction [ "implies" / → disjunction ]
@@ -502,8 +520,9 @@ ast::Prop Parser::parseImplication() {
     if (check(lexer::TokenKind::Arrow) || check(lexer::TokenKind::KwImplies)) {
         advance();
         auto rhs = parseImplication(); // right-associative
-        return {loc, ast::PropImpl{ast::make_prop(std::move(lhs)),
-                                   ast::make_prop(std::move(rhs))}};
+        ast::Prop p{loc, ast::PropImpl{ast::make_prop(std::move(lhs)),
+                                       ast::make_prop(std::move(rhs))}};
+        mark_end(p); return p;
     }
     return lhs;
 }
@@ -517,6 +536,7 @@ ast::Prop Parser::parseDisjunction() {
         lhs = {loc, ast::PropOr{ast::make_prop(std::move(lhs)),
                                 ast::make_prop(std::move(rhs))}};
     }
+    mark_end(lhs);
     return lhs;
 }
 
@@ -529,6 +549,7 @@ ast::Prop Parser::parseConjunction() {
         lhs = {loc, ast::PropAnd{ast::make_prop(std::move(lhs)),
                                  ast::make_prop(std::move(rhs))}};
     }
+    mark_end(lhs);
     return lhs;
 }
 
@@ -537,7 +558,8 @@ ast::Prop Parser::parseNegation() {
         const auto loc = peek().loc;
         advance();
         auto inner = parseAtomicProp();
-        return {loc, ast::PropNot{ast::make_prop(std::move(inner))}};
+        ast::Prop p{loc, ast::PropNot{ast::make_prop(std::move(inner))}};
+        mark_end(p); return p;
     }
     return parseAtomicProp();
 }
@@ -562,7 +584,7 @@ ast::Prop Parser::parseAtomicProp() {
     // "false" / ⊥
     if (check(lexer::TokenKind::KwFalse)) {
         advance();
-        return {loc, ast::PropFalse{}};
+        ast::Prop p{loc, ast::PropFalse{}}; mark_end(p); return p;
     }
 
     // "(" ... ")"
@@ -572,6 +594,7 @@ ast::Prop Parser::parseAtomicProp() {
         advance();
         auto inner = parseProp();
         expect(lexer::TokenKind::RParen, "expected ')'");
+        mark_end(inner); // extend span to include the closing ')'
         return inner;
     }
 
@@ -586,62 +609,71 @@ ast::Prop Parser::parseAtomicProp() {
     if (rel) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), *rel}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), *rel}};
+        mark_end(p); return p;
     }
 
     // Set membership: x in S / x ∈ S
     if (check(K::KwIn) || check(K::MemberOf)) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::In}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::In}};
+        mark_end(p); return p;
     }
     // x not in S / x ∉ S
     if (check(K::NotMemberOf)) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+        mark_end(p); return p;
     }
     if (check(K::Not) && pos_ + 1 < tokens_.size()
         && tokens_[pos_ + 1].kind == K::KwIn) {
         advance(); advance(); // consume "not" then "in"
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::NotIn}};
+        mark_end(p); return p;
     }
     // Subset relations
     if (check(K::KwSubseteq) || check(K::SubseteqSym)) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::SubsetEq}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::SubsetEq}};
+        mark_end(p); return p;
     }
     if (check(K::KwSubset) || check(K::SubsetSym)) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::Subset}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::Subset}};
+        mark_end(p); return p;
     }
     if (check(K::KwSupseteq) || check(K::SuperseteqSym)) {
         advance();
         auto rhs = parseExpr();
-        return {loc, ast::PropRel{ast::make_expr(std::move(lhs)),
-                                   ast::make_expr(std::move(rhs)), ast::RelOp::SupersetEq}};
+        ast::Prop p{loc, ast::PropRel{ast::make_expr(std::move(lhs)),
+                                      ast::make_expr(std::move(rhs)), ast::RelOp::SupersetEq}};
+        mark_end(p); return p;
     }
 
     // Convert a no-rel expression to a propositional atom.
-    if (const auto* v = std::get_if<ast::ExprVar>(&lhs.node))
-        return {loc, ast::Atomic{v->name}};
+    if (const auto* v = std::get_if<ast::ExprVar>(&lhs.node)) {
+        ast::Prop p{loc, ast::Atomic{v->name}}; mark_end(p); return p;
+    }
 
-    if (const auto* c = std::get_if<ast::ExprCall>(&lhs.node))
-        return {loc, ast::PropPred{c->name, c->args}};
+    if (const auto* c = std::get_if<ast::ExprCall>(&lhs.node)) {
+        ast::Prop p{loc, ast::PropPred{c->name, c->args}}; mark_end(p); return p;
+    }
 
     diag_.emit({diag::Severity::Error, loc,
                 "arithmetic expression `" + forall::pretty::to_string(lhs)
                 + "` in proposition context requires a relational operator"});
-    return {loc, ast::PropFalse{}};
+    ast::Prop p{loc, ast::PropFalse{}}; mark_end(p); return p;
 }
 
 // ── Proof step parsing ─────────────────────────────────────────────────────────
