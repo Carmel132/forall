@@ -80,9 +80,10 @@ using ExprNode = std::variant<
 >;
 
 struct Expr {
-    diag::SourceLocation loc;
-    ExprNode             node;
-    bool operator==(const Expr&) const; // structural, ignores loc
+    diag::SourceLocation                loc;
+    ExprNode                            node;
+    std::optional<diag::SourceLocation> end_loc{}; // start of first token AFTER this expression
+    bool operator==(const Expr&) const; // structural, ignores loc and end_loc
 };
 
 inline ExprPtr make_expr(Expr e) {
@@ -130,10 +131,11 @@ using PropNode = std::variant<
 >;
 
 struct Prop {
-    diag::SourceLocation loc;
-    PropNode             node;
+    diag::SourceLocation                loc;
+    PropNode                            node;
+    std::optional<diag::SourceLocation> end_loc{}; // start of first token AFTER this proposition
 
-    bool operator==(const Prop&) const;  // structural, ignores loc
+    bool operator==(const Prop&) const;  // structural, ignores loc and end_loc
 };
 
 inline PropPtr make_prop(Prop p) {
