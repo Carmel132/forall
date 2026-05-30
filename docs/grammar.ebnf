@@ -74,6 +74,7 @@ param       = "(" , identifier , ":" , type , ")" ;
 proof_block = "proof" , { step } , ( "end" | "qed" | "□" ) ;
 
 step = let_step
+     | take_step
      | suppose_step
      | have_step
      | then_step
@@ -82,6 +83,11 @@ step = let_step
 
 (* "let x be a Nat" introduces a term variable; deferred until term layer. *)
 let_step    = "let" , identifier , ( "=" , expr | "be" , "a" , type ) ;
+
+(* "take x" introduces a fresh arbitrary variable for ∀-intro.            *)
+(* The checker verifies x does not appear free in any assumption; after    *)
+(* proving P(x), the user writes "then ∀ x [: T], P by h" to generalize. *)
+take_step   = "take" , identifier , [ ":" , type ] ;
 
 (* "assume" and "suppose" are interchangeable. *)
 suppose_step = ( "suppose" | "assume" ) ,
