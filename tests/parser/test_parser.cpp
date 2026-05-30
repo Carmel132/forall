@@ -1507,6 +1507,68 @@ TEST(ParserTest, ErrorRecovery_TwoBadDeclsThenGood) {
     EXPECT_EQ(r.mod.decls.back()->name, "z");
 }
 
+// ── Source ranges (end_loc) ────────────────────────────────────────────────────
+
+TEST(ParserTest, EndLocSetOnStatement) {
+    // Every parsed Prop should have end_loc set (not nullopt).
+    auto r = parse_str("axiom a : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_TRUE(r.mod.decls[0]->statement.end_loc.has_value());
+}
+
+TEST(ParserTest, EndLocSetOnRelProp) {
+    // PropRel statement has end_loc set and it is after loc.
+    auto r = parse_str("axiom a : n > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& stmt = r.mod.decls[0]->statement;
+    ASSERT_TRUE(stmt.end_loc.has_value());
+    // end_loc is at or after loc (same line, later column, or later line)
+    EXPECT_TRUE(stmt.end_loc->line > stmt.loc.line
+                || stmt.end_loc->col  > stmt.loc.col);
+}
+
+TEST(ParserTest, EndLocAtNextDeclStart) {
+    // In a two-declaration file the first statement's end_loc lands at the start
+    // of the second declaration (the token right after the first proposition).
+    auto r = parse_str("axiom a : n > 0\naxiom b : Q");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 2u);
+    const auto& stmt_a = r.mod.decls[0]->statement;
+    const auto& decl_b = *r.mod.decls[1];
+    ASSERT_TRUE(stmt_a.end_loc.has_value());
+    // end_loc of first statement should equal loc of second declaration's keyword
+    // (the 'axiom' token starts at line 2, col 1)
+    EXPECT_EQ(stmt_a.end_loc->line, decl_b.loc.line);
+    EXPECT_EQ(stmt_a.end_loc->col,  decl_b.loc.col);
+}
+
+TEST(ParserTest, EndLocOnInnerExpr) {
+    // The lhs expression of a PropRel has its own end_loc pointing at the
+    // relational operator — confirming inner expressions also carry ranges.
+    // Source: "axiom a : n + 1 > 0"
+    //         col:  1...... 11  15  17 19
+    auto r = parse_str("axiom a : n + 1 > 0");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& stmt = r.mod.decls[0]->statement;
+    const auto* rel = std::get_if<PropRel>(&stmt.node);
+    ASSERT_NE(rel, nullptr);
+    ASSERT_TRUE(rel->lhs->end_loc.has_value()); // lhs is "n + 1"
+    // end_loc of "n + 1" must be after its start loc
+    EXPECT_TRUE(rel->lhs->end_loc->line > rel->lhs->loc.line
+                || rel->lhs->end_loc->col  > rel->lhs->loc.col);
+}
+
+TEST(ParserTest, EndLocOnQuantifier) {
+    // Quantifier proposition has end_loc set.
+    auto r = parse_str("axiom a : for all x, P(x)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& stmt = r.mod.decls[0]->statement;
+    EXPECT_TRUE(stmt.end_loc.has_value());
+    // end_loc at or after loc
+    EXPECT_TRUE(stmt.end_loc->line > stmt.loc.line
+                || stmt.end_loc->col  > stmt.loc.col);
+}
+
 // ── Quantifier witness syntax: "by h at t" ─────────────────────────────────────
 
 TEST(ParserTest, HaveStepWithWitness) {
