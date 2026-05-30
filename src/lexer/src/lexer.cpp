@@ -200,6 +200,7 @@ Token Lexer::nextToken() {
             {"qed",          TokenKind::KwEnd},      // alias: qed closes proof block
             {"by",           TokenKind::KwBy},
             {"with",         TokenKind::KwWith},
+            {"at",           TokenKind::KwAt},
             // Logic keywords (natural-language symbols)
             {"if",           TokenKind::KwIf},
             {"for",          TokenKind::KwFor},

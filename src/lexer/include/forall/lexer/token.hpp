@@ -16,7 +16,7 @@ enum class TokenKind {
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,
-    KwContradiction, KwBy, KwWith,
+    KwContradiction, KwBy, KwWith, KwAt,
 
     // Logical keywords (natural-language alternatives to symbols)
     KwIf,                       // "if"
