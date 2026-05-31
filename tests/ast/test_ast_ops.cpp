@@ -355,3 +355,110 @@ TEST(InferType, ExprCall_TwoParamSig_BothMatch) {
                   ExprCall{"g", {make_expr(evar("n")), make_expr(evar("x"))}}};
     EXPECT_EQ(*infer_type(e, env, sigs), TypeNode{TypeProp{}});
 }
+
+// ── TypeSet equality ──────────────────────────────────────────────────────────
+
+TEST(TypeSetEquality, SameElementType) {
+    EXPECT_EQ(type_set(type_nat()), type_set(type_nat()));
+}
+
+TEST(TypeSetEquality, DifferentElementType) {
+    EXPECT_NE(type_set(type_nat()), type_set(type_real()));
+}
+
+TEST(TypeSetEquality, Nested) {
+    EXPECT_EQ(type_set(type_set(type_nat())), type_set(type_set(type_nat())));
+    EXPECT_NE(type_set(type_set(type_nat())), type_set(type_nat()));
+}
+
+// ── infer_type: set literals ──────────────────────────────────────────────────
+
+TEST(InferType, SetLit_SingleNat_ReturnsSetNat) {
+    // {42} → Set Nat
+    auto e = Expr{diag::SourceLocation{},
+                  ExprSetLit{{make_expr(elit("42"))}}};
+    EXPECT_EQ(*infer_type(e, {}), type_set(type_nat()));
+}
+
+TEST(InferType, SetLit_MultiElement_Promotes) {
+    // {1, 2.0} → Set Real  (Nat promoted to Real)
+    auto e = Expr{diag::SourceLocation{},
+                  ExprSetLit{{make_expr(elit("1")), make_expr(elit("2.0"))}}};
+    EXPECT_EQ(*infer_type(e, {}), type_set(type_real()));
+}
+
+TEST(InferType, SetLit_Empty_ReturnsUnknown) {
+    // {} — cannot infer element type
+    auto e = Expr{diag::SourceLocation{}, ExprSetLit{{}}};
+    auto r = infer_type(e, {});
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Unknown);
+}
+
+// ── infer_type: set comprehension ────────────────────────────────────────────
+
+TEST(InferType, SetCompr_WithType_ReturnsSet) {
+    // {x : Nat | P} → Set Nat
+    auto pred = make_prop(atom("P"));
+    auto e = Expr{diag::SourceLocation{}, ExprSetCompr{"x", type_nat(), std::move(pred)}};
+    EXPECT_EQ(*infer_type(e, {}), type_set(type_nat()));
+}
+
+TEST(InferType, SetCompr_NoType_ReturnsUnknown) {
+    // {x | P} — no type annotation → Unknown
+    auto pred = make_prop(atom("P"));
+    auto e = Expr{diag::SourceLocation{}, ExprSetCompr{"x", std::nullopt, std::move(pred)}};
+    auto r = infer_type(e, {});
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Unknown);
+}
+
+// ── infer_type: set binary operations ────────────────────────────────────────
+
+TEST(InferType, Union_SameElementType_ReturnsSet) {
+    // A ∪ B where A:Set Nat, B:Set Nat → Set Nat
+    TypeEnv env{{"A", type_set(type_nat())}, {"B", type_set(type_nat())}};
+    auto e = ebin(BinOp::Union, evar("A"), evar("B"));
+    EXPECT_EQ(*infer_type(e, env), type_set(type_nat()));
+}
+
+TEST(InferType, Union_DifferentElementTypes_IsMismatch) {
+    // A ∪ B where A:Set Nat, B:Set Real → Mismatch
+    TypeEnv env{{"A", type_set(type_nat())}, {"B", type_set(type_real())}};
+    auto e = ebin(BinOp::Union, evar("A"), evar("B"));
+    auto r = infer_type(e, env);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Mismatch);
+}
+
+TEST(InferType, Union_NonSetOperand_IsMismatch) {
+    // n ∪ m where n:Nat, m:Nat — not sets → Mismatch
+    TypeEnv env{{"n", type_nat()}, {"m", type_nat()}};
+    auto e = ebin(BinOp::Union, evar("n"), evar("m"));
+    auto r = infer_type(e, env);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Mismatch);
+}
+
+TEST(InferType, Inter_SameElementType_ReturnsSet) {
+    // A ∩ B where A:Set Real, B:Set Real → Set Real
+    TypeEnv env{{"A", type_set(type_real())}, {"B", type_set(type_real())}};
+    auto e = ebin(BinOp::Inter, evar("A"), evar("B"));
+    EXPECT_EQ(*infer_type(e, env), type_set(type_real()));
+}
+
+// ── infer_type: ExprAbs — absolute value vs cardinality ──────────────────────
+
+TEST(InferType, ExprAbs_SetOperand_ReturnsNat) {
+    // |S| where S:Set Nat → Nat (cardinality)
+    TypeEnv env{{"S", type_set(type_nat())}};
+    auto e = Expr{diag::SourceLocation{}, ExprAbs{make_expr(evar("S"))}};
+    EXPECT_EQ(*infer_type(e, env), type_nat());
+}
+
+TEST(InferType, ExprAbs_NumericOperand_Propagates) {
+    // |x| where x:Real → Real (absolute value)
+    TypeEnv env{{"x", type_real()}};
+    auto e = Expr{diag::SourceLocation{}, ExprAbs{make_expr(evar("x"))}};
+    EXPECT_EQ(*infer_type(e, env), type_real());
+}
