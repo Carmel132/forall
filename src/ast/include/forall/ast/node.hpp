@@ -199,8 +199,27 @@ struct ContradictionStep {
     std::vector<std::string> justification;
 };
 
+// obtain <name> from <ref>
+//   case <var> [: <type>] , <hyp_name> : <hyp_prop> => <steps...> [ "done" ]
+//
+// Desugars to ExistsElim.  <ref> must be ∃ var, P; the checker verifies:
+//   - <var> is fresh (not free in any undischarged assumption)
+//   - <hyp_prop> == subst(∃-body, ∃-var, ExprVar{var})
+//   - sub-proof concludes some Q where <var> ∉ free(Q)
+// Without "done" it must be the last step; with "done" subsequent steps may follow.
+struct ObtainStep {
+    std::string                        name;       // label for the result in scope
+    std::string                        exists_ref; // ref to the ∃ x, P hypothesis
+    std::string                        var;        // fresh variable introduced
+    std::optional<std::string>         type;       // optional type annotation for var
+    std::string                        hyp_name;   // name for P(var) hypothesis
+    Prop                               hyp_prop;   // stated proposition P(var)
+    std::vector<std::unique_ptr<Step>> steps;
+};
+
 using StepNode = std::variant<
-    LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep, CasesStep
+    LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
+    CasesStep, ObtainStep
 >;
 
 struct Step {
