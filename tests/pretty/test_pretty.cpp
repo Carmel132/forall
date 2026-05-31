@@ -437,3 +437,26 @@ TEST(PrettyType, TupleTypeThreeElements) {
     // (Nat, Real, Prop)
     EXPECT_EQ(tst(type_tuple({type_nat(), type_real(), type_prop()})), "(Nat, Real, Prop)");
 }
+
+TEST(PrettyType, TypeSet_Nat) {
+    EXPECT_EQ(tst(type_set(type_nat())), "Set Nat");
+}
+
+TEST(PrettyType, TypeSet_Real) {
+    EXPECT_EQ(tst(type_set(type_real())), "Set Real");
+}
+
+TEST(PrettyType, TypeSet_Nested) {
+    // Set (Set Nat) — inner TypeSet is not TypeFun so no parens
+    EXPECT_EQ(tst(type_set(type_set(type_nat()))), "Set Set Nat");
+}
+
+TEST(PrettyType, TypeSet_AsFunctionDomain) {
+    // Set Nat -> Prop  (domain is TypeSet, codomain is Prop)
+    EXPECT_EQ(tst(type_fun(type_set(type_nat()), type_prop())), "Set Nat -> Prop");
+}
+
+TEST(PrettyType, TypeSet_FunctionElement) {
+    // Set (Nat -> Prop) — element type is TypeFun: needs parens
+    EXPECT_EQ(tst(type_set(type_fun(type_nat(), type_prop()))), "Set (Nat -> Prop)");
+}
