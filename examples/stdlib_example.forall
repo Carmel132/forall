@@ -1,0 +1,11 @@
+-- Demonstration that the stdlib can be imported and used.
+-- Imports the Peano axioms and re-derives add_zero as a theorem,
+-- verifying that imported axioms are visible in scope.
+
+import "../stdlib/nat.forall"
+
+-- add_zero is available after the import; this theorem is identical to it.
+theorem add_zero_demo : for all n : Nat, n + 0 = n
+proof
+  then for all n : Nat, n + 0 = n by add_zero
+end

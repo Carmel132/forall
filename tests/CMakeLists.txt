@@ -13,3 +13,6 @@ add_test(NAME e2e_hello_forall
 add_test(NAME e2e_keyword_proofs
     COMMAND $<TARGET_FILE:forall> "${CMAKE_SOURCE_DIR}/examples/keyword_proofs.forall"
 )
+add_test(NAME e2e_stdlib_example
+    COMMAND $<TARGET_FILE:forall> "${CMAKE_SOURCE_DIR}/examples/stdlib_example.forall"
+)
