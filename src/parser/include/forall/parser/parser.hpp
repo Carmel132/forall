@@ -88,6 +88,10 @@ private:
     void mark_end(ast::Expr& e) const noexcept { e.end_loc = peek().loc; }
     void mark_end(ast::Prop& p) const noexcept { p.end_loc = peek().loc; }
 
+    // Type parsing: maps the current identifier token to a TypeNode.
+    // Caller must ensure check(Identifier) is true before calling.
+    [[nodiscard]] ast::TypeNode parseType();
+
     // Token stream helpers
     [[nodiscard]] const lexer::Token& peek() const noexcept;
     const lexer::Token& advance() noexcept;

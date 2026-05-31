@@ -265,11 +265,11 @@ ast::Expr Parser::parseSetExpr() {
         const auto next_kind = tokens_[pos_ + 1].kind;
         if (next_kind == lexer::TokenKind::Colon || next_kind == lexer::TokenKind::Pipe) {
             std::string var = std::string{advance().lexeme};
-            std::optional<std::string> type;
+            std::optional<ast::TypeNode> type;
             if (check(lexer::TokenKind::Colon)) {
                 advance();
                 if (check(lexer::TokenKind::Identifier))
-                    type = std::string{advance().lexeme};
+                    type = parseType();
                 else
                     diag_.emit({diag::Severity::Error, peek().loc,
                                 "expected type name after ':' in set comprehension"});
@@ -308,11 +308,11 @@ ast::Expr Parser::parseLambda() {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected parameter name after 'fun'"});
 
-    std::optional<std::string> type;
+    std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance();
         if (check(lexer::TokenKind::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc,
                         "expected type name after ':' in lambda"});
@@ -369,14 +369,14 @@ ast::Expr Parser::parseAggregate() {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected variable name after aggregate operator"});
 
-    std::optional<std::string>  type;
+    std::optional<ast::TypeNode> type;
     std::optional<ast::RelOp>   rel;
     std::optional<ast::ExprPtr> bound;
 
     if (check(lexer::TokenKind::Colon)) {
         advance(); // typed binder: sum i : T
         if (check(lexer::TokenKind::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc,
                         "expected type name after ':' in aggregate binder"});
@@ -455,11 +455,11 @@ ast::Prop Parser::parseQuantifier() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
 
-    std::optional<std::string> type;
+    std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance();
         if (check(lexer::TokenKind::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
     }
@@ -691,6 +691,17 @@ std::vector<std::string> Parser::parseJustification() {
     return refs;
 }
 
+// Map the current identifier to a TypeNode.  Caller must guard with check(Identifier).
+ast::TypeNode Parser::parseType() {
+    const auto name = advance().lexeme;
+    if (name == "Nat")  return ast::TypeNode{ast::TypeNat{}};
+    if (name == "Int")  return ast::TypeNode{ast::TypeInt{}};
+    if (name == "Rat")  return ast::TypeNode{ast::TypeRat{}};
+    if (name == "Real") return ast::TypeNode{ast::TypeReal{}};
+    if (name == "Prop") return ast::TypeNode{ast::TypeProp{}};
+    return ast::TypeNode{ast::TypeUser{name}};
+}
+
 // let <name> be [a] <type>
 ast::Step Parser::parseLetStep() {
     const auto loc = peek().loc;
@@ -701,12 +712,12 @@ ast::Step Parser::parseLetStep() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after 'let'"});
 
-    std::optional<std::string> type;
+    std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::KwBe)) {
         advance();
         consumeArticle();
         if (check(lexer::TokenKind::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
     }
     return {loc, ast::LetStep{std::move(var), std::move(type)}};
 }
@@ -722,11 +733,11 @@ ast::Step Parser::parseTakeStep() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after 'take'"});
 
-    std::optional<std::string> type;
+    std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance(); // consume ':'
         if (check(lexer::TokenKind::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
     }
@@ -762,11 +773,11 @@ ast::Step Parser::parseObtainStep() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name in 'case'"});
 
-    std::optional<std::string> type;
+    std::optional<ast::TypeNode> type;
     if (check(K::Colon)) {
         advance(); // consume ':'
         if (check(K::Identifier))
-            type = std::string{advance().lexeme};
+            type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
     }
