@@ -241,6 +241,20 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── Q from ∃x.P and sub-proof of Q (with fresh x, P(x) assumed) ─────────────
+    // ExistsElim (existential elimination):
+    //   Γ ⊢ ∃x.P    Γ, x:T, h:P(x) ⊢ Q    x ∉ free(Q)  (checked by checker)
+    //   ─────────────────────────────────────────────────────────────────────
+    //   Γ ⊢ Q
+    case Rule::ExistsElim: {
+        if (premises.size() != 2) return wrong_arity(2);
+        if (!std::get_if<PropExists>(&premises[0].prop().node))
+            return mismatch("ExistsElim: first premise must be ∃ x, P");
+        if (!(premises[1].prop() == conclusion))
+            return mismatch("ExistsElim: second premise must equal conclusion Q");
+        return make(conclusion);
+    }
+
     } // switch
     return std::unexpected(err(rule, "unhandled rule"));
 }
