@@ -588,14 +588,72 @@ ast::Prop Parser::parseAtomicProp() {
     }
 
     // "(" ... ")"
-    // Parses the inner content as a full proposition, which already handles
-    // relational atoms like (x + 1 < n) via the recursive descent below.
+    // Ambiguity: "(expr) [arith-op expr]* rel expr" vs "(prop)".
+    //
+    // Scan the tokens strictly inside the outer parentheses (depth 1 relative
+    // to the opening '(').  If any propositional token appears at that depth,
+    // the content is a proposition — take parseProp().  Otherwise, the parens
+    // are arithmetic grouping; fall through to parseExpr() so the full
+    // "(expr) [+/-/…] expr" expression becomes the LHS of a PropRel.
+    //
+    // "Propositional token" = relational operator OR logical connective
+    // (∧ and, ∨ or, → implies ->, ¬ not, ↔ iff, ∀ for all, ∃ there exists).
     if (check(lexer::TokenKind::LParen)) {
-        advance();
-        auto inner = parseProp();
-        expect(lexer::TokenKind::RParen, "expected ')'");
-        mark_end(inner); // extend span to include the closing ')'
-        return inner;
+        auto is_prop_token = [](lexer::TokenKind k) {
+            switch (k) {
+                // Relational operators
+                case lexer::TokenKind::Less:
+                case lexer::TokenKind::Greater:
+                case lexer::TokenKind::LessEq:
+                case lexer::TokenKind::GreaterEq:
+                case lexer::TokenKind::Equals:
+                case lexer::TokenKind::NotEq:
+                case lexer::TokenKind::KwIn:
+                case lexer::TokenKind::MemberOf:
+                case lexer::TokenKind::NotMemberOf:
+                case lexer::TokenKind::KwSubseteq:
+                case lexer::TokenKind::SubseteqSym:
+                case lexer::TokenKind::KwSubset:
+                case lexer::TokenKind::SubsetSym:
+                case lexer::TokenKind::KwSupseteq:
+                case lexer::TokenKind::SuperseteqSym:
+                // Logical connectives
+                case lexer::TokenKind::And:         // ∧ / "and"
+                case lexer::TokenKind::Or:          // ∨ / "or"
+                case lexer::TokenKind::Arrow:       // → / "->"
+                case lexer::TokenKind::KwImplies:   // "implies"
+                case lexer::TokenKind::Iff:         // ↔ / "iff"
+                case lexer::TokenKind::Forall:      // ∀ / "for all"
+                case lexer::TokenKind::KwFor:       // "for" (part of "for all")
+                case lexer::TokenKind::Exists:      // ∃ / "there exists"
+                case lexer::TokenKind::KwThere:     // "there" (part of "there exists")
+                case lexer::TokenKind::KwFalse:     // "false" / ⊥
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        bool prop_inside = false;
+        int depth = 0;
+        for (std::size_t i = pos_; i < tokens_.size(); ++i) {
+            auto k = tokens_[i].kind;
+            if (k == K::LParen) { ++depth; continue; }
+            if (k == K::RParen) { --depth; if (depth == 0) break; continue; }
+            if (depth == 1 && is_prop_token(k)) { prop_inside = true; break; }
+            // "not in" two-token form
+            if (depth == 1 && k == K::Not && i + 1 < tokens_.size()
+                && tokens_[i + 1].kind == K::KwIn) { prop_inside = true; break; }
+        }
+
+        if (prop_inside) {
+            // Proposition grouping.
+            advance(); // consume '('
+            auto inner = parseProp();
+            expect(lexer::TokenKind::RParen, "expected ')'");
+            mark_end(inner);
+            return inner;
+        }
+        // Arithmetic grouping: fall through to parseExpr() below.
     }
 
     // All other cases start an expression.  After parsing the lhs expression:
