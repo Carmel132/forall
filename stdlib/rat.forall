@@ -1,0 +1,26 @@
+-- Ordered field axioms for Rat
+--
+-- Q is an ordered field; the axioms mirror those for Real (real.forall)
+-- but are stated independently for Rat.
+
+-- Additive group
+axiom add_comm_rat  : for all x : Rat, for all y : Rat, x + y = y + x
+axiom add_assoc_rat : for all x : Rat, for all y : Rat, for all z : Rat, x + y + z = x + (y + z)
+axiom add_zero_rat  : for all x : Rat, x + 0 = x
+axiom add_inv_rat   : for all x : Rat, there exists y : Rat, x + y = 0
+
+-- Multiplicative group (on nonzero elements)
+axiom mul_comm_rat  : for all x : Rat, for all y : Rat, x * y = y * x
+axiom mul_assoc_rat : for all x : Rat, for all y : Rat, for all z : Rat, x * y * z = x * (y * z)
+axiom mul_one_rat   : for all x : Rat, x * 1 = x
+axiom mul_inv_rat   : for all x : Rat, not (x = 0) implies there exists y : Rat, x * y = 1
+
+-- Distributivity
+axiom distrib_rat : for all x : Rat, for all y : Rat, for all z : Rat, x * (y + z) = x * y + x * z
+
+-- Order
+axiom order_total_rat      : for all x : Rat, for all y : Rat, x < y or x = y or y < x
+axiom order_trans_rat      : for all x : Rat, for all y : Rat, for all z : Rat, x < y implies y < z implies x < z
+axiom order_add_compat_rat : for all x : Rat, for all y : Rat, for all z : Rat, x < y implies x + z < y + z
+axiom order_mul_pos_rat    : for all x : Rat, for all y : Rat, x > 0 implies y > 0 implies x * y > 0
+axiom zero_lt_one_rat      : 0 < 1
