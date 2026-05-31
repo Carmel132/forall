@@ -675,6 +675,56 @@ bool check_step(const ast::Step& step,
     }, step.node);
 }
 
+// ── Type-mismatch warnings ─────────────────────────────────────────────────────
+//
+// Emits a Warning when a PropRel has sides with clearly incompatible types.
+// Fires only when both sides can be fully inferred and are incompatible (e.g.
+// Prop compared to Nat), or when a sub-expression itself has a Mismatch error
+// (e.g. Prop + Nat in arithmetic).  Unknown-type errors are silently ignored
+// (the type_env is populated only from typed 'take' steps, so most variables
+// will be absent).
+
+static void check_proprel_types(const ast::Prop& prop,
+                                const diag::SourceLocation& loc,
+                                const ast::TypeEnv& type_env,
+                                diag::DiagnosticEngine& diag)
+{
+    const auto* rel = std::get_if<ast::PropRel>(&prop.node);
+    if (!rel) return;
+
+    auto lt = ast::infer_type(*rel->lhs, type_env);
+    auto rt = ast::infer_type(*rel->rhs, type_env);
+
+    // Case A: a sub-expression has a clear type mismatch (e.g. Prop used in +).
+    if (!lt && lt.error().kind == ast::TypeErrorKind::Mismatch)
+        diag.emit({diag::Severity::Warning, loc, lt.error().message});
+    if (!rt && rt.error().kind == ast::TypeErrorKind::Mismatch)
+        diag.emit({diag::Severity::Warning, loc, rt.error().message});
+
+    // Case B: both sides infer successfully but are clearly incompatible —
+    // one is a numeric type and the other is Prop.
+    if (lt && rt) {
+        auto is_numeric = [](const ast::TypeNode& t) {
+            return std::holds_alternative<ast::TypeNat>(t.node)
+                || std::holds_alternative<ast::TypeInt>(t.node)
+                || std::holds_alternative<ast::TypeRat>(t.node)
+                || std::holds_alternative<ast::TypeReal>(t.node);
+        };
+        auto is_prop = [](const ast::TypeNode& t) {
+            return std::holds_alternative<ast::TypeProp>(t.node);
+        };
+        if ((is_numeric(*lt) && is_prop(*rt)) || (is_prop(*lt) && is_numeric(*rt))) {
+            diag.emit({diag::Severity::Warning, loc,
+                       "type mismatch: '"
+                       + forall::pretty::to_string(*rel->lhs)
+                       + "' has type " + forall::pretty::to_string(*lt)
+                       + " but '"
+                       + forall::pretty::to_string(*rel->rhs)
+                       + "' has type " + forall::pretty::to_string(*rt)});
+        }
+    }
+}
+
 // ── check_proof ────────────────────────────────────────────────────────────────
 
 void check_proof(const ast::Decl& decl,
@@ -688,7 +738,8 @@ void check_proof(const ast::Decl& decl,
         return;
     }
 
-    ScopeStack env{module_env};
+    ScopeStack  env{module_env};
+    ast::TypeEnv type_env; // types from typed 'take x : T' steps
 
     // Track the last concluding step — ThenStep, CasesStep, or ObtainStep.
     enum class LastKind { None, Then, Cases, Obtain };
@@ -697,6 +748,12 @@ void check_proof(const ast::Decl& decl,
     bool             had_step_errors = false;
 
     for (const auto& step : decl.proof->steps) {
+        // Populate type_env before processing the step so TakeStep vars are
+        // available for the type-mismatch check on the same iteration.
+        if (const auto* ts = std::get_if<ast::TakeStep>(&step.node))
+            if (ts->type.has_value())
+                type_env[ts->var] = *ts->type;
+
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag);
         const auto& all = diag.diagnostics();
@@ -706,6 +763,13 @@ void check_proof(const ast::Decl& decl,
                 break;
             }
         }
+
+        // Emit type-mismatch warnings for relational conclusions.
+        if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
+            check_proprel_types(hs->prop, step.loc, type_env, diag);
+        if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node))
+            check_proprel_types(ts_s->prop, step.loc, type_env, diag);
+
         if (std::get_if<ast::ThenStep>(&step.node)) {
             last_concluding = &step;
             last_kind       = LastKind::Then;
