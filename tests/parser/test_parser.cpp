@@ -1766,3 +1766,75 @@ end
     ASSERT_NE(ts, nullptr);
     EXPECT_NE(std::get_if<PropForall>(&ts->prop.node), nullptr);
 }
+
+// ── ObtainStep (∃-elim) ───────────────────────────────────────────────────────
+
+TEST(ParserTest, ObtainStep_Basic) {
+    // Without "done", the arm runs until "end" — obtain is the last step.
+    auto r = parse_str(R"(
+theorem t : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      then Q by ax
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    // 2 steps: suppose, obtain (arm runs to end of proof)
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 2u);
+    const auto* os = std::get_if<ObtainStep>(&r.mod.decls[0]->proof->steps[1].node);
+    ASSERT_NE(os, nullptr);
+    EXPECT_EQ(os->name, "result");
+    EXPECT_EQ(os->exists_ref, "he");
+    EXPECT_EQ(os->var, "n");
+    EXPECT_FALSE(os->type.has_value());
+    EXPECT_EQ(os->hyp_name, "hn");
+    EXPECT_EQ(os->steps.size(), 1u); // just the one then step
+}
+
+TEST(ParserTest, ObtainStep_WithType) {
+    // Typed variable annotation; arm runs to end.
+    auto r = parse_str(R"(
+theorem t : Q
+proof
+  suppose he : there exists n : Nat, P(n)
+  obtain result from he
+    case n : Nat , hn : P(n) =>
+      then Q by ax
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 2u);
+    const auto* os = std::get_if<ObtainStep>(&r.mod.decls[0]->proof->steps[1].node);
+    ASSERT_NE(os, nullptr);
+    EXPECT_EQ(os->var, "n");
+    ASSERT_TRUE(os->type.has_value());
+    EXPECT_EQ(*os->type, "Nat");
+    EXPECT_EQ(os->hyp_name, "hn");
+    EXPECT_EQ(os->steps.size(), 1u);
+}
+
+TEST(ParserTest, ObtainStep_WithDone) {
+    // "done" terminates the arm; subsequent then is NOT consumed by the arm
+    auto r = parse_str(R"(
+theorem t : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      then Q by ax
+  done
+  then Q by result
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    // 3 outer steps: suppose, obtain (with done), then
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 3u);
+    EXPECT_NE(std::get_if<ObtainStep>(&r.mod.decls[0]->proof->steps[1].node), nullptr);
+    EXPECT_NE(std::get_if<ThenStep>  (&r.mod.decls[0]->proof->steps[2].node), nullptr);
+    const auto* os = std::get_if<ObtainStep>(&r.mod.decls[0]->proof->steps[1].node);
+    ASSERT_NE(os, nullptr);
+    // arm has 1 step (the then); done was consumed
+    EXPECT_EQ(os->steps.size(), 1u);
+}

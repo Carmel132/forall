@@ -1147,3 +1147,136 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── ExistsElim via ObtainStep ─────────────────────────────────────────────────
+
+TEST(CheckerTest, ValidExistsElim) {
+    // Classic ∃-elim: from ∃n.P(n), derive Q (which doesn't mention n).
+    // "done" after the arm allows the outer then to follow.
+    auto diag = run_checker("exists_elim_valid", R"(
+axiom qax : Q
+theorem t : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      have q : Q by qax
+      then Q by q
+  done
+  then Q by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidExistsElim_WithType) {
+    // obtain with typed variable annotation; "done" allows outer then.
+    auto diag = run_checker("exists_elim_typed", R"(
+axiom qax : Q
+theorem t : Q
+proof
+  suppose he : there exists n : Nat, P(n)
+  obtain result from he
+    case n : Nat , hn : P(n) =>
+      have q : Q by qax
+      then Q by q
+  done
+  then Q by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidExistsElim_HypUsedInProof) {
+    // The arm hypothesis hn : P(n) can be used in the sub-proof.
+    auto diag = run_checker("exists_elim_hyp_used", R"(
+axiom impl : for all x, P(x) implies Q
+theorem t : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      have impl_n : P(n) implies Q by impl at n
+      have q : Q by impl_n and hn
+      then Q by q
+  done
+  then Q by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidExistsElim_WithDone) {
+    // obtain with "done" allows a then step afterward
+    auto diag = run_checker("exists_elim_done", R"(
+axiom qax : Q
+theorem t : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      then Q by qax
+  done
+  then Q by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidExistsElim_ConclusionMentionsVar) {
+    // Conclusion P(n) has n free — violates the ∃-elim side condition.
+    // (Note: ∃n.P(n) would be fine because n is bound; P(n) is the violation.)
+    auto diag = run_checker("exists_elim_side_condition", R"(
+theorem bad : P(n)
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : P(n) =>
+      then P(n) by hn
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidExistsElim_VarNotFresh) {
+    // n already appears free in an assumption — freshness violation at take site.
+    auto diag = run_checker("exists_elim_not_fresh", R"(
+theorem bad : Q
+proof
+  suppose hn : P(n)
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn2 : P(n) =>
+      then Q by hn
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidExistsElim_HypPropMismatch) {
+    // Stated hypothesis doesn't match the substituted body of the existential.
+    auto diag = run_checker("exists_elim_hyp_mismatch", R"(
+theorem bad : Q
+proof
+  suppose he : there exists n, P(n)
+  obtain result from he
+    case n , hn : Q =>        -- should be P(n), not Q
+      then Q by hn
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidExistsElim_RefNotExistential) {
+    // The ref is not an existential — should fail.
+    auto diag = run_checker("exists_elim_not_exists", R"(
+theorem bad : Q
+proof
+  suppose hp : P(n)
+  obtain result from hp      -- hp is P(n), not ∃n.P
+    case n , hn : P(n) =>
+      then Q by hn
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+

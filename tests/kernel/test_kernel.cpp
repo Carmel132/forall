@@ -316,3 +316,53 @@ TEST(KernelTest, ForallIntro_WrongArity) {
     auto r = k.apply(kernel::Rule::ForallIntro, prem, conclusion);
     EXPECT_FALSE(r.has_value());
 }
+
+// ── ExistsElim ─────────────────────────────────────────────────────────────────
+
+TEST(KernelTest, ExistsElim_Valid) {
+    // ∃ n, n > 0   and derived Q   ⊢  Q
+    kernel::Kernel k;
+    Prop ex_prop   = prop_exists("n", prop_rel(evar("n"), RelOp::Gt, elit("0")));
+    Prop Q         = atom("R");
+    auto j_ex = k.introduce_axiom(ex_prop); ASSERT_TRUE(j_ex);
+    auto j_Q  = k.introduce_axiom(Q);       ASSERT_TRUE(j_Q);
+    std::vector<kernel::Judgment> prem{*j_ex, *j_Q};
+    auto r = k.apply(kernel::Rule::ExistsElim, prem, Q);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->prop(), Q);
+}
+
+TEST(KernelTest, ExistsElim_FirstPremiseMustBeExists) {
+    // First premise is not an existential — should fail
+    kernel::Kernel k;
+    Prop not_exists = atom("P");
+    Prop Q          = atom("R");
+    auto j1 = k.introduce_axiom(not_exists); ASSERT_TRUE(j1);
+    auto j2 = k.introduce_axiom(Q);          ASSERT_TRUE(j2);
+    std::vector<kernel::Judgment> prem{*j1, *j2};
+    auto r = k.apply(kernel::Rule::ExistsElim, prem, Q);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ExistsElim_SecondPremiseMustMatchConclusion) {
+    // Second premise is R but conclusion is S — should fail
+    kernel::Kernel k;
+    Prop ex_prop = prop_exists("n", prop_rel(evar("n"), RelOp::Gt, elit("0")));
+    Prop Q       = atom("R");
+    Prop S       = atom("S");
+    auto j_ex = k.introduce_axiom(ex_prop); ASSERT_TRUE(j_ex);
+    auto j_Q  = k.introduce_axiom(Q);       ASSERT_TRUE(j_Q);
+    std::vector<kernel::Judgment> prem{*j_ex, *j_Q};
+    auto r = k.apply(kernel::Rule::ExistsElim, prem, S); // conclusion S ≠ Q
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, ExistsElim_WrongArity) {
+    // ExistsElim requires exactly 2 premises
+    kernel::Kernel k;
+    Prop ex_prop = prop_exists("n", atom("P"));
+    auto j_ex = k.introduce_axiom(ex_prop); ASSERT_TRUE(j_ex);
+    std::vector<kernel::Judgment> prem{*j_ex};
+    auto r = k.apply(kernel::Rule::ExistsElim, prem, atom("Q"));
+    EXPECT_FALSE(r.has_value());
+}
