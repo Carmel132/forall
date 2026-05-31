@@ -1,6 +1,8 @@
 #pragma once
 #include <forall/diagnostics/source_location.hpp>
 
+#include <expected>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -318,6 +320,23 @@ struct Module {
     std::string          path;
     std::vector<DeclPtr> decls;
 };
+
+// ── Type environment and inference ────────────────────────────────────────────
+
+// Maps term variable names to their annotated types (from binders / takes / lets).
+using TypeEnv = std::map<std::string, TypeNode>;
+
+// Carry-type for infer_type failures.
+struct TypeError {
+    std::string message;
+};
+
+// Infers the type of an expression given a type environment.
+// Returns TypeError when the type cannot be determined: unknown variable,
+// arithmetic type mismatch, or expression form not yet handled (calls, sets,
+// tuples — deferred until the signature table and Set-type exist).
+[[nodiscard]] std::expected<TypeNode, TypeError>
+infer_type(const Expr& e, const TypeEnv& env);
 
 // ── Free-variable enumeration and syntactic substitution ─────────────────────
 

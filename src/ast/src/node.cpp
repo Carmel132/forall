@@ -321,4 +321,127 @@ Expr subst(const Expr& expr, const std::string& var, const Expr& replacement) {
     return subst_expr(expr, var, replacement);
 }
 
+// ── Type inference ─────────────────────────────────────────────────────────────
+
+namespace {
+
+// Numeric widening hierarchy: Nat ≤ Int ≤ Rat ≤ Real.
+// Returns the common supertype of two numeric types, or nullopt if either
+// is non-numeric (e.g. Prop, TypeFun, TypeUser).
+std::optional<TypeNode> numeric_promote(const TypeNode& a, const TypeNode& b) {
+    auto rank = [](const TypeNode& t) -> int {
+        return std::visit([](const auto& n) -> int {
+            using T = std::decay_t<decltype(n)>;
+            if constexpr (std::is_same_v<T, TypeNat>)  return 0;
+            if constexpr (std::is_same_v<T, TypeInt>)  return 1;
+            if constexpr (std::is_same_v<T, TypeRat>)  return 2;
+            if constexpr (std::is_same_v<T, TypeReal>) return 3;
+            return -1; // non-numeric
+        }, t.node);
+    };
+    int ra = rank(a), rb = rank(b);
+    if (ra < 0 || rb < 0) return std::nullopt;
+    switch (std::max(ra, rb)) {
+        case 0: return TypeNode{TypeNat{}};
+        case 1: return TypeNode{TypeInt{}};
+        case 2: return TypeNode{TypeRat{}};
+        case 3: return TypeNode{TypeReal{}};
+        default: return std::nullopt;
+    }
+}
+
+} // anonymous namespace
+
+std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env) {
+    using Ret = std::expected<TypeNode, TypeError>;
+    auto err = [](std::string msg) -> Ret {
+        return std::unexpected(TypeError{std::move(msg)});
+    };
+
+    return std::visit([&](const auto& n) -> Ret {
+        using T = std::decay_t<decltype(n)>;
+
+        if constexpr (std::is_same_v<T, ExprLit>) {
+            // Heuristic: '.' or scientific notation → Real; otherwise Nat.
+            bool is_real = n.value.find('.') != std::string::npos
+                        || n.value.find('e') != std::string::npos
+                        || n.value.find('E') != std::string::npos;
+            return TypeNode{is_real ? TypeVariant{TypeReal{}} : TypeVariant{TypeNat{}}};
+        }
+
+        if constexpr (std::is_same_v<T, ExprVar>) {
+            auto it = env.find(n.name);
+            if (it != env.end()) return it->second;
+            return err("variable '" + n.name + "' has unknown type");
+        }
+
+        if constexpr (std::is_same_v<T, ExprBinary>) {
+            if (n.op == BinOp::Union || n.op == BinOp::Inter || n.op == BinOp::SetMinus)
+                return err("set operations deferred to Set-type integration");
+            if (n.op == BinOp::Compose)
+                return err("function composition deferred to TypeFun integration");
+            auto lt = infer_type(*n.lhs, env);
+            if (!lt) return lt;
+            auto rt = infer_type(*n.rhs, env);
+            if (!rt) return rt;
+            auto promoted = numeric_promote(*lt, *rt);
+            if (!promoted) return err("type mismatch: non-numeric operands in arithmetic");
+            return *promoted;
+        }
+
+        if constexpr (std::is_same_v<T, ExprUnary>) {
+            // Propagate operand type; negation of Nat yields Int semantically but
+            // we stay conservative until a Nat-vs-Int distinction is needed.
+            return infer_type(*n.operand, env);
+        }
+
+        if constexpr (std::is_same_v<T, ExprAbs>) {
+            // |x|: absolute value or cardinality; both preserve numeric type.
+            return infer_type(*n.operand, env);
+        }
+
+        if constexpr (std::is_same_v<T, ExprLambda>) {
+            if (!n.type.has_value())
+                return err("lambda parameter '" + n.var + "' requires a type annotation");
+            TypeEnv inner_env = env;
+            inner_env[n.var] = *n.type;
+            auto body_t = infer_type(*n.body, inner_env);
+            if (!body_t) return body_t;
+            return type_fun(*n.type, *body_t);
+        }
+
+        if constexpr (std::is_same_v<T, ExprAgg>) {
+            if (!n.type.has_value())
+                return err("aggregate binder '" + n.var + "' requires a type annotation");
+            TypeEnv inner_env = env;
+            inner_env[n.var] = *n.type;
+            return infer_type(*n.body, inner_env);
+        }
+
+        if constexpr (std::is_same_v<T, ExprIf>) {
+            auto tt = infer_type(*n.then_, env);
+            if (!tt) return tt;
+            auto et = infer_type(*n.else_, env);
+            if (!et) return et;
+            auto promoted = numeric_promote(*tt, *et);
+            if (!promoted) return err("type mismatch: conditional branches have incompatible types");
+            return *promoted;
+        }
+
+        // Deferred forms — return an informative error rather than crashing.
+        if constexpr (std::is_same_v<T, ExprCall>)
+            return err("cannot infer type of '" + n.name + "' without a function signature table");
+        if constexpr (std::is_same_v<T, ExprIndex>)
+            return err("array index type inference not yet implemented");
+        if constexpr (std::is_same_v<T, ExprTuple>)
+            return err("tuple type inference not yet implemented");
+        if constexpr (std::is_same_v<T, ExprSetLit>)
+            return err("set literal type inference deferred to Set-type integration");
+        if constexpr (std::is_same_v<T, ExprSetCompr>)
+            return err("set comprehension type inference deferred to Set-type integration");
+
+        return err("unsupported expression form"); // unreachable but satisfies return type
+    }, e.node);
+}
+
 } // namespace forall::ast
