@@ -1914,3 +1914,44 @@ TEST(ParserTest, AxiomHasNoParams) {
     ASSERT_FALSE(r.diag.hasErrors());
     EXPECT_EQ(r.mod.decls[0]->params.size(), 0u);
 }
+
+// ── Set type annotations ──────────────────────────────────────────────────────
+
+TEST(ParserTest, TypeAnnotation_SetNat_InForallBinder) {
+    // ∀ S : Set Nat, P  — ForallBinder with TypeSet{Nat}
+    auto r = parse_str("axiom a : for all S : Set Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*fa->type), "Set Nat");
+}
+
+TEST(ParserTest, TypeAnnotation_SetReal_InExistsBinder) {
+    // ∃ S : Set Real, P  — ExistsBinder with TypeSet{Real}
+    auto r = parse_str("axiom a : there exists S : Set Real, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ex = std::get_if<PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(ex, nullptr);
+    ASSERT_TRUE(ex->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*ex->type), "Set Real");
+}
+
+TEST(ParserTest, TypeAnnotation_SetNat_AsDefinitionParam) {
+    // definition f (S : Set Nat) : P  — param with TypeSet{Nat}
+    auto r = parse_str("definition f (S : Set Nat) : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->params.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->params[0].name, "S");
+    EXPECT_EQ(forall::pretty::to_string(r.mod.decls[0]->params[0].type), "Set Nat");
+}
+
+TEST(ParserTest, TypeAnnotation_NestedSet) {
+    // ∀ S : Set Set Nat, P  — nested set type annotation
+    auto r = parse_str("axiom a : for all S : Set Set Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*fa->type), "Set Set Nat");
+}
