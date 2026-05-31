@@ -17,6 +17,10 @@ bool TypeTuple::operator==(const TypeTuple& o) const {
     return true;
 }
 
+bool TypeSet::operator==(const TypeSet& o) const {
+    return *element_type == *o.element_type;
+}
+
 bool TypeNode::operator==(const TypeNode& o) const {
     return node == o.node;
 }
@@ -364,6 +368,7 @@ static std::string type_name(const TypeNode& t) {
         if constexpr (std::is_same_v<T, TypeUser>)  return v.name;
         if constexpr (std::is_same_v<T, TypeFun>)   return "function type";
         if constexpr (std::is_same_v<T, TypeTuple>) return "tuple type";
+        if constexpr (std::is_same_v<T, TypeSet>)  return "Set " + type_name(*v.element_type);
         return "?";
     }, t.node);
 }
@@ -395,8 +400,21 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
         }
 
         if constexpr (std::is_same_v<T, ExprBinary>) {
-            if (n.op == BinOp::Union || n.op == BinOp::Inter || n.op == BinOp::SetMinus)
-                return err("set operations deferred to Set-type integration");
+            if (n.op == BinOp::Union || n.op == BinOp::Inter || n.op == BinOp::SetMinus) {
+                auto lt = infer_type(*n.lhs, env, sigs);
+                if (!lt) return lt;
+                auto rt = infer_type(*n.rhs, env, sigs);
+                if (!rt) return rt;
+                const auto* ls = std::get_if<TypeSet>(&lt->node);
+                const auto* rs = std::get_if<TypeSet>(&rt->node);
+                if (!ls)
+                    return mismatch("type mismatch: left operand of set operation is not a set");
+                if (!rs)
+                    return mismatch("type mismatch: right operand of set operation is not a set");
+                if (!(*ls->element_type == *rs->element_type))
+                    return mismatch("type mismatch: set operation on sets with different element types");
+                return *lt;
+            }
             if (n.op == BinOp::Compose)
                 return err("function composition deferred to TypeFun integration");
             auto lt = infer_type(*n.lhs, env, sigs);
@@ -413,7 +431,13 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
         }
 
         if constexpr (std::is_same_v<T, ExprAbs>) {
-            return infer_type(*n.operand, env, sigs);
+            auto inner_t = infer_type(*n.operand, env, sigs);
+            if (!inner_t) return inner_t;
+            // If the operand is a set, this is cardinality |S| → result is Nat.
+            // Otherwise this is absolute value |x| → result has the same numeric type.
+            if (std::get_if<TypeSet>(&inner_t->node))
+                return TypeNode{TypeNat{}};
+            return inner_t;
         }
 
         if constexpr (std::is_same_v<T, ExprLambda>) {
@@ -474,10 +498,26 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
             return err("array index type inference not yet implemented");
         if constexpr (std::is_same_v<T, ExprTuple>)
             return err("tuple type inference not yet implemented");
-        if constexpr (std::is_same_v<T, ExprSetLit>)
-            return err("set literal type inference deferred to Set-type integration");
-        if constexpr (std::is_same_v<T, ExprSetCompr>)
-            return err("set comprehension type inference deferred to Set-type integration");
+        if constexpr (std::is_same_v<T, ExprSetLit>) {
+            if (n.elements.empty())
+                return err("cannot infer element type of empty set literal");
+            auto elem_t = infer_type(*n.elements[0], env, sigs);
+            if (!elem_t) return elem_t;
+            for (std::size_t i = 1; i < n.elements.size(); ++i) {
+                auto t = infer_type(*n.elements[i], env, sigs);
+                if (!t) continue; // skip if element type unknown
+                auto promoted = numeric_promote(*elem_t, *t);
+                if (promoted) { elem_t = *promoted; continue; }
+                if (!(*elem_t == *t))
+                    return mismatch("type mismatch: set literal elements have inconsistent types");
+            }
+            return TypeNode{TypeSet{std::make_shared<TypeNode>(*elem_t)}};
+        }
+        if constexpr (std::is_same_v<T, ExprSetCompr>) {
+            if (n.type.has_value())
+                return TypeNode{TypeSet{std::make_shared<TypeNode>(*n.type)}};
+            return err("cannot infer element type of set comprehension without type annotation");
+        }
 
         return err("unsupported expression form");
     }, e.node);

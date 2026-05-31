@@ -45,8 +45,15 @@ struct TypeTuple {
     bool operator==(const TypeTuple& o) const;
 };
 
+// Set type  Set T  — the type whose values are sets with element type T.
+// Written "Set Nat", "Set Real", etc.  operator== defined in node.cpp.
+struct TypeSet {
+    std::shared_ptr<TypeNode> element_type;
+    bool operator==(const TypeSet& o) const;
+};
+
 using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser,
-                                 TypeFun, TypeTuple>;
+                                 TypeFun, TypeTuple, TypeSet>;
 
 struct TypeNode {
     TypeVariant node;
@@ -69,6 +76,9 @@ inline TypeNode type_tuple(std::vector<TypeNode> elems) {
     for (auto& e : elems)
         tt.elements.push_back(std::make_shared<TypeNode>(std::move(e)));
     return TypeNode{std::move(tt)};
+}
+inline TypeNode type_set(TypeNode elem) {
+    return TypeNode{TypeSet{std::make_shared<TypeNode>(std::move(elem))}};
 }
 
 // ── Forward declarations ───────────────────────────────────────────────────────
