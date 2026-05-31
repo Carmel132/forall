@@ -1,0 +1,19 @@
+-- Peano arithmetic for Nat
+--
+-- succ(n) is the successor of n. It is not a built-in; it appears here as
+-- an ordinary function name in axiom statements (ExprCall). No FuncSigTable
+-- entry is needed — axioms are accepted unconditionally by the kernel.
+--
+-- The induction schema is deferred until the InductionStep checker is implemented.
+
+-- Successor is never zero, and is injective.
+axiom succ_ne_zero : for all n : Nat, not (succ(n) = 0)
+axiom succ_injective : for all n : Nat, for all m : Nat, succ(n) = succ(m) implies n = m
+
+-- Recursive characterisation of addition.
+axiom add_zero : for all n : Nat, n + 0 = n
+axiom add_succ : for all n : Nat, for all m : Nat, n + succ(m) = succ(n + m)
+
+-- Recursive characterisation of multiplication.
+axiom mul_zero : for all n : Nat, n * 0 = 0
+axiom mul_succ : for all n : Nat, for all m : Nat, n * succ(m) = n * m + n
