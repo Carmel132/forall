@@ -696,6 +696,7 @@ std::vector<std::string> Parser::parseJustification() {
 // Handles right-associative function types: Nat -> Real -> Prop.
 ast::TypeNode Parser::parseType() {
     using K = lexer::TokenKind;
+    const auto loc = peek().loc;
     const auto name = advance().lexeme;
     ast::TypeNode base;
     if (name == "Nat")       base = ast::TypeNode{ast::TypeNat{}};
@@ -703,6 +704,16 @@ ast::TypeNode Parser::parseType() {
     else if (name == "Rat")  base = ast::TypeNode{ast::TypeRat{}};
     else if (name == "Real") base = ast::TypeNode{ast::TypeReal{}};
     else if (name == "Prop") base = ast::TypeNode{ast::TypeProp{}};
+    else if (name == "Set") {
+        // Set T — element type is the next type (parsed recursively).
+        if (!check(K::Identifier)) {
+            diag_.emit({diag::Severity::Error, loc,
+                        "expected element type after 'Set'"});
+            return ast::TypeNode{ast::TypeUser{"Set"}};
+        }
+        auto elem = parseType();
+        base = ast::TypeNode{ast::TypeSet{std::make_shared<ast::TypeNode>(std::move(elem))}};
+    }
     else                     base = ast::TypeNode{ast::TypeUser{name}};
 
     // Right-associative function type: T -> U  (same token as implication arrow,
