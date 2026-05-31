@@ -733,6 +733,72 @@ ast::Step Parser::parseTakeStep() {
     return {loc, ast::TakeStep{std::move(var), std::move(type)}};
 }
 
+// obtain <name> from <ref>
+//   case <var> [: <type>] , <hyp_name> : <hyp_prop> => <steps...> [ "done" ]
+ast::Step Parser::parseObtainStep() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "obtain"
+
+    std::string name;
+    if (check(K::Identifier))
+        name = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected result name after 'obtain'"});
+
+    expect(K::KwFrom, "expected 'from' after result name");
+
+    std::string exists_ref;
+    if (check(K::Identifier))
+        exists_ref = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis name after 'from'"});
+
+    expect(K::KwCase, "expected 'case' to start the obtain arm");
+
+    std::string var;
+    if (check(K::Identifier))
+        var = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected variable name in 'case'"});
+
+    std::optional<std::string> type;
+    if (check(K::Colon)) {
+        advance(); // consume ':'
+        if (check(K::Identifier))
+            type = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
+    }
+
+    expect(K::Comma, "expected ',' separating variable from hypothesis name");
+
+    std::string hyp_name;
+    if (check(K::Identifier))
+        hyp_name = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis name"});
+
+    expect(K::Colon, "expected ':' before hypothesis proposition");
+    auto hyp_prop = parseProp();
+    expect(K::FatArrow, "expected '=>' after hypothesis proposition");
+
+    std::vector<std::unique_ptr<ast::Step>> steps;
+    while (!isAtEnd()
+           && !check(K::KwEnd)
+           && !check(K::KwDone))
+        steps.push_back(std::make_unique<ast::Step>(parseStep()));
+    if (check(K::KwDone))
+        advance(); // consume optional "done" terminator
+
+    return {loc, ast::ObtainStep{
+        std::move(name), std::move(exists_ref),
+        std::move(var), std::move(type),
+        std::move(hyp_name), std::move(hyp_prop),
+        std::move(steps)
+    }};
+}
+
 // suppose [for contradiction :] [name :] prop
 ast::Step Parser::parseSupposeStep() {
     const auto loc = peek().loc;
@@ -867,6 +933,7 @@ ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
     if (check(K::KwLet))          return parseLetStep();
     if (check(K::KwTake))         return parseTakeStep();
+    if (check(K::KwObtain))       return parseObtainStep();
     if (check(K::KwSuppose))      return parseSupposeStep();
     // "we have" — two-token phrase aliasing "have"
     if (check(K::Identifier) && peek().lexeme == "we"

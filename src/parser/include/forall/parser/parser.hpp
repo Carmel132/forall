@@ -32,6 +32,7 @@ private:
     [[nodiscard]] ast::Step       parseStep();
     [[nodiscard]] ast::Step       parseLetStep();
     [[nodiscard]] ast::Step       parseTakeStep();
+    [[nodiscard]] ast::Step       parseObtainStep();
     [[nodiscard]] ast::Step       parseSupposeStep();
     [[nodiscard]] ast::Step       parseHaveStep();
     [[nodiscard]] ast::Step       parseThenStep();
