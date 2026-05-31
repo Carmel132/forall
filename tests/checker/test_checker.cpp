@@ -1402,3 +1402,47 @@ end
     EXPECT_FALSE(has_warning(diag, "type mismatch"));
 }
 
+// ── Deep type-checking: PropForall/PropExists bind typed vars into TypeEnv ────
+
+TEST(CheckerTest, DeepTypeCheck_QuantifierBodyMismatch_AxiomWarns) {
+    // Axiom with ∀ P : Prop, ∀ n : Nat, P + n > 0
+    // Body P + n > 0 with {P:Prop, n:Nat} → arithmetic mismatch → Warning
+    auto diag = run_checker("deep_quant_axiom_warn", R"(
+axiom weird : for all P : Prop, for all n : Nat, P + n > 0
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, DeepTypeCheck_QuantifierBodyWellTyped_NoWarning) {
+    // Axiom with ∀ n : Nat, n + 1 > 0 — well-typed
+    auto diag = run_checker("deep_quant_axiom_ok", R"(
+axiom pos : for all n : Nat, n + 1 > 0
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, DeepTypeCheck_TheoremStatementMismatch_Warns) {
+    // Theorem with ∀ P : Prop, P > 0 — Prop compared to Nat in body
+    auto diag = run_checker("deep_quant_thm_warn", R"(
+axiom ax : for all P : Prop, P > 0
+theorem t : for all P : Prop, P > 0
+proof
+  suppose h : for all P : Prop, P > 0
+  then for all P : Prop, P > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, DeepTypeCheck_UnaryPropNotPropagated) {
+    // not P — no PropRel, no type warning
+    auto diag = run_checker("deep_not_no_warn", R"(
+axiom ax : not P
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+

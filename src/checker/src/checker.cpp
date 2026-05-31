@@ -726,6 +726,39 @@ static void check_proprel_types(const ast::Prop& prop,
     }
 }
 
+// ── Deep proposition type-checking ────────────────────────────────────────────
+//
+// Recursively checks a proposition for type mismatches.  PropForall/PropExists
+// binders extend the TypeEnv with the bound variable's annotated type, enabling
+// type-checking of quantifier bodies.  PropRel leaves are checked via
+// check_proprel_types.  Called for declaration statements (with empty env) and
+// proof-step conclusions (with the accumulated take-step env).
+
+static void check_prop_types_deep(const ast::Prop& prop,
+                                  ast::TypeEnv env, // by value — binders extend a local copy
+                                  const ast::FuncSigTable& sigs,
+                                  diag::DiagnosticEngine& diag)
+{
+    std::visit([&](const auto& n) {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::PropRel>) {
+            check_proprel_types(prop, prop.loc, env, sigs, diag);
+        } else if constexpr (std::is_same_v<T, ast::PropNot>) {
+            check_prop_types_deep(*n.inner, std::move(env), sigs, diag);
+        } else if constexpr (std::is_same_v<T, ast::PropAnd>
+                          || std::is_same_v<T, ast::PropOr>
+                          || std::is_same_v<T, ast::PropImpl>) {
+            check_prop_types_deep(*n.lhs, env, sigs, diag);
+            check_prop_types_deep(*n.rhs, std::move(env), sigs, diag);
+        } else if constexpr (std::is_same_v<T, ast::PropForall>
+                          || std::is_same_v<T, ast::PropExists>) {
+            if (n.type.has_value()) env[n.var] = *n.type;
+            check_prop_types_deep(*n.body, std::move(env), sigs, diag);
+        }
+        // Atomic, PropFalse, PropPred: no type errors to check
+    }, prop.node);
+}
+
 // ── check_proof ────────────────────────────────────────────────────────────────
 
 void check_proof(const ast::Decl& decl,
@@ -766,11 +799,12 @@ void check_proof(const ast::Decl& decl,
             }
         }
 
-        // Emit type-mismatch warnings for relational conclusions.
+        // Deep type-check step conclusions: recurses into quantifiers in the
+        // conclusion, seeding the TypeEnv from their type annotations.
         if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
-            check_proprel_types(hs->prop, step.loc, type_env, sigs, diag);
+            check_prop_types_deep(hs->prop, type_env, sigs, diag);
         if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node))
-            check_proprel_types(ts_s->prop, step.loc, type_env, sigs, diag);
+            check_prop_types_deep(ts_s->prop, type_env, sigs, diag);
 
         if (std::get_if<ast::ThenStep>(&step.node)) {
             last_concluding = &step;
@@ -852,6 +886,7 @@ HypEnv check_module(const std::filesystem::path& path,
         switch (decl->kind) {
 
         case ast::DeclKind::Axiom: {
+            check_prop_types_deep(decl->statement, {}, sig_table, diag);
             auto r = kernel.introduce_axiom(decl->statement);
             if (!r)
                 diag.emit({diag::Severity::Error, decl->loc,
@@ -864,6 +899,7 @@ HypEnv check_module(const std::filesystem::path& path,
 
         case ast::DeclKind::Theorem:
         case ast::DeclKind::Lemma: {
+            check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
             check_proof(*decl, module_env, kernel, diag, sig_table);
             const auto& all = diag.diagnostics();
@@ -894,6 +930,7 @@ HypEnv check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Definition: {
+            check_prop_types_deep(decl->statement, {}, sig_table, diag);
             auto r = kernel.introduce_axiom(decl->statement);
             if (!r)
                 diag.emit({diag::Severity::Error, decl->loc,
