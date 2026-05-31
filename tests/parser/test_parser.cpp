@@ -3,6 +3,7 @@
 #include <forall/diagnostics/diagnostic.hpp>
 #include <forall/lexer/lexer.hpp>
 #include <forall/parser/parser.hpp>
+#include <forall/pretty/to_string.hpp>
 
 using namespace forall;
 using namespace forall::ast;
@@ -137,7 +138,7 @@ TEST(ParserTest, LetStep) {
     ASSERT_NE(s, nullptr);
     EXPECT_EQ(s->var, "x");
     ASSERT_TRUE(s->type.has_value());
-    EXPECT_EQ(*s->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*s->type), "Nat");
 }
 
 // ── Propositions ───────────────────────────────────────────────────────────────
@@ -250,7 +251,7 @@ TEST(ParserTest, QuantifierForAllTyped) {
     ASSERT_NE(fa, nullptr);
     EXPECT_EQ(fa->var, "x");
     ASSERT_TRUE(fa->type.has_value());
-    EXPECT_EQ(*fa->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*fa->type), "Nat");
     EXPECT_NE(std::get_if<Atomic>(&fa->body->node), nullptr);
 }
 
@@ -752,7 +753,7 @@ TEST(ParserTest, LambdaTyped) {
     ASSERT_NE(lam, nullptr);
     EXPECT_EQ(lam->var, "x");
     ASSERT_TRUE(lam->type.has_value());
-    EXPECT_EQ(*lam->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*lam->type), "Nat");
     const auto* add = std::get_if<ExprBinary>(&lam->body->node);
     ASSERT_NE(add, nullptr);
     EXPECT_EQ(add->op, BinOp::Add);
@@ -780,7 +781,7 @@ TEST(ParserTest, LambdaUnicodeTyped) {
     ASSERT_NE(lam, nullptr);
     EXPECT_EQ(lam->var, "x");
     ASSERT_TRUE(lam->type.has_value());
-    EXPECT_EQ(*lam->type, "Real");
+    EXPECT_EQ(forall::pretty::to_string(*lam->type), "Real");
     EXPECT_NE(std::get_if<ExprBinary>(&lam->body->node), nullptr);
 }
 
@@ -933,7 +934,7 @@ TEST(ParserTest, SumTypedBinder) {
     EXPECT_EQ(agg->op, AggOp::Sum);
     EXPECT_EQ(agg->var, "i");
     ASSERT_TRUE(agg->type.has_value());
-    EXPECT_EQ(*agg->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*agg->type), "Nat");
     EXPECT_FALSE(agg->rel.has_value());
     EXPECT_FALSE(agg->bound.has_value());
     EXPECT_NE(std::get_if<ExprVar>(&agg->body->node), nullptr);
@@ -967,7 +968,7 @@ TEST(ParserTest, ProdTypedBinder) {
     ASSERT_NE(agg, nullptr);
     EXPECT_EQ(agg->op, AggOp::Prod);
     ASSERT_TRUE(agg->type.has_value());
-    EXPECT_EQ(*agg->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*agg->type), "Nat");
     EXPECT_FALSE(agg->rel.has_value());
 }
 
@@ -1333,7 +1334,7 @@ TEST(ParserTest, SetComprehensionWithType) {
     ASSERT_NE(sc, nullptr);
     EXPECT_EQ(sc->var, "x");
     ASSERT_TRUE(sc->type.has_value());
-    EXPECT_EQ(*sc->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*sc->type), "Nat");
     // predicate is x > 0
     const auto* pred = std::get_if<PropRel>(&sc->pred->node);
     ASSERT_NE(pred, nullptr);
@@ -1743,7 +1744,7 @@ end
     ASSERT_NE(s, nullptr);
     EXPECT_EQ(s->var, "n");
     ASSERT_TRUE(s->type.has_value());
-    EXPECT_EQ(*s->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*s->type), "Nat");
 }
 
 TEST(ParserTest, TakeStep_InFullForallProof) {
@@ -1810,7 +1811,7 @@ end
     ASSERT_NE(os, nullptr);
     EXPECT_EQ(os->var, "n");
     ASSERT_TRUE(os->type.has_value());
-    EXPECT_EQ(*os->type, "Nat");
+    EXPECT_EQ(forall::pretty::to_string(*os->type), "Nat");
     EXPECT_EQ(os->hyp_name, "hn");
     EXPECT_EQ(os->steps.size(), 1u);
 }

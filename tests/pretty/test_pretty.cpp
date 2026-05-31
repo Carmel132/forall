@@ -188,11 +188,11 @@ TEST(PrettyExpr, LambdaNoType) {
 }
 
 TEST(PrettyExpr, LambdaWithType) {
-    EXPECT_EQ(ts(ExprLambda{"x", std::string{"Nat"}, EP(ExprVar{"x"})}), "fun x : Nat => x");
+    EXPECT_EQ(ts(ExprLambda{"x", TypeNode{TypeNat{}}, EP(ExprVar{"x"})}), "fun x : Nat => x");
 }
 
 TEST(PrettyExpr, AggSumTyped) {
-    EXPECT_EQ(ts(ExprAgg{AggOp::Sum, "i", std::string{"Nat"}, std::nullopt, std::nullopt,
+    EXPECT_EQ(ts(ExprAgg{AggOp::Sum, "i", TypeNode{TypeNat{}}, std::nullopt, std::nullopt,
                           EP(ExprVar{"i"})}),
               "\xe2\x88\x91 i : Nat, i");
 }
@@ -282,7 +282,7 @@ TEST(PrettyProp, Forall) {
 }
 
 TEST(PrettyProp, ForallWithType) {
-    EXPECT_EQ(ts(PropForall{"x", std::string{"Nat"}, PP(Atomic{"P"})}), "\xe2\x88\x80 x : Nat, P");
+    EXPECT_EQ(ts(PropForall{"x", TypeNode{TypeNat{}}, PP(Atomic{"P"})}), "\xe2\x88\x80 x : Nat, P");
 }
 
 TEST(PrettyProp, Exists) {
@@ -354,7 +354,7 @@ TEST(PrettyExpr, SetComprehensionNoType) {
 }
 
 TEST(PrettyExpr, SetComprehensionWithType) {
-    EXPECT_EQ(ts(ExprSetCompr{"x", std::string{"Nat"},
+    EXPECT_EQ(ts(ExprSetCompr{"x", TypeNode{TypeNat{}},
                                PP(PropRel{EP(ExprVar{"x"}), EP(ExprLit{"0"}), RelOp::Gt})}),
               "{x : Nat | x > 0}");
 }
