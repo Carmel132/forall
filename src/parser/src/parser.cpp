@@ -691,15 +691,33 @@ std::vector<std::string> Parser::parseJustification() {
     return refs;
 }
 
-// Map the current identifier to a TypeNode.  Caller must guard with check(Identifier).
+// Parse a type annotation starting from the current identifier token.
+// Caller must guard with check(Identifier) before calling.
+// Handles right-associative function types: Nat -> Real -> Prop.
 ast::TypeNode Parser::parseType() {
+    using K = lexer::TokenKind;
     const auto name = advance().lexeme;
-    if (name == "Nat")  return ast::TypeNode{ast::TypeNat{}};
-    if (name == "Int")  return ast::TypeNode{ast::TypeInt{}};
-    if (name == "Rat")  return ast::TypeNode{ast::TypeRat{}};
-    if (name == "Real") return ast::TypeNode{ast::TypeReal{}};
-    if (name == "Prop") return ast::TypeNode{ast::TypeProp{}};
-    return ast::TypeNode{ast::TypeUser{name}};
+    ast::TypeNode base;
+    if (name == "Nat")       base = ast::TypeNode{ast::TypeNat{}};
+    else if (name == "Int")  base = ast::TypeNode{ast::TypeInt{}};
+    else if (name == "Rat")  base = ast::TypeNode{ast::TypeRat{}};
+    else if (name == "Real") base = ast::TypeNode{ast::TypeReal{}};
+    else if (name == "Prop") base = ast::TypeNode{ast::TypeProp{}};
+    else                     base = ast::TypeNode{ast::TypeUser{name}};
+
+    // Right-associative function type: T -> U  (same token as implication arrow,
+    // but used here in a type-annotation context so there is no ambiguity).
+    if (check(K::Arrow)) {
+        advance(); // consume ->
+        if (!check(K::Identifier)) {
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected type after '->'"});
+            return base;
+        }
+        auto codomain = parseType();
+        return ast::type_fun(std::move(base), std::move(codomain));
+    }
+    return base;
 }
 
 // let <name> be [a] <type>
@@ -974,7 +992,6 @@ ast::ProofBlock Parser::parseProofBlock() {
 // ── Declaration parsing ────────────────────────────────────────────────────────
 
 // definition <name> { "(" <var> ":" <type> ")" } ":" <prop>
-// Parameter list is parsed and discarded until the type system is in place.
 std::optional<ast::DeclPtr> Parser::parseDefinition() {
     const auto loc = peek().loc;
     advance(); // consume "definition"
@@ -985,19 +1002,30 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
     }
     std::string name{advance().lexeme};
 
-    // Parse and discard optional parameter list: { "(" id ":" type ")" }
+    // Parse optional parameter list: { "(" id ":" type ")" }
+    std::vector<ast::Param> params;
     while (check(lexer::TokenKind::LParen)) {
         advance(); // (
-        if (check(lexer::TokenKind::Identifier)) advance(); // var name
+        std::string pname;
+        if (check(lexer::TokenKind::Identifier))
+            pname = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected parameter name"});
         expect(lexer::TokenKind::Colon, "expected ':' in definition parameter");
-        if (check(lexer::TokenKind::Identifier)) advance(); // type name
+        ast::TypeNode ptype{ast::TypeUser{"?"}};
+        if (check(lexer::TokenKind::Identifier))
+            ptype = parseType();
         expect(lexer::TokenKind::RParen, "expected ')' to close parameter");
+        params.push_back({std::move(pname), std::move(ptype)});
     }
 
     expect(lexer::TokenKind::Colon, "expected ':' after definition name");
     auto prop = parseProp();
-    return std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
-                                       std::move(prop), std::nullopt);
+    auto decl = std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
+                                            std::move(prop), std::nullopt);
+    decl->params = std::move(params);
+    return decl;
 }
 
 std::optional<ast::DeclPtr> Parser::parseAxiom() {
