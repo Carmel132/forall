@@ -1955,3 +1955,71 @@ TEST(ParserTest, TypeAnnotation_NestedSet) {
     ASSERT_TRUE(fa->type.has_value());
     EXPECT_EQ(forall::pretty::to_string(*fa->type), "Set Set Nat");
 }
+
+// ── Grouped-expression as PropRel LHS ─────────────────────────────────────────
+// Previously "(x + y) + z = ..." failed because '(' was parsed as a proposition
+// grouping context; the inner "x + y" had no relational operator and errored.
+
+TEST(ParserTest, GroupedExprLHS_SimpleEquality) {
+    // (x + y) = z
+    auto r = parse_str("axiom a : (x + y) = z");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+    const auto* lhs = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(lhs, nullptr);
+    EXPECT_EQ(lhs->op, BinOp::Add);
+}
+
+TEST(ParserTest, GroupedExprLHS_AssociativityAxiom) {
+    // (x + y) + z = x + (y + z)  — the shape used in real.forall / nat.forall
+    auto r = parse_str("axiom assoc : (x + y) + z = x + (y + z)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+    // LHS: (x + y) + z  → ExprBinary{Add, ExprBinary{Add, x, y}, z}
+    const auto* outer = std::get_if<ExprBinary>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->op, BinOp::Add);
+    const auto* inner = std::get_if<ExprBinary>(&outer->lhs->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->op, BinOp::Add);
+}
+
+TEST(ParserTest, GroupedExprLHS_MulAssoc) {
+    // (x * y) * z = x * (y * z)
+    auto r = parse_str("axiom assoc : (x * y) * z = x * (y * z)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+}
+
+TEST(ParserTest, GroupedExprLHS_InequalityLt) {
+    // (a + b) < c
+    auto r = parse_str("axiom a : (a + b) < c");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Lt);
+}
+
+TEST(ParserTest, GroupedPropStillWorks) {
+    // (P and Q) — should still parse as a conjunction, not error
+    auto r = parse_str("axiom a : (P and Q)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* conj = std::get_if<PropAnd>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(conj, nullptr);
+}
+
+TEST(ParserTest, GroupedPropInImplication) {
+    // (P and Q) implies R — grouped prop as antecedent
+    auto r = parse_str("axiom a : (P and Q) implies R");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* impl = std::get_if<PropImpl>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(impl, nullptr);
+    const auto* conj = std::get_if<PropAnd>(&impl->lhs->node);
+    ASSERT_NE(conj, nullptr);
+}

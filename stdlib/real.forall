@@ -6,13 +6,13 @@
 
 -- Additive group
 axiom add_comm_real  : for all x : Real, for all y : Real, x + y = y + x
-axiom add_assoc_real : for all x : Real, for all y : Real, for all z : Real, x + y + z = x + (y + z)
+axiom add_assoc_real : for all x : Real, for all y : Real, for all z : Real, (x + y) + z = x + (y + z)
 axiom add_zero_real  : for all x : Real, x + 0 = x
 axiom add_inv_real   : for all x : Real, there exists y : Real, x + y = 0
 
 -- Multiplicative group (on nonzero elements)
 axiom mul_comm_real  : for all x : Real, for all y : Real, x * y = y * x
-axiom mul_assoc_real : for all x : Real, for all y : Real, for all z : Real, x * y * z = x * (y * z)
+axiom mul_assoc_real : for all x : Real, for all y : Real, for all z : Real, (x * y) * z = x * (y * z)
 axiom mul_one_real   : for all x : Real, x * 1 = x
 axiom mul_inv_real   : for all x : Real, not (x = 0) implies there exists y : Real, x * y = 1
 
