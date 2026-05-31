@@ -12,10 +12,12 @@ namespace forall::ast {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 //
-// Phase 1 ground types — no recursive structure.  TypeFun / TypeTuple are added
-// in Phase 2 when infer_type() is implemented and function signatures are needed.
+// Ground types: Nat Int Rat Real Prop; user types via TypeUser.
+// Recursive types: TypeFun{domain→codomain} and TypeTuple{T1,T2,...}.
 //
 // Recognised keywords: Nat Int Rat Real Prop; everything else → TypeUser{name}.
+
+struct TypeNode; // forward declaration — needed by TypeFun and TypeTuple
 
 struct TypeNat  { bool operator==(const TypeNat&)  const = default; };  // ℕ
 struct TypeInt  { bool operator==(const TypeInt&)  const = default; };  // ℤ
@@ -27,11 +29,26 @@ struct TypeUser {
     bool operator==(const TypeUser&) const = default;
 };
 
-using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser>;
+// Function type T₁ → T₂; right-associative. Uses shared_ptr to handle the
+// incomplete TypeNode at declaration time. operator== defined in node.cpp.
+struct TypeFun {
+    std::shared_ptr<TypeNode> domain;
+    std::shared_ptr<TypeNode> codomain;
+    bool operator==(const TypeFun& o) const;
+};
+
+// Product / tuple type (T₁, T₂, …). operator== defined in node.cpp.
+struct TypeTuple {
+    std::vector<std::shared_ptr<TypeNode>> elements;
+    bool operator==(const TypeTuple& o) const;
+};
+
+using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser,
+                                 TypeFun, TypeTuple>;
 
 struct TypeNode {
     TypeVariant node;
-    bool operator==(const TypeNode&) const = default;
+    bool operator==(const TypeNode& o) const; // defined in node.cpp (needs complete TypeFun/Tuple)
 };
 
 // Convenience constructors used in tests and the parser.
@@ -41,6 +58,16 @@ inline TypeNode type_rat()                   { return TypeNode{TypeRat{}}; }
 inline TypeNode type_real()                  { return TypeNode{TypeReal{}}; }
 inline TypeNode type_prop()                  { return TypeNode{TypeProp{}}; }
 inline TypeNode type_user(std::string name)  { return TypeNode{TypeUser{std::move(name)}}; }
+inline TypeNode type_fun(TypeNode domain, TypeNode codomain) {
+    return TypeNode{TypeFun{std::make_shared<TypeNode>(std::move(domain)),
+                            std::make_shared<TypeNode>(std::move(codomain))}};
+}
+inline TypeNode type_tuple(std::vector<TypeNode> elems) {
+    TypeTuple tt;
+    for (auto& e : elems)
+        tt.elements.push_back(std::make_shared<TypeNode>(std::move(e)));
+    return TypeNode{std::move(tt)};
+}
 
 // ── Forward declarations ───────────────────────────────────────────────────────
 struct Prop;
@@ -267,12 +294,20 @@ struct ProofBlock {
 
 enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import };
 
+// A single named parameter of a definition, e.g. (x : Nat).
+struct Param {
+    std::string name;
+    TypeNode    type;
+    bool operator==(const Param&) const = default;
+};
+
 struct Decl {
     DeclKind                  kind;
     std::string               name;       // for Import: the file path (quotes stripped)
     diag::SourceLocation      loc;
     Prop                      statement;  // for Import: dummy PropFalse{}
     std::optional<ProofBlock> proof;      // absent for Axiom / Import
+    std::vector<Param>        params;     // definition parameters; empty for others
 };
 
 using DeclPtr = std::unique_ptr<Decl>;

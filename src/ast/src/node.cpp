@@ -4,6 +4,23 @@
 
 namespace forall::ast {
 
+// ── TypeNode equality (recursive, defined here where all types are complete) ──
+
+bool TypeFun::operator==(const TypeFun& o) const {
+    return *domain == *o.domain && *codomain == *o.codomain;
+}
+
+bool TypeTuple::operator==(const TypeTuple& o) const {
+    if (elements.size() != o.elements.size()) return false;
+    for (std::size_t i = 0; i < elements.size(); ++i)
+        if (!(*elements[i] == *o.elements[i])) return false;
+    return true;
+}
+
+bool TypeNode::operator==(const TypeNode& o) const {
+    return node == o.node;
+}
+
 // ── Expr::operator== ──────────────────────────────────────────────────────────
 
 bool Expr::operator==(const Expr& other) const {
