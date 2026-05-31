@@ -26,6 +26,14 @@ std::string to_string(const ast::TypeNode& t) {
             }
             return r + ")";
         }
+        if constexpr (std::is_same_v<T, ast::TypeSet>) {
+            // Add parens around the element type when it is a function type,
+            // since "Set Nat -> Prop" is otherwise parsed as (Set Nat) -> Prop.
+            std::string elem = to_string(*n.element_type);
+            if (std::get_if<ast::TypeFun>(&n.element_type->node))
+                elem = "(" + elem + ")";
+            return "Set " + elem;
+        }
         return "?";
     }, t.node);
 }
