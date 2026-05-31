@@ -1446,3 +1446,44 @@ axiom ax : not P
     EXPECT_FALSE(has_warning(diag, "type mismatch"));
 }
 
+// ── Set relation type warnings (Case C) ──────────────────────────────────────
+//
+// Type annotations on forall/exists binders seed the TypeEnv inside
+// check_prop_types_deep, enabling infer_type to resolve the operand types.
+
+TEST(CheckerTest, TypeWarning_SetMembership_ElemTypeMismatch) {
+    // n : Real, S : Set Nat — n in S is a type mismatch (Real ≠ Nat)
+    auto diag = run_checker("set_mem_mismatch", R"(
+axiom ax : for all n : Real, for all S : Set Nat, n in S
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_SetMembership_CompatibleTypes_NoWarning) {
+    // n : Nat, S : Set Nat — n in S is well-typed; no warning
+    auto diag = run_checker("set_mem_ok", R"(
+axiom ax : for all n : Nat, for all S : Set Nat, n in S
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_Subset_DifferentElementTypes) {
+    // A : Set Nat, B : Set Real — A subseteq B is a type mismatch
+    auto diag = run_checker("subset_elem_mismatch", R"(
+axiom ax : for all A : Set Nat, for all B : Set Real, A subseteq B
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_Subset_SameElementTypes_NoWarning) {
+    // A : Set Nat, B : Set Nat — A subseteq B is well-typed
+    auto diag = run_checker("subset_ok", R"(
+axiom ax : for all A : Set Nat, for all B : Set Nat, A subseteq B
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
