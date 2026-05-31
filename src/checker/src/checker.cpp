@@ -687,13 +687,14 @@ bool check_step(const ast::Step& step,
 static void check_proprel_types(const ast::Prop& prop,
                                 const diag::SourceLocation& loc,
                                 const ast::TypeEnv& type_env,
+                                const ast::FuncSigTable& sigs,
                                 diag::DiagnosticEngine& diag)
 {
     const auto* rel = std::get_if<ast::PropRel>(&prop.node);
     if (!rel) return;
 
-    auto lt = ast::infer_type(*rel->lhs, type_env);
-    auto rt = ast::infer_type(*rel->rhs, type_env);
+    auto lt = ast::infer_type(*rel->lhs, type_env, sigs);
+    auto rt = ast::infer_type(*rel->rhs, type_env, sigs);
 
     // Case A: a sub-expression has a clear type mismatch (e.g. Prop used in +).
     if (!lt && lt.error().kind == ast::TypeErrorKind::Mismatch)
@@ -730,7 +731,8 @@ static void check_proprel_types(const ast::Prop& prop,
 void check_proof(const ast::Decl& decl,
                  const HypEnv& module_env,
                  kernel::Kernel& kernel,
-                 diag::DiagnosticEngine& diag)
+                 diag::DiagnosticEngine& diag,
+                 const ast::FuncSigTable& sigs = {})
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -766,9 +768,9 @@ void check_proof(const ast::Decl& decl,
 
         // Emit type-mismatch warnings for relational conclusions.
         if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
-            check_proprel_types(hs->prop, step.loc, type_env, diag);
+            check_proprel_types(hs->prop, step.loc, type_env, sigs, diag);
         if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node))
-            check_proprel_types(ts_s->prop, step.loc, type_env, diag);
+            check_proprel_types(ts_s->prop, step.loc, type_env, sigs, diag);
 
         if (std::get_if<ast::ThenStep>(&step.node)) {
             last_concluding = &step;
@@ -843,6 +845,7 @@ HypEnv check_module(const std::filesystem::path& path,
     if (diag.hasErrors()) return {};
 
     HypEnv module_env;
+    ast::FuncSigTable sig_table; // built from definition declarations with params
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
@@ -862,7 +865,7 @@ HypEnv check_module(const std::filesystem::path& path,
         case ast::DeclKind::Theorem:
         case ast::DeclKind::Lemma: {
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag);
+            check_proof(*decl, module_env, kernel, diag, sig_table);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -898,6 +901,14 @@ HypEnv check_module(const std::filesystem::path& path,
             else
                 module_env.insert_or_assign(decl->name,
                                             HypEntry{std::move(*r), EntryKind::Derived});
+            // Build signature table entry: params[0].type -> ... -> Prop (curried).
+            if (!decl->params.empty()) {
+                ast::TypeNode ret{ast::TypeProp{}};
+                for (std::size_t i = decl->params.size(); i-- > 0; )
+                    ret = ast::type_fun(decl->params[i].type, ret);
+                if (const auto* tf = std::get_if<ast::TypeFun>(&ret.node))
+                    sig_table[decl->name] = *tf;
+            }
             break;
         }
         }
