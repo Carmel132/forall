@@ -10,6 +10,38 @@
 
 namespace forall::ast {
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+//
+// Phase 1 ground types — no recursive structure.  TypeFun / TypeTuple are added
+// in Phase 2 when infer_type() is implemented and function signatures are needed.
+//
+// Recognised keywords: Nat Int Rat Real Prop; everything else → TypeUser{name}.
+
+struct TypeNat  { bool operator==(const TypeNat&)  const = default; };  // ℕ
+struct TypeInt  { bool operator==(const TypeInt&)  const = default; };  // ℤ
+struct TypeRat  { bool operator==(const TypeRat&)  const = default; };  // ℚ
+struct TypeReal { bool operator==(const TypeReal&) const = default; };  // ℝ
+struct TypeProp { bool operator==(const TypeProp&) const = default; };  // Prop
+struct TypeUser {
+    std::string name;
+    bool operator==(const TypeUser&) const = default;
+};
+
+using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser>;
+
+struct TypeNode {
+    TypeVariant node;
+    bool operator==(const TypeNode&) const = default;
+};
+
+// Convenience constructors used in tests and the parser.
+inline TypeNode type_nat()                   { return TypeNode{TypeNat{}}; }
+inline TypeNode type_int()                   { return TypeNode{TypeInt{}}; }
+inline TypeNode type_rat()                   { return TypeNode{TypeRat{}}; }
+inline TypeNode type_real()                  { return TypeNode{TypeReal{}}; }
+inline TypeNode type_prop()                  { return TypeNode{TypeProp{}}; }
+inline TypeNode type_user(std::string name)  { return TypeNode{TypeUser{std::move(name)}}; }
+
 // ── Forward declarations ───────────────────────────────────────────────────────
 struct Prop;
 using PropPtr = std::shared_ptr<Prop>;
@@ -48,13 +80,13 @@ struct ExprSetLit  { std::vector<ExprPtr> elements; };               // {a, b, c
 
 struct ExprSetCompr {                                                // {x [: T] | P}
     std::string              var;
-    std::optional<std::string> type;
+    std::optional<TypeNode> type;
     PropPtr                  pred;
 };
 
 struct ExprLambda {                                                  // fun x [: T] => body  /  λ x, body
     std::string              var;
-    std::optional<std::string> type;
+    std::optional<TypeNode> type;
     ExprPtr                  body;
 };
 
@@ -67,7 +99,7 @@ struct ExprIf {                                                      // if P the
 struct ExprAgg {                                                     // sum/prod with binder
     AggOp                      op;
     std::string                var;
-    std::optional<std::string> type;    // typed binder:   sum i : T, f i
+    std::optional<TypeNode> type;    // typed binder:   sum i : T, f i
     std::optional<RelOp>       rel;     // bounded binder: sum i < n, f i
     std::optional<ExprPtr>     bound;   // bound expression (bounded form only)
     ExprPtr                    body;
@@ -99,12 +131,12 @@ struct PropOr   { PropPtr lhs, rhs; };         // P ∨ Q
 struct PropImpl   { PropPtr lhs, rhs; };       // P → Q
 struct PropForall {                            // ∀ x [: T], P
     std::string              var;
-    std::optional<std::string> type;
+    std::optional<TypeNode> type;
     PropPtr                  body;
 };
 struct PropExists {                            // ∃ x [: T], P
     std::string              var;
-    std::optional<std::string> type;
+    std::optional<TypeNode> type;
     PropPtr                  body;
 };
 
@@ -165,7 +197,7 @@ struct CasesStep {
 
 struct LetStep {
     std::string           var;
-    std::optional<std::string> type; // "let P be a Prop"
+    std::optional<TypeNode> type; // e.g. TypeProp for "let P be a Prop"
 };
 
 // take x [: T] — introduces a fresh term variable for ∀-intro.
@@ -173,7 +205,7 @@ struct LetStep {
 // records x as "taken", and allows ForallIntro for any ∀ x, P proven afterward.
 struct TakeStep {
     std::string                var;
-    std::optional<std::string> type; // optional type annotation
+    std::optional<TypeNode> type; // optional type annotation
 };
 
 struct SupposeStep {
@@ -211,7 +243,7 @@ struct ObtainStep {
     std::string                        name;       // label for the result in scope
     std::string                        exists_ref; // ref to the ∃ x, P hypothesis
     std::string                        var;        // fresh variable introduced
-    std::optional<std::string>         type;       // optional type annotation for var
+    std::optional<TypeNode>            type;       // optional type annotation for var
     std::string                        hyp_name;   // name for P(var) hypothesis
     Prop                               hyp_prop;   // stated proposition P(var)
     std::vector<std::unique_ptr<Step>> steps;
