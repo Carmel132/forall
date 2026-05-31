@@ -1280,3 +1280,86 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// ── Type-mismatch warnings ─────────────────────────────────────────────────────
+
+static bool has_warning(const diag::DiagnosticEngine& diag, const std::string& fragment) {
+    for (const auto& d : diag.diagnostics())
+        if (d.severity == diag::Severity::Warning
+                && d.message.find(fragment) != std::string::npos)
+            return true;
+    return false;
+}
+
+TEST(CheckerTest, TypeWarning_PropInBinaryArithmetic) {
+    // P : Prop, n : Nat — P + n is a type mismatch (Case A: mismatch in sub-expr).
+    // The axiom makes the proof valid so hasErrors() is false.
+    auto diag = run_checker("type_warn_bin_arith", R"(
+axiom ax : P + n > 0
+theorem t : P + n > 0
+proof
+  take P : Prop
+  take n : Nat
+  have h : P + n > 0 by ax
+  then P + n > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_PropEqualToNat) {
+    // P : Prop = 0 : Nat — comparing Prop to Nat (Case B: top-level mismatch).
+    auto diag = run_checker("type_warn_prop_eq_nat", R"(
+axiom ax : P = 0
+theorem t : P = 0
+proof
+  take P : Prop
+  then P = 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_NoWarnWhenTypesCompatible) {
+    // x : Nat, 1 : Nat — x + 1 > 0 is well-typed; no warning.
+    auto diag = run_checker("type_no_warn_nat", R"(
+axiom ax : x + 1 > 0
+theorem t : x + 1 > 0
+proof
+  take x : Nat
+  then x + 1 > 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_NoWarnWhenNoTypeAnnotations) {
+    // Variables without 'take x : T' have unknown types → no warning emitted.
+    auto diag = run_checker("type_no_warn_no_ann", R"(
+axiom ax : P + n > 0
+theorem t : P + n > 0
+proof
+  then P + n > 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, TypeWarning_NatAndRealCompatible) {
+    // x : Nat, y : Real — Nat promotes to Real, so x + y is well-typed.
+    auto diag = run_checker("type_no_warn_nat_real", R"(
+axiom ax : x + y > 0
+theorem t : x + y > 0
+proof
+  take x : Nat
+  take y : Real
+  then x + y > 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
