@@ -75,6 +75,7 @@ proof_block = "proof" , { step } , ( "end" | "qed" | "□" ) ;
 
 step = let_step
      | take_step
+     | obtain_step
      | suppose_step
      | have_step
      | then_step
@@ -88,6 +89,15 @@ let_step    = "let" , identifier , ( "=" , expr | "be" , "a" , type ) ;
 (* The checker verifies x does not appear free in any assumption; after    *)
 (* proving P(x), the user writes "then ∀ x [: T], P by h" to generalize. *)
 take_step   = "take" , identifier , [ ":" , type ] ;
+
+(* "obtain" eliminates an existential hypothesis (∃-elim).                 *)
+(* <exists_ref> must be ∃ x [: T], P.  The case arm introduces a fresh    *)
+(* variable and names the instantiated hypothesis.  The arm sub-proof must *)
+(* conclude some Q where x ∉ free(Q).  Without "done", obtain must be the *)
+(* last step before end/qed; with "done", further steps may follow.        *)
+obtain_step = "obtain" , identifier , "from" , ref ,
+              "case" , identifier , [ ":" , type ] , "," ,
+              identifier , ":" , prop , "=>" , { step } , [ "done" ] ;
 
 (* "assume" and "suppose" are interchangeable. *)
 suppose_step = ( "suppose" | "assume" ) ,
