@@ -723,6 +723,43 @@ static void check_proprel_types(const ast::Prop& prop,
                        + forall::pretty::to_string(*rel->rhs)
                        + "' has type " + forall::pretty::to_string(*rt)});
         }
+
+        // Case C: set relation type checking.
+        auto is_set = [](const ast::TypeNode& t) {
+            return std::holds_alternative<ast::TypeSet>(t.node);
+        };
+        using Op = ast::RelOp;
+        if (rel->op == Op::In || rel->op == Op::NotIn) {
+            // element ∈ set — rhs must be TypeSet{T} and lhs must have type T.
+            if (!is_set(*rt)) {
+                diag.emit({diag::Severity::Warning, loc,
+                           "type mismatch: right-hand side of membership relation is not a set"});
+            } else {
+                const auto& rset = std::get<ast::TypeSet>(rt->node);
+                if (!(*lt == *rset.element_type)) {
+                    diag.emit({diag::Severity::Warning, loc,
+                               "type mismatch: '"
+                               + forall::pretty::to_string(*rel->lhs)
+                               + "' has type " + forall::pretty::to_string(*lt)
+                               + " but the set has element type "
+                               + forall::pretty::to_string(*rset.element_type)});
+                }
+            }
+        } else if (rel->op == Op::SubsetEq || rel->op == Op::Subset
+                || rel->op == Op::SupersetEq) {
+            // both sides must be TypeSet{T} for the same T.
+            if (!is_set(*lt) || !is_set(*rt)) {
+                diag.emit({diag::Severity::Warning, loc,
+                           "type mismatch: subset relation requires set types"});
+            } else {
+                const auto& lset = std::get<ast::TypeSet>(lt->node);
+                const auto& rset = std::get<ast::TypeSet>(rt->node);
+                if (!(*lset.element_type == *rset.element_type)) {
+                    diag.emit({diag::Severity::Warning, loc,
+                               "type mismatch: subset relation between sets with different element types"});
+                }
+            }
+        }
     }
 }
 
