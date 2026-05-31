@@ -1839,3 +1839,78 @@ end
     // arm has 1 step (the then); done was consumed
     EXPECT_EQ(os->steps.size(), 1u);
 }
+
+// ── Function type annotations (Nat -> Real) ───────────────────────────────────
+
+TEST(ParserTest, FunctionType_InForallBinder) {
+    // ∀ f : Nat -> Real, P  — binder with function type annotation
+    auto r = parse_str("axiom a : for all f : Nat -> Real, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*fa->type), "Nat -> Real");
+}
+
+TEST(ParserTest, FunctionType_RightAssocInBinder) {
+    // ∀ f : Nat -> Real -> Prop, P  — right-associative
+    auto r = parse_str("axiom a : for all f : Nat -> Real -> Prop, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*fa->type), "Nat -> Real -> Prop");
+}
+
+TEST(ParserTest, FunctionType_InExistsBinder) {
+    // there exists f : Nat -> Real, P  — existential binder with function type
+    auto r = parse_str("axiom a : there exists f : Nat -> Real, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ex = std::get_if<PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(ex, nullptr);
+    ASSERT_TRUE(ex->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*ex->type), "Nat -> Real");
+}
+
+// ── Definition params stored in AST ──────────────────────────────────────────
+
+TEST(ParserTest, DefinitionParams_OneParam) {
+    auto r = parse_str("definition f (x : Nat) : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->params.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->params[0].name, "x");
+    EXPECT_EQ(forall::pretty::to_string(r.mod.decls[0]->params[0].type), "Nat");
+}
+
+TEST(ParserTest, DefinitionParams_TwoParams) {
+    auto r = parse_str("definition add (x : Nat) (y : Nat) : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->params.size(), 2u);
+    EXPECT_EQ(r.mod.decls[0]->params[0].name, "x");
+    EXPECT_EQ(r.mod.decls[0]->params[1].name, "y");
+    EXPECT_EQ(forall::pretty::to_string(r.mod.decls[0]->params[0].type), "Nat");
+    EXPECT_EQ(forall::pretty::to_string(r.mod.decls[0]->params[1].type), "Nat");
+}
+
+TEST(ParserTest, DefinitionParams_FunctionTypeParam) {
+    auto r = parse_str("definition apply (f : Nat -> Real) : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->params.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->params[0].name, "f");
+    EXPECT_EQ(forall::pretty::to_string(r.mod.decls[0]->params[0].type), "Nat -> Real");
+}
+
+TEST(ParserTest, DefinitionParams_NoParams) {
+    // definitions with no params still parse correctly; params list empty
+    auto r = parse_str("definition c : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_EQ(r.mod.decls[0]->params.size(), 0u);
+}
+
+TEST(ParserTest, AxiomHasNoParams) {
+    // axioms never have params; params list empty
+    auto r = parse_str("axiom a : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_EQ(r.mod.decls[0]->params.size(), 0u);
+}

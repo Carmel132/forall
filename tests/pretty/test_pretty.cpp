@@ -397,3 +397,43 @@ TEST(PrettyExpr, SetLiteralIsAtomicNoParensInIndex) {
     auto base = EP(ExprSetLit{std::move(elems)});
     EXPECT_EQ(ts(ExprIndex{std::move(base), EP(ExprLit{"0"})}), "{a}[0]");
 }
+
+// ── TypeNode to_string ─────────────────────────────────────────────────────────
+
+static std::string tst(TypeNode t) { return pretty::to_string(t); }
+
+TEST(PrettyType, GroundTypes) {
+    EXPECT_EQ(tst(type_nat()),          "Nat");
+    EXPECT_EQ(tst(type_int()),          "Int");
+    EXPECT_EQ(tst(type_rat()),          "Rat");
+    EXPECT_EQ(tst(type_real()),         "Real");
+    EXPECT_EQ(tst(type_prop()),         "Prop");
+    EXPECT_EQ(tst(type_user("Group")),  "Group");
+}
+
+TEST(PrettyType, FunctionTypeSimple) {
+    // Nat -> Real
+    EXPECT_EQ(tst(type_fun(type_nat(), type_real())), "Nat -> Real");
+}
+
+TEST(PrettyType, FunctionTypeRightAssocNoParens) {
+    // Nat -> Real -> Prop  (right-assoc: no parens needed on rhs)
+    EXPECT_EQ(tst(type_fun(type_nat(), type_fun(type_real(), type_prop()))),
+              "Nat -> Real -> Prop");
+}
+
+TEST(PrettyType, FunctionTypeLhsFunNeedsParens) {
+    // (Nat -> Real) -> Prop  (lhs is TypeFun: needs parens)
+    EXPECT_EQ(tst(type_fun(type_fun(type_nat(), type_real()), type_prop())),
+              "(Nat -> Real) -> Prop");
+}
+
+TEST(PrettyType, TupleType) {
+    // (Nat, Real)
+    EXPECT_EQ(tst(type_tuple({type_nat(), type_real()})), "(Nat, Real)");
+}
+
+TEST(PrettyType, TupleTypeThreeElements) {
+    // (Nat, Real, Prop)
+    EXPECT_EQ(tst(type_tuple({type_nat(), type_real(), type_prop()})), "(Nat, Real, Prop)");
+}
