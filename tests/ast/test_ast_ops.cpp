@@ -203,3 +203,110 @@ TEST(Subst, PropForallNestedShadowing) {
     auto orig  = pforall("x", std::move(inner));
     EXPECT_EQ(subst(orig, "x", evar("z")), orig);
 }
+
+// ── infer_type tests ──────────────────────────────────────────────────────────
+
+static Expr elambda_typed(std::string v, TypeNode t, Expr body) {
+    return {diag::SourceLocation{}, ExprLambda{std::move(v), std::move(t),
+                                               make_expr(std::move(body))}};
+}
+static Expr eunary(Expr operand) {
+    return {diag::SourceLocation{},
+            ExprUnary{UnaryOp::Neg, make_expr(std::move(operand))}};
+}
+static Expr eabs(Expr operand) {
+    return {diag::SourceLocation{}, ExprAbs{make_expr(std::move(operand))}};
+}
+static Expr eif(Expr then_, Expr else_) {
+    auto cond = make_prop({diag::SourceLocation{}, Atomic{"P"}});
+    return {diag::SourceLocation{},
+            ExprIf{std::move(cond), make_expr(std::move(then_)), make_expr(std::move(else_))}};
+}
+
+TEST(InferType, Literal_NatNoDecimal) {
+    EXPECT_EQ(*infer_type(elit("42"), {}), TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Literal_RealWithDecimal) {
+    EXPECT_EQ(*infer_type(elit("3.14"), {}), TypeNode{TypeReal{}});
+}
+
+TEST(InferType, Literal_RealScientific) {
+    EXPECT_EQ(*infer_type(elit("1e10"), {}), TypeNode{TypeReal{}});
+}
+
+TEST(InferType, Var_Found) {
+    TypeEnv env{{"x", TypeNode{TypeNat{}}}};
+    EXPECT_EQ(*infer_type(evar("x"), env), TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Var_NotFound) {
+    EXPECT_FALSE(infer_type(evar("x"), {}).has_value());
+}
+
+TEST(InferType, Binary_NatPlusNat_IsNat) {
+    auto e = ebin(BinOp::Add, elit("1"), elit("2"));
+    EXPECT_EQ(*infer_type(e, {}), TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Binary_RealPlusNat_PromotesToReal) {
+    auto e = ebin(BinOp::Add, elit("1.0"), elit("2"));
+    EXPECT_EQ(*infer_type(e, {}), TypeNode{TypeReal{}});
+}
+
+TEST(InferType, Binary_NatTimesReal_PromotesToReal) {
+    auto e = ebin(BinOp::Mul, elit("3"), elit("2.5"));
+    EXPECT_EQ(*infer_type(e, {}), TypeNode{TypeReal{}});
+}
+
+TEST(InferType, Binary_PropOperandIsError) {
+    // A variable of type Prop cannot be added to a Nat
+    TypeEnv env{{"P", TypeNode{TypeProp{}}}};
+    auto e = ebin(BinOp::Add, evar("P"), elit("1"));
+    EXPECT_FALSE(infer_type(e, env).has_value());
+}
+
+TEST(InferType, Unary_Neg_PropagatesType) {
+    TypeEnv env{{"x", TypeNode{TypeReal{}}}};
+    EXPECT_EQ(*infer_type(eunary(evar("x")), env), TypeNode{TypeReal{}});
+}
+
+TEST(InferType, Abs_PropagatesType) {
+    TypeEnv env{{"x", TypeNode{TypeInt{}}}};
+    EXPECT_EQ(*infer_type(eabs(evar("x")), env), TypeNode{TypeInt{}});
+}
+
+TEST(InferType, Lambda_WithAnnotation_ReturnsFunType) {
+    // fun x : Nat => x + 1  — body type is Nat (Nat+Nat), result is Nat->Nat
+    auto body = ebin(BinOp::Add, evar("x"), elit("1"));
+    auto e = elambda_typed("x", TypeNode{TypeNat{}}, std::move(body));
+    auto result = infer_type(e, {});
+    ASSERT_TRUE(result.has_value());
+    const auto* tf = std::get_if<TypeFun>(&result->node);
+    ASSERT_NE(tf, nullptr);
+    EXPECT_EQ(*tf->domain, TypeNode{TypeNat{}});
+    EXPECT_EQ(*tf->codomain, TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Lambda_NoAnnotation_IsError) {
+    auto e = elambda("x", evar("x")); // uses helper without type annotation
+    EXPECT_FALSE(infer_type(e, {}).has_value());
+}
+
+TEST(InferType, Agg_WithAnnotation_PropagatesBodyType) {
+    // sum i : Nat, i  — body is Nat (from env), result is Nat
+    auto e = Expr{diag::SourceLocation{},
+                  ExprAgg{AggOp::Sum, "i", TypeNode{TypeNat{}},
+                          std::nullopt, std::nullopt, make_expr(evar("i"))}};
+    EXPECT_EQ(*infer_type(e, {}), TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Conditional_SameTypes) {
+    // if P then 1 else 2  — both Nat
+    EXPECT_EQ(*infer_type(eif(elit("1"), elit("2")), {}), TypeNode{TypeNat{}});
+}
+
+TEST(InferType, Conditional_PromotesNatToReal) {
+    // if P then 1 else 2.0  — Nat + Real → Real
+    EXPECT_EQ(*infer_type(eif(elit("1"), elit("2.0")), {}), TypeNode{TypeReal{}});
+}
