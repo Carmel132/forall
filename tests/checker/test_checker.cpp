@@ -1363,3 +1363,42 @@ end
     EXPECT_FALSE(has_warning(diag, "type mismatch"));
 }
 
+// ── FuncSigTable: sig built from definition params ────────────────────────────
+//
+// Warnings only fire when the ExprCall appears inside a PropRel (expression
+// context).  'then isPrime(n)' alone produces PropPred, not PropRel, and
+// never reaches check_proprel_types.  To exercise the sig table we write
+// propositions like 'isPrime(x) = 0' or 'isPrime(n) = isPrime(n)'.
+
+TEST(CheckerTest, FuncSigTable_WrongArgType_EmitsWarning) {
+    // isPrime : Nat -> Prop; isPrime(x) = 0 with x:Prop
+    //   lhs ExprCall: arg x has type Prop, expected Nat → Mismatch (Case A)
+    auto diag = run_checker("sig_table_arg_mismatch", R"(
+definition isPrime (n : Nat) : isPrime(n)
+axiom weird : isPrime(x) = 0
+theorem t : isPrime(x) = 0
+proof
+  take x : Prop
+  then isPrime(x) = 0 by weird
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, FuncSigTable_CorrectArgType_NoWarning) {
+    // isPrime : Nat -> Prop; isPrime(n) = isPrime(n) with n:Nat
+    //   both sides infer TypeProp → no numeric-vs-Prop mismatch
+    auto diag = run_checker("sig_table_arg_ok", R"(
+definition isPrime (n : Nat) : isPrime(n)
+axiom sym : isPrime(n) = isPrime(n)
+theorem t : isPrime(n) = isPrime(n)
+proof
+  take n : Nat
+  then isPrime(n) = isPrime(n) by sym
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+

@@ -310,3 +310,48 @@ TEST(InferType, Conditional_PromotesNatToReal) {
     // if P then 1 else 2.0  — Nat + Real → Real
     EXPECT_EQ(*infer_type(eif(elit("1"), elit("2.0")), {}), TypeNode{TypeReal{}});
 }
+
+// ── infer_type with FuncSigTable ──────────────────────────────────────────────
+
+TEST(InferType, ExprCall_NoSigTable_IsError) {
+    // f(x) with empty sig table → Unknown error
+    auto e = Expr{diag::SourceLocation{}, ExprCall{"f", {make_expr(evar("x"))}}};
+    auto r = infer_type(e, {});
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Unknown);
+}
+
+TEST(InferType, ExprCall_MatchingSig_ReturnsCodeomain) {
+    // f : Nat -> Prop, f(n) with n:Nat → TypeProp
+    auto sig = TypeFun{std::make_shared<TypeNode>(TypeNode{TypeNat{}}),
+                       std::make_shared<TypeNode>(TypeNode{TypeProp{}})};
+    FuncSigTable sigs{{"f", sig}};
+    TypeEnv env{{"n", TypeNode{TypeNat{}}}};
+    auto e = Expr{diag::SourceLocation{}, ExprCall{"f", {make_expr(evar("n"))}}};
+    EXPECT_EQ(*infer_type(e, env, sigs), TypeNode{TypeProp{}});
+}
+
+TEST(InferType, ExprCall_ArgTypeMismatch_IsMismatch) {
+    // f : Nat -> Prop, f(P) with P:Prop → Mismatch (expected Nat, got Prop)
+    auto sig = TypeFun{std::make_shared<TypeNode>(TypeNode{TypeNat{}}),
+                       std::make_shared<TypeNode>(TypeNode{TypeProp{}})};
+    FuncSigTable sigs{{"f", sig}};
+    TypeEnv env{{"P", TypeNode{TypeProp{}}}};
+    auto e = Expr{diag::SourceLocation{}, ExprCall{"f", {make_expr(evar("P"))}}};
+    auto r = infer_type(e, env, sigs);
+    ASSERT_FALSE(r.has_value());
+    EXPECT_EQ(r.error().kind, TypeErrorKind::Mismatch);
+}
+
+TEST(InferType, ExprCall_TwoParamSig_BothMatch) {
+    // g : Nat -> Real -> Prop, g(n, x) with n:Nat, x:Real → TypeProp
+    auto inner = TypeFun{std::make_shared<TypeNode>(TypeNode{TypeReal{}}),
+                         std::make_shared<TypeNode>(TypeNode{TypeProp{}})};
+    auto outer = TypeFun{std::make_shared<TypeNode>(TypeNode{TypeNat{}}),
+                         std::make_shared<TypeNode>(TypeNode{std::move(inner)})};
+    FuncSigTable sigs{{"g", outer}};
+    TypeEnv env{{"n", TypeNode{TypeNat{}}}, {"x", TypeNode{TypeReal{}}}};
+    auto e = Expr{diag::SourceLocation{},
+                  ExprCall{"g", {make_expr(evar("n")), make_expr(evar("x"))}}};
+    EXPECT_EQ(*infer_type(e, env, sigs), TypeNode{TypeProp{}});
+}
