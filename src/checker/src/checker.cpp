@@ -408,6 +408,122 @@ bool check_cases_step(const ast::CasesStep& s,
     return true;
 }
 
+// ── check_obtain_step ──────────────────────────────────────────────────────────
+//
+// Implements ExistsElim with an explicit obtain block.
+// Syntax:
+//   obtain <name> from <exists_ref>
+//     case <var> [: <type>] , <hyp_name> : <hyp_prop> => <steps...>
+//
+// Checker responsibilities:
+//   1. <exists_ref> must be ∃ x, P in scope.
+//   2. <var> must be fresh (not free in any undischarged assumption).
+//   3. <hyp_prop> must equal subst(P, x, ExprVar{var}).
+//   4. Sub-proof must conclude some Q with the last step being a ThenStep.
+//   5. <var> must not appear free in Q (∃-elim side condition).
+//   6. ExistsElim kernel rule applied; result stored under <name>.
+bool check_obtain_step(const ast::ObtainStep& s,
+                       const diag::SourceLocation& loc,
+                       ScopeStack& env,
+                       kernel::Kernel& kernel,
+                       diag::DiagnosticEngine& diag)
+{
+    // 1. Look up the existential
+    const auto* ex_entry = env.find(s.exists_ref);
+    if (!ex_entry) {
+        diag.emit({diag::Severity::Error, loc,
+                   "unknown hypothesis '" + s.exists_ref + "'"});
+        return false;
+    }
+    const auto* ex = std::get_if<ast::PropExists>(&ex_entry->judgment.prop().node);
+    if (!ex) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'" + s.exists_ref + "' must be an existential (∃ x, P)"});
+        return false;
+    }
+
+    // 2. Freshness: s.var must not appear free in any undischarged assumption
+    bool fresh = true;
+    env.for_each_assumption([&](const std::string& hname, const HypEntry& e) {
+        if (ast::free_vars(e.judgment.prop()).count(s.var)) {
+            diag.emit({diag::Severity::Error, loc,
+                       "'obtain': variable '" + s.var
+                       + "' appears free in assumption '" + hname
+                       + "' — not a fresh variable"});
+            fresh = false;
+        }
+    });
+    if (!fresh) return false;
+
+    // 3. Verify hyp_prop == subst(body, exists_var, ExprVar{s.var})
+    const ast::Prop expected_hyp =
+        ast::subst(*ex->body, ex->var,
+                   ast::Expr{loc, ast::ExprVar{s.var}});
+    if (!(s.hyp_prop == expected_hyp)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "obtain arm hypothesis does not match the existential body; "
+                   "expected `" + forall::pretty::to_string(expected_hyp) + "`"});
+        return false;
+    }
+
+    // 4. Build sub-environment with s.var taken and s.hyp_name : s.hyp_prop
+    ScopeStack sub_env = env;
+    sub_env.push();
+    sub_env.take_var(s.var);
+    auto hyp_j = kernel.introduce_axiom(s.hyp_prop);
+    sub_env.insert_or_assign(s.hyp_name,
+                             HypEntry{std::move(*hyp_j), EntryKind::Assumption});
+
+    // Check sub-proof steps
+    const ast::Step* arm_last_then = nullptr;
+    bool arm_step_error = false;
+
+    for (const auto& uptr : s.steps) {
+        const auto snap = diag.diagnostics().size();
+        check_step(*uptr, sub_env, kernel, diag);
+        const auto& all = diag.diagnostics();
+        for (auto j = snap; j < all.size(); ++j) {
+            if (all[j].severity == diag::Severity::Error) {
+                arm_step_error = true;
+                break;
+            }
+        }
+        if (std::get_if<ast::ThenStep>(&uptr->node))
+            arm_last_then = uptr.get();
+    }
+
+    if (arm_step_error || !arm_last_then) {
+        if (!arm_step_error)
+            diag.emit({diag::Severity::Error, loc,
+                       "'obtain' body must end with a 'then' step"});
+        return false;
+    }
+
+    const auto& Q = std::get<ast::ThenStep>(arm_last_then->node).prop;
+
+    // 5. ∃-elim side condition: s.var must not appear free in Q
+    if (ast::free_vars(Q).count(s.var)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "∃-elim: conclusion mentions the bound variable '" + s.var
+                   + "' — violates the ∃-elim side condition"});
+        return false;
+    }
+
+    // 6. Apply ExistsElim: ∃x.P, Q ⊢ Q
+    const kernel::Judgment q_j = *kernel.introduce_axiom(Q);
+    const std::array<kernel::Judgment, 2> prem = {ex_entry->judgment, q_j};
+    auto result = kernel.apply(kernel::Rule::ExistsElim,
+                               std::span{prem},
+                               Q);
+    if (!result) {
+        diag.emit({diag::Severity::Error, loc,
+                   "ExistsElim failed: " + result.error().message});
+        return false;
+    }
+    env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
+    return true;
+}
+
 // ── check_step ─────────────────────────────────────────────────────────────────
 
 bool check_step(const ast::Step& step,
@@ -550,6 +666,11 @@ bool check_step(const ast::Step& step,
             return check_cases_step(s, step.loc, env, kernel, diag);
         }
 
+        // obtain <name> from <ref>  case <var> [: T] , <hyp> : P => <steps...>
+        else if constexpr (std::is_same_v<T, ast::ObtainStep>) {
+            return check_obtain_step(s, step.loc, env, kernel, diag);
+        }
+
         return true;
     }, step.node);
 }
@@ -569,8 +690,8 @@ void check_proof(const ast::Decl& decl,
 
     ScopeStack env{module_env};
 
-    // Track the last concluding step — either a ThenStep or a CasesStep.
-    enum class LastKind { None, Then, Cases };
+    // Track the last concluding step — ThenStep, CasesStep, or ObtainStep.
+    enum class LastKind { None, Then, Cases, Obtain };
     const ast::Step* last_concluding = nullptr;
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
@@ -593,6 +714,10 @@ void check_proof(const ast::Decl& decl,
             last_concluding = &step;
             last_kind       = LastKind::Cases;
         }
+        if (std::get_if<ast::ObtainStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Obtain;
+        }
     }
 
     // Only validate the conclusion when all steps passed; cascading errors on
@@ -607,9 +732,15 @@ void check_proof(const ast::Decl& decl,
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with `" + forall::pretty::to_string(ts.prop)
                            + "`, expected `" + forall::pretty::to_string(decl.statement) + "`"});
-        } else { // Cases
+        } else if (last_kind == LastKind::Cases) {
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
             const auto* it = env.find(cs.name);
+            if (it && !(it->judgment.prop() == decl.statement))
+                diag.emit({diag::Severity::Error, last_concluding->loc,
+                           "proof concludes with wrong proposition"});
+        } else { // Obtain
+            const auto& os = std::get<ast::ObtainStep>(last_concluding->node);
+            const auto* it = env.find(os.name);
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
