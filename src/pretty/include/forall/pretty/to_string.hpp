@@ -4,6 +4,7 @@
 
 namespace forall::pretty {
 
+std::string to_string(const ast::TypeNode& t);
 std::string to_string(const ast::Expr& e);
 std::string to_string(const ast::Prop& p);
 

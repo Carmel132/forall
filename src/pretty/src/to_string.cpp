@@ -1,6 +1,20 @@
 #include <forall/pretty/to_string.hpp>
 
 namespace forall::pretty {
+
+std::string to_string(const ast::TypeNode& t) {
+    return std::visit([](const auto& n) -> std::string {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::TypeNat>)  return "Nat";
+        if constexpr (std::is_same_v<T, ast::TypeInt>)  return "Int";
+        if constexpr (std::is_same_v<T, ast::TypeRat>)  return "Rat";
+        if constexpr (std::is_same_v<T, ast::TypeReal>) return "Real";
+        if constexpr (std::is_same_v<T, ast::TypeProp>) return "Prop";
+        if constexpr (std::is_same_v<T, ast::TypeUser>) return n.name;
+        return "?";
+    }, t.node);
+}
+
 namespace {
 
 // Forward declarations for mutual recursion (ExprIf ↔ Prop, PropRel ↔ Expr).
@@ -149,12 +163,12 @@ std::string ts_expr(const ast::Expr& e) {
         }
         else if constexpr (std::is_same_v<T, ast::ExprSetCompr>) {
             std::string s = "{" + n.var;
-            if (n.type) s += " : " + *n.type;
+            if (n.type) s += " : " + to_string(*n.type);
             return s + " | " + ts_prop(*n.pred) + "}";
         }
         else if constexpr (std::is_same_v<T, ast::ExprLambda>) {
             std::string s = "fun " + n.var;
-            if (n.type) s += " : " + *n.type;
+            if (n.type) s += " : " + to_string(*n.type);
             return s + " => " + ts_expr(*n.body);
         }
         else if constexpr (std::is_same_v<T, ast::ExprIf>) {
@@ -169,7 +183,7 @@ std::string ts_expr(const ast::Expr& e) {
                              : "\xe2\x88\x8f");  // ∏ U+220F
             s += " " + n.var;
             if (n.type) {
-                s += " : " + *n.type;
+                s += " : " + to_string(*n.type);
             } else if (n.rel && n.bound) {
                 s += rel_op_str(*n.rel) + ts_expr(**n.bound);
             }
@@ -261,12 +275,12 @@ std::string ts_prop(const ast::Prop& p) {
         }
         else if constexpr (std::is_same_v<T, ast::PropForall>) {
             std::string s = "\xe2\x88\x80 " + n.var;  // ∀ U+2200
-            if (n.type) s += " : " + *n.type;
+            if (n.type) s += " : " + to_string(*n.type);
             return s + ", " + ts_prop(*n.body);
         }
         else if constexpr (std::is_same_v<T, ast::PropExists>) {
             std::string s = "\xe2\x88\x83 " + n.var;  // ∃ U+2203
-            if (n.type) s += " : " + *n.type;
+            if (n.type) s += " : " + to_string(*n.type);
             return s + ", " + ts_prop(*n.body);
         }
         else if constexpr (std::is_same_v<T, ast::PropRel>) {
