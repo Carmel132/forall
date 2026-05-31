@@ -352,7 +352,24 @@ std::optional<TypeNode> numeric_promote(const TypeNode& a, const TypeNode& b) {
 
 } // anonymous namespace
 
-std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env) {
+// Simplified type name for error messages (avoids dependency on pretty::to_string).
+static std::string type_name(const TypeNode& t) {
+    return std::visit([](const auto& v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, TypeNat>)   return "Nat";
+        if constexpr (std::is_same_v<T, TypeInt>)   return "Int";
+        if constexpr (std::is_same_v<T, TypeRat>)   return "Rat";
+        if constexpr (std::is_same_v<T, TypeReal>)  return "Real";
+        if constexpr (std::is_same_v<T, TypeProp>)  return "Prop";
+        if constexpr (std::is_same_v<T, TypeUser>)  return v.name;
+        if constexpr (std::is_same_v<T, TypeFun>)   return "function type";
+        if constexpr (std::is_same_v<T, TypeTuple>) return "tuple type";
+        return "?";
+    }, t.node);
+}
+
+std::expected<TypeNode, TypeError>
+infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
     using Ret = std::expected<TypeNode, TypeError>;
     auto err = [](std::string msg) -> Ret {
         return std::unexpected(TypeError{std::move(msg), TypeErrorKind::Unknown});
@@ -365,7 +382,6 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
         using T = std::decay_t<decltype(n)>;
 
         if constexpr (std::is_same_v<T, ExprLit>) {
-            // Heuristic: '.' or scientific notation → Real; otherwise Nat.
             bool is_real = n.value.find('.') != std::string::npos
                         || n.value.find('e') != std::string::npos
                         || n.value.find('E') != std::string::npos;
@@ -383,9 +399,9 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
                 return err("set operations deferred to Set-type integration");
             if (n.op == BinOp::Compose)
                 return err("function composition deferred to TypeFun integration");
-            auto lt = infer_type(*n.lhs, env);
+            auto lt = infer_type(*n.lhs, env, sigs);
             if (!lt) return lt;
-            auto rt = infer_type(*n.rhs, env);
+            auto rt = infer_type(*n.rhs, env, sigs);
             if (!rt) return rt;
             auto promoted = numeric_promote(*lt, *rt);
             if (!promoted) return mismatch("type mismatch: non-numeric operands in arithmetic");
@@ -393,14 +409,11 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
         }
 
         if constexpr (std::is_same_v<T, ExprUnary>) {
-            // Propagate operand type; negation of Nat yields Int semantically but
-            // we stay conservative until a Nat-vs-Int distinction is needed.
-            return infer_type(*n.operand, env);
+            return infer_type(*n.operand, env, sigs);
         }
 
         if constexpr (std::is_same_v<T, ExprAbs>) {
-            // |x|: absolute value or cardinality; both preserve numeric type.
-            return infer_type(*n.operand, env);
+            return infer_type(*n.operand, env, sigs);
         }
 
         if constexpr (std::is_same_v<T, ExprLambda>) {
@@ -408,7 +421,7 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
                 return err("lambda parameter '" + n.var + "' requires a type annotation");
             TypeEnv inner_env = env;
             inner_env[n.var] = *n.type;
-            auto body_t = infer_type(*n.body, inner_env);
+            auto body_t = infer_type(*n.body, inner_env, sigs);
             if (!body_t) return body_t;
             return type_fun(*n.type, *body_t);
         }
@@ -418,22 +431,45 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
                 return err("aggregate binder '" + n.var + "' requires a type annotation");
             TypeEnv inner_env = env;
             inner_env[n.var] = *n.type;
-            return infer_type(*n.body, inner_env);
+            return infer_type(*n.body, inner_env, sigs);
         }
 
         if constexpr (std::is_same_v<T, ExprIf>) {
-            auto tt = infer_type(*n.then_, env);
+            auto tt = infer_type(*n.then_, env, sigs);
             if (!tt) return tt;
-            auto et = infer_type(*n.else_, env);
+            auto et = infer_type(*n.else_, env, sigs);
             if (!et) return et;
             auto promoted = numeric_promote(*tt, *et);
             if (!promoted) return mismatch("type mismatch: conditional branches have incompatible types");
             return *promoted;
         }
 
-        // Deferred forms — return an informative error rather than crashing.
-        if constexpr (std::is_same_v<T, ExprCall>)
-            return err("cannot infer type of '" + n.name + "' without a function signature table");
+        if constexpr (std::is_same_v<T, ExprCall>) {
+            auto it = sigs.find(n.name);
+            if (it == sigs.end())
+                return err("cannot infer type of '" + n.name + "' without a function signature");
+            // Walk the curried TypeFun, consuming one argument at a time.
+            const TypeFun* cur = &it->second;
+            for (std::size_t i = 0; i < n.args.size(); ++i) {
+                auto arg_t = infer_type(*n.args[i], env, sigs);
+                if (!arg_t) return arg_t;
+                if (!(*arg_t == *cur->domain))
+                    return mismatch("type mismatch: argument " + std::to_string(i + 1)
+                                    + " to '" + n.name + "' — expected "
+                                    + type_name(*cur->domain) + " but got "
+                                    + type_name(*arg_t));
+                if (i + 1 < n.args.size()) {
+                    // More args to consume — codomain must be another TypeFun.
+                    const auto* next = std::get_if<TypeFun>(&cur->codomain->node);
+                    if (!next)
+                        return err("too many arguments to '" + n.name + "'");
+                    cur = next;
+                }
+            }
+            // Return the codomain after consuming all args; for 0-arg calls, return whole sig.
+            return n.args.empty() ? TypeNode{*cur} : *cur->codomain;
+        }
+
         if constexpr (std::is_same_v<T, ExprIndex>)
             return err("array index type inference not yet implemented");
         if constexpr (std::is_same_v<T, ExprTuple>)
@@ -443,7 +479,7 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
         if constexpr (std::is_same_v<T, ExprSetCompr>)
             return err("set comprehension type inference deferred to Set-type integration");
 
-        return err("unsupported expression form"); // unreachable but satisfies return type
+        return err("unsupported expression form");
     }, e.node);
 }
 

@@ -326,6 +326,11 @@ struct Module {
 // Maps term variable names to their annotated types (from binders / takes / lets).
 using TypeEnv = std::map<std::string, TypeNode>;
 
+// Maps function names to their curried type signatures.
+// Seeded from `definition f (x : T₁) (y : T₂) : P` declarations as
+// TypeFun{T₁, TypeFun{T₂, Prop}}.  Used by infer_type for ExprCall nodes.
+using FuncSigTable = std::map<std::string, TypeFun>;
+
 // Category for infer_type failures.  Mismatch indicates two concrete,
 // incompatible types (e.g. Prop in arithmetic); Unknown means the type
 // could not be determined from available annotations.
@@ -337,12 +342,12 @@ struct TypeError {
     TypeErrorKind kind{TypeErrorKind::Unknown};
 };
 
-// Infers the type of an expression given a type environment.
-// Returns TypeError when the type cannot be determined: unknown variable,
-// arithmetic type mismatch, or expression form not yet handled (calls, sets,
-// tuples — deferred until the signature table and Set-type exist).
+// Infers the type of an expression given a type environment and an optional
+// function signature table.  Returns TypeError when the type cannot be
+// determined: unknown variable, arithmetic mismatch, unsupported expression
+// form (sets, tuples — deferred), or ExprCall without a matching signature.
 [[nodiscard]] std::expected<TypeNode, TypeError>
-infer_type(const Expr& e, const TypeEnv& env);
+infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs = {});
 
 // ── Free-variable enumeration and syntactic substitution ─────────────────────
 
