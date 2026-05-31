@@ -326,9 +326,15 @@ struct Module {
 // Maps term variable names to their annotated types (from binders / takes / lets).
 using TypeEnv = std::map<std::string, TypeNode>;
 
+// Category for infer_type failures.  Mismatch indicates two concrete,
+// incompatible types (e.g. Prop in arithmetic); Unknown means the type
+// could not be determined from available annotations.
+enum class TypeErrorKind { Unknown, Mismatch };
+
 // Carry-type for infer_type failures.
 struct TypeError {
-    std::string message;
+    std::string   message;
+    TypeErrorKind kind{TypeErrorKind::Unknown};
 };
 
 // Infers the type of an expression given a type environment.

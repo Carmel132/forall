@@ -355,7 +355,10 @@ std::optional<TypeNode> numeric_promote(const TypeNode& a, const TypeNode& b) {
 std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env) {
     using Ret = std::expected<TypeNode, TypeError>;
     auto err = [](std::string msg) -> Ret {
-        return std::unexpected(TypeError{std::move(msg)});
+        return std::unexpected(TypeError{std::move(msg), TypeErrorKind::Unknown});
+    };
+    auto mismatch = [](std::string msg) -> Ret {
+        return std::unexpected(TypeError{std::move(msg), TypeErrorKind::Mismatch});
     };
 
     return std::visit([&](const auto& n) -> Ret {
@@ -385,7 +388,7 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
             auto rt = infer_type(*n.rhs, env);
             if (!rt) return rt;
             auto promoted = numeric_promote(*lt, *rt);
-            if (!promoted) return err("type mismatch: non-numeric operands in arithmetic");
+            if (!promoted) return mismatch("type mismatch: non-numeric operands in arithmetic");
             return *promoted;
         }
 
@@ -424,7 +427,7 @@ std::expected<TypeNode, TypeError> infer_type(const Expr& e, const TypeEnv& env)
             auto et = infer_type(*n.else_, env);
             if (!et) return et;
             auto promoted = numeric_promote(*tt, *et);
-            if (!promoted) return err("type mismatch: conditional branches have incompatible types");
+            if (!promoted) return mismatch("type mismatch: conditional branches have incompatible types");
             return *promoted;
         }
 
