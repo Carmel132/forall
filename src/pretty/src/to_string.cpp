@@ -11,6 +11,21 @@ std::string to_string(const ast::TypeNode& t) {
         if constexpr (std::is_same_v<T, ast::TypeReal>) return "Real";
         if constexpr (std::is_same_v<T, ast::TypeProp>) return "Prop";
         if constexpr (std::is_same_v<T, ast::TypeUser>) return n.name;
+        if constexpr (std::is_same_v<T, ast::TypeFun>) {
+            // right-associative: lhs needs parens only when it is also a TypeFun
+            std::string dom = to_string(*n.domain);
+            if (std::get_if<ast::TypeFun>(&n.domain->node))
+                dom = "(" + dom + ")";
+            return dom + " -> " + to_string(*n.codomain);
+        }
+        if constexpr (std::is_same_v<T, ast::TypeTuple>) {
+            std::string r = "(";
+            for (std::size_t i = 0; i < n.elements.size(); ++i) {
+                if (i > 0) r += ", ";
+                r += to_string(*n.elements[i]);
+            }
+            return r + ")";
+        }
         return "?";
     }, t.node);
 }
