@@ -288,9 +288,27 @@ struct ObtainStep {
     std::vector<std::unique_ptr<Step>> steps;
 };
 
+// induction <name> on <var> : <body>
+//   base:       <steps...>    -- must conclude subst(body, var, 0)
+//   inductive:  <steps...>    -- has ih : body in scope; must conclude subst(body, var, succ(var))
+//
+// Proves ∀ var : Nat, body.  The checker:
+//   1. verifies the base block concludes body[var:=0]
+//   2. injects ih : body as an assumption and verifies the inductive block
+//      concludes body[var:=succ(var)]
+//   3. applies NatInduction to certify ∀ var : Nat, body
+// The result is stored under `name` in the enclosing scope.
+struct InductionStep {
+    std::string                        name;            // label for the result in scope
+    std::string                        var;             // induction variable
+    Prop                               body;            // P(var) — the inductive predicate
+    std::vector<std::unique_ptr<Step>> base_steps;      // proves P(0)
+    std::vector<std::unique_ptr<Step>> inductive_steps; // proves P(succ(var)) using ih : P(var)
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
-    CasesStep, ObtainStep
+    CasesStep, ObtainStep, InductionStep
 >;
 
 struct Step {
