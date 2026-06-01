@@ -1930,3 +1930,84 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── by ring (C3-I1/I2/I3) ─────────────────────────────────────────────────────
+
+TEST(CheckerTest, Ring_Commutativity) {
+    auto diag = run_checker("ring_comm", R"(
+theorem t : x + y = y + x
+proof
+  then x + y = y + x by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_QuadraticExpansion) {
+    // (a + b)^2 = a^2 + 2*a*b + b^2 — the canonical ring test
+    auto diag = run_checker("ring_quadratic", R"(
+theorem t : (a + b) ^ 2 = a ^ 2 + 2 * a * b + b ^ 2
+proof
+  then (a + b) ^ 2 = a ^ 2 + 2 * a * b + b ^ 2 by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_DifferenceOfSquares) {
+    // (a - b) * (a + b) = a^2 - b^2
+    auto diag = run_checker("ring_diff_squares", R"(
+theorem t : (a - b) * (a + b) = a ^ 2 - b ^ 2
+proof
+  then (a - b) * (a + b) = a ^ 2 - b ^ 2 by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_Distributivity) {
+    // x * (y + z) = x * y + x * z
+    auto diag = run_checker("ring_distrib", R"(
+theorem t : x * (y + z) = x * y + x * z
+proof
+  then x * (y + z) = x * y + x * z by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_FalseIdentity) {
+    // x + y = x is not a ring identity
+    auto diag = run_checker("ring_false", R"(
+theorem t : x + y = x
+proof
+  then x + y = x by ring
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "ring identity"));
+}
+
+TEST(CheckerTest, Ring_NotAnEquality) {
+    // by ring on a non-equality should fail
+    auto diag = run_checker("ring_not_eq", R"(
+theorem t : x + 1 > 0
+proof
+  then x + 1 > 0 by ring
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "ring"));
+}
+
+TEST(CheckerTest, Ring_HaveStep) {
+    // by ring works in a have step
+    auto diag = run_checker("ring_have", R"(
+theorem t : (x + y) * (x - y) = x ^ 2 - y ^ 2
+proof
+  have sq : (x + y) * (x - y) = x ^ 2 - y ^ 2 by ring
+  then (x + y) * (x - y) = x ^ 2 - y ^ 2 by sq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
