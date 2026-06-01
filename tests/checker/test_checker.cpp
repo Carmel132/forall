@@ -1558,3 +1558,82 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// ── by decide ────────────────────────────────────────────────────────────────
+
+TEST(CheckerTest, Decide_SimpleEquality) {
+    auto diag = run_checker("decide_simple", R"(
+theorem t : 2 + 3 = 5
+proof
+  then 2 + 3 = 5 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Decide_Inequality) {
+    auto diag = run_checker("decide_ineq", R"(
+theorem t : 4 > 2
+proof
+  then 4 > 2 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Decide_ExpressionBothSides) {
+    auto diag = run_checker("decide_expr", R"(
+theorem t : 3 * 4 = 2 * 6
+proof
+  then 3 * 4 = 2 * 6 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Decide_FalseProposition) {
+    // 2 + 2 = 5 is false — by decide should reject it
+    auto diag = run_checker("decide_false", R"(
+theorem t : 2 + 2 = 5
+proof
+  then 2 + 2 = 5 by decide
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "false"));
+}
+
+TEST(CheckerTest, Decide_CannotDecideVariable) {
+    // x + 1 > 0 contains a variable — by decide cannot evaluate it
+    auto diag = run_checker("decide_variable", R"(
+theorem t : x + 1 > 0
+proof
+  then x + 1 > 0 by decide
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "decide"));
+}
+
+TEST(CheckerTest, Decide_HaveStep) {
+    // by decide works in a have step too
+    auto diag = run_checker("decide_have", R"(
+theorem t : 1 < 2 and 3 > 0
+proof
+  have h1 : 1 < 2 by decide
+  have h2 : 3 > 0 by decide
+  then 1 < 2 and 3 > 0 by h1 and h2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Decide_Power) {
+    auto diag = run_checker("decide_power", R"(
+theorem t : 2 ^ 3 = 8
+proof
+  then 2 ^ 3 = 8 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
