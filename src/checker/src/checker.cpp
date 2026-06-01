@@ -7,6 +7,7 @@
 #include <array>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -267,6 +268,113 @@ infer_quantifier_rule(const ast::Prop& conc,
                "'at' witness is only valid when the hypothesis is ∀x.P (ForallElim) "
                "or the conclusion is ∃x.P (ExistsIntro)"});
     return std::nullopt;
+}
+
+// ── eval_expr / decide_proprel ────────────────────────────────────────────────
+//
+// Evaluate a pure arithmetic expression tree to a rational value (represented
+// as a pair of integers p/q in lowest terms, stored as double here for
+// simplicity — sufficient for the literal-only scope of `by decide`).
+//
+// Returns nullopt for any expression that contains variables, function calls,
+// or constructs that cannot be reduced without axioms.
+
+using Rational = std::pair<long long, long long>; // numerator / denominator
+
+static long long gcd(long long a, long long b) {
+    a = a < 0 ? -a : a; b = b < 0 ? -b : b;
+    while (b) { a %= b; std::swap(a, b); }
+    return a == 0 ? 1 : a;
+}
+
+static Rational make_rat(long long n, long long d = 1) {
+    if (d < 0) { n = -n; d = -d; }
+    long long g = gcd(n < 0 ? -n : n, d);
+    return {n / g, d / g};
+}
+
+static std::optional<Rational> eval_expr(const ast::Expr& e) {
+    return std::visit([](const auto& n) -> std::optional<Rational> {
+        using T = std::decay_t<decltype(n)>;
+
+        if constexpr (std::is_same_v<T, ast::ExprLit>) {
+            // Parse the literal string as an integer or decimal.
+            try {
+                // Try integer first
+                std::size_t pos = 0;
+                long long v = std::stoll(n.value, &pos);
+                if (pos == n.value.size()) return make_rat(v);
+                // Try simple "p/q" rational — not normally produced by the parser
+                // but handle gracefully.
+            } catch (...) {}
+            return std::nullopt;
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            auto v = eval_expr(*n.operand);
+            if (!v) return std::nullopt;
+            if (n.op == ast::UnaryOp::Neg) return make_rat(-v->first, v->second);
+            return std::nullopt; // inv, compl not evaluable
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            auto lv = eval_expr(*n.lhs);
+            auto rv = eval_expr(*n.rhs);
+            if (!lv || !rv) return std::nullopt;
+            auto [ln, ld] = *lv;
+            auto [rn, rd] = *rv;
+            switch (n.op) {
+                case ast::BinOp::Add: return make_rat(ln * rd + rn * ld, ld * rd);
+                case ast::BinOp::Sub: return make_rat(ln * rd - rn * ld, ld * rd);
+                case ast::BinOp::Mul: return make_rat(ln * rn, ld * rd);
+                case ast::BinOp::Div:
+                    if (rn == 0) return std::nullopt;
+                    return make_rat(ln * rd, ld * rn);
+                case ast::BinOp::IDiv:
+                    if (rn == 0 || ld != 1 || rd != 1) return std::nullopt;
+                    return make_rat(ln / rn);
+                case ast::BinOp::Mod:
+                    if (rn == 0 || ld != 1 || rd != 1) return std::nullopt;
+                    return make_rat(ln % rn);
+                case ast::BinOp::Pow: {
+                    if (rd != 1 || rn < 0) return std::nullopt;
+                    long long base = ln, exp = rn, acc_n = 1, acc_d = 1;
+                    long long bd = ld;
+                    for (long long i = 0; i < exp; ++i) {
+                        acc_n *= base; acc_d *= bd;
+                        long long g = gcd(acc_n < 0 ? -acc_n : acc_n, acc_d);
+                        acc_n /= g; acc_d /= g;
+                    }
+                    return make_rat(acc_n, acc_d);
+                }
+                default: return std::nullopt;
+            }
+        }
+
+        return std::nullopt; // variables, calls, sets, etc.
+    }, e.node);
+}
+
+// Evaluate a relational proposition whose both sides are literal arithmetic.
+// Returns true/false/nullopt (nullopt = cannot decide).
+static std::optional<bool> decide_proprel(const ast::PropRel& rel) {
+    auto lv = eval_expr(*rel.lhs);
+    auto rv = eval_expr(*rel.rhs);
+    if (!lv || !rv) return std::nullopt;
+    // Compare as rationals: l/ld vs r/rd  ⟺  l*rd vs r*ld
+    auto [ln, ld] = *lv;
+    auto [rn, rd] = *rv;
+    long long l = ln * rd;
+    long long r = rn * ld;
+    switch (rel.op) {
+        case ast::RelOp::Eq:    return l == r;
+        case ast::RelOp::NotEq: return l != r;
+        case ast::RelOp::Lt:    return l <  r;
+        case ast::RelOp::LtEq:  return l <= r;
+        case ast::RelOp::Gt:    return l >  r;
+        case ast::RelOp::GtEq:  return l >= r;
+        default: return std::nullopt; // In, NotIn, subset etc.
+    }
 }
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
@@ -704,6 +812,32 @@ bool check_step(const ast::Step& step,
 
         // have <name> : <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
+            // "by decide" — evaluate numerically; no refs needed
+            if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide' only applies to relational propositions (e.g. 2 + 3 = 5)"});
+                    return false;
+                }
+                auto verdict = decide_proprel(*rel);
+                if (!verdict) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide' cannot evaluate `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` — both sides must be literal arithmetic"});
+                    return false;
+                }
+                if (!*verdict) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide': `"
+                               + forall::pretty::to_string(s.prop) + "` is false"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(s.prop);
+                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -740,6 +874,32 @@ bool check_step(const ast::Step& step,
                 diag.emit({diag::Severity::Error, step.loc,
                            "'then' step requires a 'by' justification"});
                 return false;
+            }
+            // "by decide" — evaluate numerically; no refs needed
+            if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide' only applies to relational propositions"});
+                    return false;
+                }
+                auto verdict = decide_proprel(*rel);
+                if (!verdict) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide' cannot evaluate `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` — both sides must be literal arithmetic"});
+                    return false;
+                }
+                if (!*verdict) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by decide': `"
+                               + forall::pretty::to_string(s.prop) + "` is false"});
+                    return false;
+                }
+                // Certified: the proposition is arithmetically true.
+                kernel.introduce_axiom(s.prop);
+                return true;
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
