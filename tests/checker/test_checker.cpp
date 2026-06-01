@@ -1803,3 +1803,130 @@ instance Foo : Ring
     c.check(main_path);
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── by norm_num (C2-I1/I2/I3) ────────────────────────────────────────────────
+
+TEST(CheckerTest, NormNum_SimpleEquality) {
+    // Constant: 2 + 3 = 5 (same as decide, but via poly normalization)
+    auto diag = run_checker("norm_num_simple", R"(
+theorem t : 2 + 3 = 5
+proof
+  then 2 + 3 = 5 by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_Commutativity) {
+    // x + y = y + x — polynomial identity, both sides normalize to same Poly
+    auto diag = run_checker("norm_num_comm", R"(
+theorem t : x + y = y + x
+proof
+  then x + y = y + x by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_Distributivity) {
+    // x * (y + z) = x * y + x * z — classic distributivity
+    auto diag = run_checker("norm_num_distrib", R"(
+theorem t : x * (y + z) = x * y + x * z
+proof
+  then x * (y + z) = x * y + x * z by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_DistributivityReverse) {
+    // x * y + x * z = x * (y + z) — same identity, opposite sides
+    auto diag = run_checker("norm_num_distrib_rev", R"(
+theorem t : x * y + x * z = x * (y + z)
+proof
+  then x * y + x * z = x * (y + z) by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_QuadraticExpansion) {
+    // (x + y)^2 = x^2 + 2*x*y + y^2
+    auto diag = run_checker("norm_num_quadratic", R"(
+theorem t : (x + y) ^ 2 = x ^ 2 + 2 * x * y + y ^ 2
+proof
+  then (x + y) ^ 2 = x ^ 2 + 2 * x * y + y ^ 2 by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_MixedConstantsAndVars) {
+    // 3 * x + 2 * x = 5 * x
+    auto diag = run_checker("norm_num_coeffs", R"(
+theorem t : 3 * x + 2 * x = 5 * x
+proof
+  then 3 * x + 2 * x = 5 * x by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_HaveStep) {
+    // by norm_num in a have step, result used in then step
+    auto diag = run_checker("norm_num_have", R"(
+axiom refl_ax : x + y = y + x
+theorem t : x + y = y + x
+proof
+  have comm : x + y = y + x by norm_num
+  then x + y = y + x by comm
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_FalseIdentity) {
+    // x + y = x is not a polynomial identity
+    auto diag = run_checker("norm_num_false", R"(
+theorem t : x + y = x
+proof
+  then x + y = x by norm_num
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "polynomial identity"));
+}
+
+TEST(CheckerTest, NormNum_NotAnEquality) {
+    // by norm_num on a non-equality should fail
+    auto diag = run_checker("norm_num_not_eq", R"(
+theorem t : x + 1 > 0
+proof
+  then x + 1 > 0 by norm_num
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "norm_num"));
+}
+
+TEST(CheckerTest, NormNum_Subtraction) {
+    // (x + y) - y = x via poly normalization
+    auto diag = run_checker("norm_num_sub", R"(
+theorem t : (x + y) - y = x
+proof
+  then (x + y) - y = x by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NormNum_NegationExpansion) {
+    // -(x + y) = -x + (-y) — poly normalization via negation
+    auto diag = run_checker("norm_num_neg", R"(
+theorem t : -(x + y) = -x + -y
+proof
+  then -(x + y) = -x + -y by norm_num
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
