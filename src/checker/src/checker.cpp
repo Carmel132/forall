@@ -10,6 +10,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <string_view>
 
 namespace forall::checker {
 
@@ -1190,38 +1191,125 @@ void check_proof(const ast::Decl& decl,
     }
 }
 
+// ── InstanceTable / typeclass mechanism ───────────────────────────────────────
+//
+// Maps type_name → set of class names the type is declared to implement.
+// Populated by `instance <TypeName> : <ClassName>` declarations.
+//
+// ClassAxioms: maps class name → required axiom-name suffixes.
+// When `instance Real : Field` is declared, the checker looks for each
+// "Real_<suffix>" in module_env and errors loudly if any are missing.
+// This makes implicit resolution loud on failure: if a required axiom is absent,
+// the user gets a precise diagnostic naming the missing axiom.
+
+using InstanceTable = std::map<std::string, std::set<std::string>>;
+
+// Required axiom-name suffixes per algebraic class.
+// Convention: for type T, the axiom must be named <T>_<suffix>.
+// E.g.  instance Real : Ring  requires axioms  Real_add_comm, Real_add_assoc, etc.
+static const std::map<std::string, std::vector<std::string_view>> class_axioms = {
+    {"Semigroup", {
+        "add_assoc",
+    }},
+    {"Monoid", {
+        "add_assoc", "add_zero", "zero_add",
+    }},
+    {"Group", {
+        "add_assoc", "add_zero", "zero_add", "add_neg",
+    }},
+    {"Ring", {
+        "add_assoc", "add_comm", "add_zero", "zero_add", "add_neg",
+        "mul_assoc", "mul_one", "one_mul",
+        "distrib_left", "distrib_right",
+    }},
+    {"CommRing", {
+        "add_assoc", "add_comm", "add_zero", "zero_add", "add_neg",
+        "mul_assoc", "mul_comm", "mul_one", "one_mul",
+        "distrib_left", "distrib_right",
+    }},
+    {"Field", {
+        "add_assoc", "add_comm", "add_zero", "zero_add", "add_neg",
+        "mul_assoc", "mul_comm", "mul_one", "one_mul",
+        "distrib_left", "distrib_right",
+        "mul_inv",
+    }},
+    {"OrderedField", {
+        "add_assoc", "add_comm", "add_zero", "zero_add", "add_neg",
+        "mul_assoc", "mul_comm", "mul_one", "one_mul",
+        "distrib_left", "distrib_right",
+        "mul_inv",
+        "lt_trans", "lt_add", "lt_mul_pos",
+    }},
+};
+
+// Validates an `instance T : C` declaration.
+// For each required suffix in class_axioms[C], checks that "<T>_<suffix>" is in
+// module_env.  Emits an Error for every missing axiom.
+// Returns false if any required axiom is missing.
+static bool check_instance(const std::string& type_name,
+                           const std::string& class_name,
+                           const HypEnv& module_env,
+                           diag::DiagnosticEngine& diag,
+                           const diag::SourceLocation& loc)
+{
+    auto it = class_axioms.find(class_name);
+    if (it == class_axioms.end()) {
+        diag.emit({diag::Severity::Error, loc,
+                   "unknown typeclass '" + class_name
+                   + "'; known classes: Semigroup, Monoid, Group, Ring, CommRing, Field, OrderedField"});
+        return false;
+    }
+    bool ok = true;
+    for (std::string_view suffix : it->second) {
+        std::string required = type_name + "_" + std::string{suffix};
+        if (!module_env.count(required)) {
+            diag.emit({diag::Severity::Error, loc,
+                       "instance " + type_name + " : " + class_name
+                       + " — missing required axiom '" + required + "'"});
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 // ── check_module ───────────────────────────────────────────────────────────────
 //
 // Parses and validates a single .forall file, returning the module-level
-// HypEnv (axioms + proved lemmas/theorems) so callers can import it.
-// visited tracks canonical paths to prevent circular imports.
+// HypEnv (axioms + proved lemmas/theorems) and InstanceTable so callers can
+// import both.  visited tracks canonical paths to prevent circular imports.
 
-HypEnv check_module(const std::filesystem::path& path,
-                    kernel::Kernel& kernel,
-                    diag::DiagnosticEngine& diag,
-                    std::set<std::filesystem::path>& visited)
+struct ModuleResult {
+    HypEnv         env;
+    InstanceTable  instances;
+};
+
+ModuleResult check_module(const std::filesystem::path& path,
+                          kernel::Kernel& kernel,
+                          diag::DiagnosticEngine& diag,
+                          std::set<std::filesystem::path>& visited)
 {
     visited.insert(std::filesystem::weakly_canonical(path));
 
     std::ifstream file{path};
     if (!file) {
         diag.emit({diag::Severity::Error, {}, "cannot open file: " + path.string()});
-        return {};
+        return ModuleResult{};
     }
     std::ostringstream buf;
     buf << file.rdbuf();
 
     lexer::Lexer lex{buf.str(), path.string(), diag};
     auto tokens = lex.tokenize();
-    if (diag.hasErrors()) return {};
+    if (diag.hasErrors()) return ModuleResult{};
 
     parser::Parser parser{tokens, diag};
     ast::Module mod = parser.parse();
     mod.path = path.string();
-    if (diag.hasErrors()) return {};
+    if (diag.hasErrors()) return ModuleResult{};
 
     HypEnv module_env;
     ast::FuncSigTable sig_table; // built from definition declarations with params
+    InstanceTable instance_table; // populated from instance declarations
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
@@ -1265,8 +1353,11 @@ HypEnv check_module(const std::filesystem::path& path,
             auto canonical   = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag, visited);
-                for (auto& [name, entry] : imported)
+                for (auto& [name, entry] : imported.env)
                     module_env.insert_or_assign(name, entry);
+                for (auto& [tname, classes] : imported.instances)
+                    for (const auto& cls : classes)
+                        instance_table[tname].insert(cls);
             }
             break;
         }
@@ -1290,9 +1381,17 @@ HypEnv check_module(const std::filesystem::path& path,
             }
             break;
         }
+
+        case ast::DeclKind::Instance: {
+            // decl->name = type name (e.g. "Real")
+            // decl->instance_class = class name (e.g. "Field")
+            if (check_instance(decl->name, decl->instance_class, module_env, diag, decl->loc))
+                instance_table[decl->name].insert(decl->instance_class);
+            break;
+        }
         }
     }
-    return module_env;
+    return ModuleResult{std::move(module_env), std::move(instance_table)};
 }
 
 } // namespace
