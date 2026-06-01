@@ -951,15 +951,17 @@ ast::Step Parser::parseSupposeStep() {
 }
 
 // have <name> : <prop> by <justification> [at <expr>]
+// <name> may be "_" for an anonymous step; the checker assigns a fresh internal name.
 ast::Step Parser::parseHaveStep() {
     const auto loc = peek().loc;
     advance(); // consume "have"
 
     std::string name;
-    if (check(lexer::TokenKind::Identifier))
-        name = advance().lexeme;
-    else
+    if (check(lexer::TokenKind::Identifier)) {
+        name = advance().lexeme; // includes "_"
+    } else {
         diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis name after 'have'"});
+    }
 
     expect(lexer::TokenKind::Colon, "expected ':' after hypothesis name");
     auto prop = parseProp();
@@ -1017,19 +1019,36 @@ ast::Step Parser::parseCasesStep() {
     const auto loc = peek().loc;
     advance(); // consume "cases"
 
+    // Grammar: "cases [<name> :] <ref>"
+    // If an identifier is followed by ':', it is the result label; otherwise
+    // the identifier is the disjunct ref and the result is unnamed (RL5).
     std::string name;
-    if (check(lexer::TokenKind::Identifier))
-        name = advance().lexeme;
-    else
-        diag_.emit({diag::Severity::Error, peek().loc, "expected result name after 'cases'"});
-
-    expect(lexer::TokenKind::Colon, "expected ':' after cases result name");
-
     std::string disjunct_ref;
-    if (check(lexer::TokenKind::Identifier))
-        disjunct_ref = advance().lexeme;
-    else
-        diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis ref after 'cases <name>:'"});
+
+    if (check(lexer::TokenKind::Identifier)) {
+        const std::string first = std::string{peek().lexeme};
+        if (pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == lexer::TokenKind::Colon)
+        {
+            // Old form: cases <name> : <ref>
+            advance();           // consume name
+            advance();           // consume ':'
+            name = first;
+            if (check(lexer::TokenKind::Identifier))
+                disjunct_ref = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected hypothesis ref after 'cases <name>:'"});
+        } else {
+            // New form: cases <ref>  — result label is auto-generated
+            advance();           // consume ref
+            disjunct_ref = first;
+            // name left empty; checker will fill it
+        }
+    } else {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected hypothesis ref after 'cases'"});
+    }
 
     std::vector<ast::CaseArm> arms;
     while (check(lexer::TokenKind::KwCase)) {
