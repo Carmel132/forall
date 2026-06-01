@@ -2104,3 +2104,45 @@ end
     ASSERT_NE(ind, nullptr);
     EXPECT_NE(std::get_if<PropForall>(&ind->body.node), nullptr);
 }
+
+// ── Instance declarations ──────────────────────────────────────────────────────
+
+TEST(ParserTest, InstanceDecl_Basic) {
+    // instance Real : Field  — parses to DeclKind::Instance
+    auto r = parse_str("instance Real : Field");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Instance);
+    EXPECT_EQ(d.name, "Real");
+    EXPECT_EQ(d.instance_class, "Field");
+}
+
+TEST(ParserTest, InstanceDecl_MultipleWithAxioms) {
+    // axiom then instance — both are parsed as separate declarations
+    auto r = parse_str("axiom T_add_comm : P\ninstance T : Ring");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 2u);
+    EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Axiom);
+    EXPECT_EQ(r.mod.decls[1]->kind, DeclKind::Instance);
+    EXPECT_EQ(r.mod.decls[1]->name, "T");
+    EXPECT_EQ(r.mod.decls[1]->instance_class, "Ring");
+}
+
+TEST(ParserTest, InstanceDecl_MissingColon) {
+    // instance Real Field  — missing ':' is a parse error
+    auto r = parse_str("instance Real Field");
+    EXPECT_TRUE(r.diag.hasErrors());
+}
+
+TEST(ParserTest, InstanceDecl_MissingClassName) {
+    // instance Real :  — missing class name is a parse error
+    auto r = parse_str("instance Real :");
+    EXPECT_TRUE(r.diag.hasErrors());
+}
+
+TEST(ParserTest, InstanceDecl_MissingTypeName) {
+    // instance : Ring  — missing type name is a parse error
+    auto r = parse_str("instance : Ring");
+    EXPECT_TRUE(r.diag.hasErrors());
+}

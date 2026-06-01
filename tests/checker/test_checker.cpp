@@ -1637,3 +1637,92 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── Instance declarations ─────────────────────────────────────────────────────
+
+TEST(CheckerTest, InstanceDecl_ValidRing) {
+    // Declare all required Ring axioms prefixed with T_, then instance T : Ring.
+    auto diag = run_checker("instance_valid_ring", R"(
+axiom T_add_assoc     : P
+axiom T_add_comm      : P
+axiom T_add_zero      : P
+axiom T_zero_add      : P
+axiom T_add_neg       : P
+axiom T_mul_assoc     : P
+axiom T_mul_one       : P
+axiom T_one_mul       : P
+axiom T_distrib_left  : P
+axiom T_distrib_right : P
+instance T : Ring
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InstanceDecl_MissingAxiom) {
+    // Missing T_add_zero — should error naming the missing axiom.
+    auto diag = run_checker("instance_missing_axiom", R"(
+axiom T_add_assoc     : P
+axiom T_add_comm      : P
+axiom T_add_neg       : P
+axiom T_mul_assoc     : P
+axiom T_mul_one       : P
+axiom T_one_mul       : P
+axiom T_distrib_left  : P
+axiom T_distrib_right : P
+instance T : Ring
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "T_add_zero"));
+    EXPECT_TRUE(has_error(diag, "T_zero_add"));
+}
+
+TEST(CheckerTest, InstanceDecl_UnknownClass) {
+    // Declaring an instance for an unknown class should produce an error.
+    auto diag = run_checker("instance_unknown_class", R"(
+axiom ax : P
+instance Real : UnknownAlgebra
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "unknown typeclass"));
+}
+
+TEST(CheckerTest, InstanceDecl_OrderedFieldValid) {
+    // Declare all OrderedField axioms for type Foo, then instance Foo : OrderedField.
+    auto diag = run_checker("instance_ordered_field", R"(
+axiom Foo_add_assoc     : P
+axiom Foo_add_comm      : P
+axiom Foo_add_zero      : P
+axiom Foo_zero_add      : P
+axiom Foo_add_neg       : P
+axiom Foo_mul_assoc     : P
+axiom Foo_mul_comm      : P
+axiom Foo_mul_one       : P
+axiom Foo_one_mul       : P
+axiom Foo_distrib_left  : P
+axiom Foo_distrib_right : P
+axiom Foo_mul_inv       : P
+axiom Foo_lt_trans      : P
+axiom Foo_lt_add        : P
+axiom Foo_lt_mul_pos    : P
+instance Foo : OrderedField
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InstanceDecl_AxiomsDeclaredAfterInstanceFails) {
+    // Axioms must be declared BEFORE the instance — instance checks module_env
+    // as it stands at the point of the instance declaration.
+    auto diag = run_checker("instance_axioms_after", R"(
+instance T : Ring
+axiom T_add_assoc     : P
+axiom T_add_comm      : P
+axiom T_add_zero      : P
+axiom T_zero_add      : P
+axiom T_add_neg       : P
+axiom T_mul_assoc     : P
+axiom T_mul_one       : P
+axiom T_one_mul       : P
+axiom T_distrib_left  : P
+axiom T_distrib_right : P
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
