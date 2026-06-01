@@ -44,6 +44,7 @@ enum class TokenKind {
     KwInduction,                // "induction"
     KwDecide,                   // "decide"    (tactic keyword)
     KwNormNum,                  // "norm_num"  (tactic keyword)
+    KwRing,                     // "ring"      (tactic keyword)
     // "base" and "inductive" are context-sensitive — lexed as Identifier
 
     // Punctuation
