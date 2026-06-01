@@ -287,6 +287,11 @@ infer_quantifier_rule(const ast::Prop& conc,
 
 using Rational = std::pair<long long, long long>; // numerator / denominator
 
+// Polynomial types (C2-P4). Full definitions in the polynomial section below;
+// declared here so check_step can call normalize_expr.
+using Monomial = std::map<std::string, int>;   // var → positive exponent
+using Poly     = std::map<Monomial, Rational>;  // monomial → coeff
+
 static long long gcd(long long a, long long b) {
     a = a < 0 ? -a : a; b = b < 0 ? -b : b;
     while (b) { a %= b; std::swap(a, b); }
@@ -403,6 +408,9 @@ bool check_step(const ast::Step& step,
                 kernel::Kernel& kernel,
                 diag::DiagnosticEngine& diag,
                 const CheckContext& ctx);
+
+// Forward declaration for normalize_expr (defined in C2-P4 section further below).
+static Poly normalize_expr(const ast::Expr& e);
 
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
@@ -863,6 +871,27 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by norm_num" — polynomial ring equality with variable support
+            if (s.justification.size() == 1 && s.justification[0] == "__norm_num__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel || rel->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by norm_num' only applies to equalities (e.g. x * (y + z) = x * y + x * z)"});
+                    return false;
+                }
+                auto lp = normalize_expr(*rel->lhs);
+                auto rp = normalize_expr(*rel->rhs);
+                if (lp != rp) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by norm_num': `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` is not a polynomial identity"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(s.prop);
+                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -923,6 +952,26 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 // Certified: the proposition is arithmetically true.
+                kernel.introduce_axiom(s.prop);
+                return true;
+            }
+            // "by norm_num" — polynomial ring equality with variable support
+            if (s.justification.size() == 1 && s.justification[0] == "__norm_num__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel || rel->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by norm_num' only applies to equalities"});
+                    return false;
+                }
+                auto lp = normalize_expr(*rel->lhs);
+                auto rp = normalize_expr(*rel->rhs);
+                if (lp != rp) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by norm_num': `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` is not a polynomial identity"});
+                    return false;
+                }
                 kernel.introduce_axiom(s.prop);
                 return true;
             }
@@ -1367,9 +1416,6 @@ resolve_ring_axioms(const std::string& type_name,
 // normalize(Expr) expands an expression tree into Poly form.
 // Two expressions are ring-equal iff their normal forms are identical.
 
-using Monomial = std::map<std::string, int>;   // var → positive exponent
-using Poly     = std::map<Monomial, Rational>;  // monomial → coeff
-
 // Remove zero-coefficient entries.
 static void poly_trim(Poly& p) {
     for (auto it = p.begin(); it != p.end(); ) {
@@ -1378,13 +1424,20 @@ static void poly_trim(Poly& p) {
     }
 }
 
+// Get the coefficient for a monomial, defaulting to 0/1 if absent.
+static Rational poly_get(const Poly& p, const Monomial& m) {
+    auto it = p.find(m);
+    return it != p.end() ? it->second : Rational{0, 1};
+}
+
 static Poly poly_add(Poly a, const Poly& b) {
     for (const auto& [mono, coef] : b) {
-        auto& slot = a[mono];
-        slot = make_rat(slot.first * coef.second + coef.first * slot.second,
-                        slot.second * coef.second);
+        Rational cur = poly_get(a, mono);
+        Rational sum = make_rat(cur.first * coef.second + coef.first * cur.second,
+                                cur.second * coef.second);
+        if (sum.first != 0) a[mono] = sum;
+        else a.erase(mono);
     }
-    poly_trim(a);
     return a;
 }
 
@@ -1415,12 +1468,13 @@ static Poly poly_mul(const Poly& a, const Poly& b) {
         for (const auto& [mb, cb] : b) {
             Monomial m = mono_mul(ma, mb);
             Rational prod = make_rat(ca.first * cb.first, ca.second * cb.second);
-            auto& slot = result[m];
-            slot = make_rat(slot.first * prod.second + prod.first * slot.second,
-                            slot.second * prod.second);
+            Rational cur = poly_get(result, m);
+            Rational sum = make_rat(cur.first * prod.second + prod.first * cur.second,
+                                    cur.second * prod.second);
+            if (sum.first != 0) result[m] = sum;
+            else result.erase(m);
         }
     }
-    poly_trim(result);
     return result;
 }
 
