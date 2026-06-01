@@ -187,6 +187,7 @@ Token Lexer::nextToken() {
             {"end",          TokenKind::KwEnd},
             // Module-level
             {"import",       TokenKind::KwImport},
+            {"instance",     TokenKind::KwInstance},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},
