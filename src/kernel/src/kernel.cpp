@@ -255,6 +255,43 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── ∀n:Nat,P(n) from P(0) and ∀n:Nat,P(n)→P(succ(n)) ───────────────────────
+    // NatInduction (mathematical induction on natural numbers):
+    //   Γ ⊢ P(0)
+    //   Γ ⊢ ∀n:Nat, P(n) → P(succ(n))
+    //   ─────────────────────────────────
+    //   Γ ⊢ ∀n:Nat, P(n)
+    //
+    // Verification:
+    //   conclusion must be  ∀ n : Nat, P(n).
+    //   premise[0] must be  P[n:=0]  == subst(body, var, ExprLit{0}).
+    //   premise[1] must be  ∀ n : Nat, P(n) → P(succ(n))
+    //       == ∀ n : Nat, body → subst(body, var, ExprCall{"succ", {ExprVar{var}}}).
+    case Rule::NatInduction: {
+        if (premises.size() != 2) return wrong_arity(2);
+
+        const auto* fa = std::get_if<PropForall>(&conclusion.node);
+        if (!fa)
+            return mismatch("NatInduction: conclusion must be ∀ n : Nat, P(n)");
+
+        const ast::Prop base_expected = ast::subst(*fa->body, fa->var,
+            ast::Expr{{}, ast::ExprLit{"0"}});
+        if (!(premises[0].prop() == base_expected))
+            return mismatch("NatInduction: first premise must be P[n:=0]");
+
+        // step premise: ∀ n : Nat, P(n) → P(succ(n))
+        ast::Prop p_succ_n = ast::subst(*fa->body, fa->var,
+            ast::Expr{{}, ast::ExprCall{"succ",
+                {ast::make_expr(ast::Expr{{}, ast::ExprVar{fa->var}})}}});
+        ast::Prop step_body{{}, ast::PropImpl{fa->body, ast::make_prop(p_succ_n)}};
+        ast::Prop step_expected{{},
+            ast::PropForall{fa->var, fa->type, ast::make_prop(step_body)}};
+        if (!(premises[1].prop() == step_expected))
+            return mismatch("NatInduction: second premise must be ∀ n : Nat, P(n) → P(succ(n))");
+
+        return make(conclusion);
+    }
+
     } // switch
     return std::unexpected(err(rule, "unhandled rule"));
 }

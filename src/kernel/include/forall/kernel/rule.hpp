@@ -27,8 +27,10 @@ namespace forall::kernel {
 //   FalseElim  : Γ ⊢ ⊥                                      →  Γ ⊢ P  (ex falso)
 //   ForallElim : Γ ⊢ ∀x.P,  witness t                      →  Γ ⊢ P[x:=t]
 //   ExistsIntro: Γ ⊢ P[x:=t],  witness t                   →  Γ ⊢ ∃x.P
-//   ForallIntro: Γ ⊢ P(x),  x fresh in Γ                   →  Γ ⊢ ∀x.P
-//   ExistsElim : Γ ⊢ ∃x.P,  Γ,x,P(x) ⊢ Q,  x ∉ free(Q)  →  Γ ⊢ Q
+//   ForallIntro  : Γ ⊢ P(x),  x fresh in Γ                   →  Γ ⊢ ∀x.P
+//   ExistsElim   : Γ ⊢ ∃x.P,  Γ,x,P(x) ⊢ Q,  x ∉ free(Q)  →  Γ ⊢ Q
+//   NatInduction : Γ ⊢ P(0),  Γ ⊢ ∀n:Nat, P(n)→P(succ(n))  →  Γ ⊢ ∀n:Nat, P(n)
+//   (The "n" in the conclusion must match the binder variable of the ∀.)
 enum class Rule {
     Axiom,
     Assumption,
@@ -41,6 +43,7 @@ enum class Rule {
     ExistsIntro,
     ForallIntro,
     ExistsElim,
+    NatInduction,
 };
 
 } // namespace forall::kernel
