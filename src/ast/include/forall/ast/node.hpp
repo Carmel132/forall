@@ -322,7 +322,7 @@ struct ProofBlock {
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import };
+enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance };
 
 // A single named parameter of a definition, e.g. (x : Nat).
 struct Param {
@@ -333,11 +333,12 @@ struct Param {
 
 struct Decl {
     DeclKind                  kind;
-    std::string               name;       // for Import: the file path (quotes stripped)
+    std::string               name;           // for Import: file path; for Instance: type name
     diag::SourceLocation      loc;
-    Prop                      statement;  // for Import: dummy PropFalse{}
-    std::optional<ProofBlock> proof;      // absent for Axiom / Import
-    std::vector<Param>        params;     // definition parameters; empty for others
+    Prop                      statement;      // for Import/Instance: dummy PropFalse{}
+    std::optional<ProofBlock> proof;          // absent for Axiom / Import / Instance
+    std::vector<Param>        params;         // definition parameters; empty for others
+    std::string               instance_class; // for Instance: the class name (e.g. "Ring")
 };
 
 using DeclPtr = std::unique_ptr<Decl>;
