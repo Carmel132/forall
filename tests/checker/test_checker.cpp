@@ -2098,3 +2098,77 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── RL2: anonymous steps (have _ : P by ...) ─────────────────────────────────
+
+TEST(CheckerTest, AnonymousStep_Basic) {
+    // "have _ : P by ax" — underscore name; result stored internally
+    auto diag = run_checker("anon_step_basic", R"(
+axiom ax : P
+theorem t : P
+proof
+  have _ : P by ax
+  then P by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AnonymousStep_UsedForAutoDischarge) {
+    // Anonymous step's derived prop is findable by auto-discharge (find_derived)
+    auto diag = run_checker("anon_step_auto_discharge", R"(
+axiom ax : P -> Q
+theorem t : P -> Q
+proof
+  suppose h : P
+  have _ : Q by ax and h
+  then P -> Q
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── RL5: optional cases result label ─────────────────────────────────────────
+
+TEST(CheckerTest, CasesOptionalLabel_Valid) {
+    // "cases h" without a result label — checker auto-generates a name
+    auto diag = run_checker("cases_no_label", R"(
+axiom ax_pq : P or Q
+axiom ax_p  : P -> R
+axiom ax_q  : Q -> R
+theorem t : R
+proof
+  cases ax_pq
+    case lp : P =>
+      have r1 : R by ax_p and lp
+      then R by r1
+    case lq : Q =>
+      have r2 : R by ax_q and lq
+      then R by r2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, CasesLabeledStillWorks) {
+    // Old labelled form "cases result : h" with done terminators + follow-up step
+    auto diag = run_checker("cases_with_label", R"(
+axiom ax_pq : P or Q
+axiom ax_p  : P -> R
+axiom ax_q  : Q -> R
+theorem t : R
+proof
+  cases result : ax_pq
+    case lp : P =>
+      have r1 : R by ax_p and lp
+      then R by r1
+    done
+    case lq : Q =>
+      have r2 : R by ax_q and lq
+      then R by r2
+    done
+  then R by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
