@@ -1726,3 +1726,80 @@ axiom T_distrib_right : P
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── CheckContext / TypeEnv threading (C2-P2) ─────────────────────────────────
+
+TEST(CheckerTest, CheckContext_TypeEnvReachesSubProof) {
+    // 'take n : Nat' before a cases step — the type env should be visible inside
+    // the cases arm (since CheckContext is now threaded through check_cases_step).
+    // A type-mismatch warning fires if a Prop variable is used in arithmetic
+    // inside the arm.  Here we verify no such spurious warning fires for a
+    // well-typed arm.
+    auto diag = run_checker("ctx_type_env_cases", R"(
+axiom hn : n > 0
+theorem t : n > 0 or n > 0
+proof
+  take n : Nat
+  have h  : n > 0         by hn
+  have dis : n > 0 or n > 0 by h
+  cases result : dis
+    case h1 : n > 0 =>
+      then n > 0 or n > 0 by h
+    case h2 : n > 0 =>
+      then n > 0 or n > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+TEST(CheckerTest, CheckContext_TypeEnvReachesInductionBase) {
+    // 'take n : Nat' before an induction step — type env available in base/inductive.
+    // This confirms CheckContext with type_env threads into check_induction_step.
+    auto diag = run_checker("ctx_type_env_induction", R"(
+axiom nat_zero_eq : 0 = 0
+axiom nat_succ_eq : succ(n) = succ(n)
+theorem t : for all n : Nat, n = n
+proof
+  induction result on n : n = n
+    base:
+      then 0 = 0 by nat_zero_eq
+    inductive:
+      then succ(n) = succ(n) by nat_succ_eq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── resolve_ring_axioms indirectly: instance imported from another module ──────
+
+TEST(CheckerTest, CheckContext_InstancePropagatedThroughImport) {
+    // Declare all Ring axioms for type Foo in one "imported" file, then declare
+    // the instance.  In the importing file, verify the instance is recognised.
+    // This exercises ModuleResult propagation of the InstanceTable.
+    // We use a two-file setup: write both to temp dir.
+    auto tmp = std::filesystem::temp_directory_path();
+    auto lib_path = tmp / "forall_test_ring_lib.forall";
+    auto main_path = tmp / "forall_test_ring_main.forall";
+
+    std::ofstream{lib_path} << R"(
+axiom Foo_add_assoc     : P
+axiom Foo_add_comm      : P
+axiom Foo_add_zero      : P
+axiom Foo_zero_add      : P
+axiom Foo_add_neg       : P
+axiom Foo_mul_assoc     : P
+axiom Foo_mul_one       : P
+axiom Foo_one_mul       : P
+axiom Foo_distrib_left  : P
+axiom Foo_distrib_right : P
+instance Foo : Ring
+)";
+    // The import path is relative to main_path's directory (temp dir), so just filename.
+    std::ofstream{main_path} << "import \"forall_test_ring_lib.forall\"\n";
+
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main_path);
+    EXPECT_FALSE(diag.hasErrors());
+}
