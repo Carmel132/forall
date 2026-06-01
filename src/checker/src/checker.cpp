@@ -81,13 +81,23 @@ public:
     }
 
     // Calls f(name, entry) for every Assumption-kind entry across all frames.
-    // Used for the ∀-intro freshness check.
+    // Used for the ∀-intro freshness check and auto-discharge.
     template<typename F>
     void for_each_assumption(F&& f) const {
         for (const auto& frame : frames_)
             for (const auto& [name, entry] : frame)
                 if (entry.kind == EntryKind::Assumption)
                     f(name, entry);
+    }
+
+    // Find the innermost Derived entry whose proposition equals p.
+    // Returns nullptr if none exists. Used by auto-discharge (RL1).
+    [[nodiscard]] const HypEntry* find_derived(const ast::Prop& p) const {
+        for (auto it = frames_.rbegin(); it != frames_.rend(); ++it)
+            for (const auto& [n, e] : *it)
+                if (e.kind == EntryKind::Derived && e.judgment.prop() == p)
+                    return &e;
+        return nullptr;
     }
 };
 
@@ -945,7 +955,72 @@ bool check_step(const ast::Step& step,
 
         // then <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::ThenStep>) {
+            // RL1: auto-discharge — allow bare "then P → Q" or "then ¬P" with no
+            // justification by finding the most-recent matching Assumption in scope.
             if (s.justification.empty()) {
+                // Try ImplIntro: conclusion is A → B — look for assume[A], derive[B]
+                if (const auto* im = std::get_if<ast::PropImpl>(&s.prop.node)) {
+                    const HypEntry* assump = nullptr;
+                    env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                        if (e.judgment.prop() == *im->lhs) assump = &e;
+                    });
+                    if (!assump) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge: no assumption '" +
+                                   forall::pretty::to_string(*im->lhs) +
+                                   "' found in scope; use 'by <refs>' to discharge manually"});
+                        return false;
+                    }
+                    const HypEntry* conseq = env.find_derived(*im->rhs);
+                    if (!conseq) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge: could not find a derived proof of '" +
+                                   forall::pretty::to_string(*im->rhs) +
+                                   "' in scope; use 'by <refs>' to discharge manually"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::ImplIntro,
+                                          std::span<const kernel::Judgment>{&conseq->judgment, 1},
+                                          s.prop);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge (ImplIntro) failed: " + r.error().message});
+                        return false;
+                    }
+                    return true;
+                }
+                // Try NotIntro: conclusion is ¬A — look for assume[A], derive[⊥]
+                if (const auto* neg = std::get_if<ast::PropNot>(&s.prop.node)) {
+                    const HypEntry* assump = nullptr;
+                    env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                        if (e.judgment.prop() == *neg->inner) assump = &e;
+                    });
+                    if (!assump) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge: no assumption '" +
+                                   forall::pretty::to_string(*neg->inner) +
+                                   "' found in scope; use 'by <refs>' to discharge manually"});
+                        return false;
+                    }
+                    ast::Prop false_prop{step.loc, ast::PropFalse{}};
+                    const HypEntry* bot = env.find_derived(false_prop);
+                    if (!bot) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge: could not find a proof of 'false' in scope; "
+                                   "use 'by <refs>' to discharge manually"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::NotIntro,
+                                          std::span<const kernel::Judgment>{&bot->judgment, 1},
+                                          s.prop);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "auto-discharge (NotIntro) failed: " + r.error().message});
+                        return false;
+                    }
+                    return true;
+                }
+                // No auto-discharge pattern matched
                 diag.emit({diag::Severity::Error, step.loc,
                            "'then' step requires a 'by' justification"});
                 return false;
