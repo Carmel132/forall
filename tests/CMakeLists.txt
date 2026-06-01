@@ -4,6 +4,7 @@ add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(checker)
 add_subdirectory(pretty)
+add_subdirectory(formatter)
 
 # End-to-end tests: run the forall binary on the bundled examples and expect
 # clean output (exit 0, zero diagnostics).
