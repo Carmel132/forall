@@ -16,9 +16,10 @@ add_subdirectory(pretty)
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(checker)
+add_subdirectory(formatter)
 
 add_executable(forall main.cpp)
-target_link_libraries(forall PRIVATE forall::checker)
+target_link_libraries(forall PRIVATE forall::checker forall::formatter forall::parser forall::lexer)
 set_target_properties(forall PROPERTIES OUTPUT_NAME "forall")
 
 install(TARGETS forall RUNTIME DESTINATION bin)
