@@ -26,6 +26,7 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseDefinition();
     [[nodiscard]] std::optional<ast::DeclPtr> parseTheorem(ast::DeclKind kind);
     [[nodiscard]] std::optional<ast::DeclPtr> parseImport();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseInstance();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();

@@ -1233,6 +1233,36 @@ std::optional<ast::DeclPtr> Parser::parseImport() {
                                        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
 }
 
+// instance <TypeName> : <ClassName>
+// e.g.  instance Real : Field
+std::optional<ast::DeclPtr> Parser::parseInstance() {
+    const auto loc = peek().loc;
+    advance(); // consume "instance"
+
+    if (!check(lexer::TokenKind::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc, "expected type name after 'instance'"});
+        return std::nullopt;
+    }
+    std::string type_name = peek().lexeme;
+    advance();
+
+    if (!expect(lexer::TokenKind::Colon, "expected ':' after type name in instance declaration"))
+        return std::nullopt;
+
+    if (!check(lexer::TokenKind::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc, "expected class name after ':' in instance declaration"});
+        return std::nullopt;
+    }
+    std::string class_name = peek().lexeme;
+    advance();
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::Instance, type_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->instance_class = std::move(class_name);
+    return decl;
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
     if (check(K::KwAxiom))      return parseAxiom();
@@ -1240,9 +1270,10 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     if (check(K::KwTheorem))    return parseTheorem(ast::DeclKind::Theorem);
     if (check(K::KwLemma))      return parseTheorem(ast::DeclKind::Lemma);
     if (check(K::KwImport))     return parseImport();
+    if (check(K::KwInstance))   return parseInstance();
 
     diag_.emit({diag::Severity::Error, peek().loc,
-                "expected 'axiom', 'definition', 'theorem', or 'lemma'; got '"
+                "expected 'axiom', 'definition', 'theorem', 'lemma', or 'instance'; got '"
                 + peek().lexeme + "'"});
     advance();
     return std::nullopt;
@@ -1252,7 +1283,8 @@ void Parser::syncToDeclaration() {
     using K = lexer::TokenKind;
     while (!isAtEnd()
            && !check(K::KwAxiom) && !check(K::KwDefinition)
-           && !check(K::KwTheorem) && !check(K::KwLemma) && !check(K::KwImport)) {
+           && !check(K::KwTheorem) && !check(K::KwLemma)
+           && !check(K::KwImport) && !check(K::KwInstance)) {
         advance();
     }
 }
