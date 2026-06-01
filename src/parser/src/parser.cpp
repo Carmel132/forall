@@ -1027,6 +1027,78 @@ ast::Step Parser::parseCasesStep() {
     return {loc, ast::CasesStep{std::move(name), std::move(disjunct_ref), std::move(arms)}};
 }
 
+// induction <result_name> on <var>
+//   base:
+//     <base_steps...>
+//   inductive:
+//     <inductive_steps...>
+//
+// Sub-blocks terminate at `base` / `inductive` / `end` / `qed` / EOF.
+// The induction step may appear anywhere in a proof (does not need to be last).
+ast::Step Parser::parseInductionStep() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "induction"
+
+    std::string name;
+    if (check(K::Identifier))
+        name = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected result name after 'induction'"});
+
+    expect(K::KwOn, "expected 'on' after induction result name");
+
+    std::string var;
+    if (check(K::Identifier))
+        var = advance().lexeme;
+    else
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected variable name after 'induction <name> on'"});
+
+    expect(K::Colon, "expected ':' after induction variable to introduce predicate P(n)");
+    auto body = parseProp();
+
+    // "base" and "inductive" are lexed as identifiers (context-sensitive).
+    auto is_ident = [&](std::string_view s) {
+        return check(K::Identifier) && peek().lexeme == s;
+    };
+
+    // Helper: is the current token a block terminator for induction sub-blocks?
+    auto is_block_end = [&]() {
+        return isAtEnd()
+            || is_ident("base") || is_ident("inductive")
+            || check(K::KwEnd);
+    };
+
+    // base: block
+    if (!is_ident("base")) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected 'base:' after induction header"});
+    } else {
+        advance(); // consume "base"
+    }
+    expect(K::Colon, "expected ':' after 'base'");
+    std::vector<std::unique_ptr<ast::Step>> base_steps;
+    while (!is_block_end())
+        base_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+
+    // inductive: block
+    if (!is_ident("inductive")) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected 'inductive:' after base block"});
+    } else {
+        advance(); // consume "inductive"
+    }
+    expect(K::Colon, "expected ':' after 'inductive'");
+    std::vector<std::unique_ptr<ast::Step>> ind_steps;
+    while (!is_block_end())
+        ind_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+
+    return {loc, ast::InductionStep{std::move(name), std::move(var), std::move(body),
+                                    std::move(base_steps), std::move(ind_steps)}};
+}
+
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
     if (check(K::KwLet))          return parseLetStep();
@@ -1041,6 +1113,7 @@ ast::Step Parser::parseStep() {
     if (check(K::KwThen))         return parseThenStep();
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
+    if (check(K::KwInduction))    return parseInductionStep();
 
     const auto loc = peek().loc;
     diag_.emit({diag::Severity::Error, loc,
