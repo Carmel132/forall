@@ -99,22 +99,29 @@ obtain_step = "obtain" , identifier , "from" , ref ,
               "case" , identifier , [ ":" , type ] , "," ,
               identifier , ":" , prop , "=>" , { step } , [ "done" ] ;
 
-(* "assume" and "suppose" are interchangeable. *)
+(* "assume" and "suppose" are interchangeable.                            *)
+(* "for contradiction" may use ":" or "that" as separator.               *)
 suppose_step = ( "suppose" | "assume" ) ,
-               [ "for" , "contradiction" , ":" ] ,
+               [ "for" , "contradiction" , ( ":" | "that" ) ] ,
                [ identifier , ":" ] , prop ;
 
 (* "we have" is an alias for "have". "at expr" provides a witness for     *)
 (* ForallElim (hypothesis is ∀x.P) or ExistsIntro (conclusion is ∃x.P). *)
+(* "from" is an alias for "by" in the justification clause.              *)
 have_step   = ( "have" | "we" , "have" ) ,
-              identifier , ":" , prop , "by" , justification , [ "at" , expr ] ;
+              identifier , ":" , prop , ( "by" | "from" ) , justification ,
+              [ "at" , expr ] ;
 
-(* "therefore" and "thus" are aliases for "then". *)
+(* "therefore" and "thus" are aliases for "then".                         *)
+(* Omitting the "by" clause auto-discharges the most-recent matching      *)
+(* Assumption when the conclusion is an implication (P → Q) or negation  *)
+(* (¬P): ImplIntro or NotIntro is applied automatically.                  *)
 then_step   = ( "then" | "therefore" | "thus" ) , prop ,
-              [ "by" , justification , [ "at" , expr ] ] ;
+              [ ( "by" | "from" ) , justification , [ "at" , expr ] ] ;
 
 (* Contradiction names the two contradictory hypotheses; it derives ⊥.   *)
-contradiction_step = "contradiction" , ":" , justification ;
+(* "from" is an alias for ":" as the separator.                          *)
+contradiction_step = "contradiction" , ( ":" | "from" ) , justification ;
 
 (* Case analysis on a disjunctive hypothesis.  Each arm names and binds   *)
 (* the case hypothesis, then provides sub-steps concluding the same goal. *)
