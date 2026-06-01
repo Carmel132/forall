@@ -739,9 +739,11 @@ ast::Prop Parser::parseAtomicProp() {
 // justification = ref { ("and" | "with") ref }
 //               | "decide"
 //               | "norm_num"
+//               | "ring"
 //
 // "by decide"   — evaluates closed arithmetic; sentinel "__decide__"
 // "by norm_num" — polynomial ring equality; sentinel "__norm_num__"
+// "by ring"     — polynomial identity over commutative ring; sentinel "__ring__"
 std::vector<std::string> Parser::parseJustification() {
     std::vector<std::string> refs;
     if (check(lexer::TokenKind::KwDecide)) {
@@ -752,6 +754,11 @@ std::vector<std::string> Parser::parseJustification() {
     if (check(lexer::TokenKind::KwNormNum)) {
         advance();
         refs.push_back("__norm_num__");
+        return refs;
+    }
+    if (check(lexer::TokenKind::KwRing)) {
+        advance();
+        refs.push_back("__ring__");
         return refs;
     }
     if (!check(lexer::TokenKind::Identifier)) return refs;
