@@ -892,6 +892,27 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by ring" — polynomial identity over commutative ring (same normalization as norm_num)
+            if (s.justification.size() == 1 && s.justification[0] == "__ring__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel || rel->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by ring' only applies to equalities (e.g. (a + b)^2 = a^2 + 2*a*b + b^2)"});
+                    return false;
+                }
+                auto lp = normalize_expr(*rel->lhs);
+                auto rp = normalize_expr(*rel->rhs);
+                if (lp != rp) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by ring': `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` does not hold as a ring identity"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(s.prop);
+                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -970,6 +991,26 @@ bool check_step(const ast::Step& step,
                                "'by norm_num': `"
                                + forall::pretty::to_string(s.prop)
                                + "` is not a polynomial identity"});
+                    return false;
+                }
+                kernel.introduce_axiom(s.prop);
+                return true;
+            }
+            // "by ring" — polynomial identity over commutative ring
+            if (s.justification.size() == 1 && s.justification[0] == "__ring__") {
+                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!rel || rel->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by ring' only applies to equalities"});
+                    return false;
+                }
+                auto lp = normalize_expr(*rel->lhs);
+                auto rp = normalize_expr(*rel->rhs);
+                if (lp != rp) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by ring': `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` does not hold as a ring identity"});
                     return false;
                 }
                 kernel.introduce_axiom(s.prop);
