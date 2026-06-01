@@ -929,7 +929,11 @@ ast::Step Parser::parseSupposeStep() {
         advance();
         if (!expect(lexer::TokenKind::KwContradiction, "expected 'contradiction' after 'for'"))
             return {loc, ast::SupposeStep{}};
-        expect(lexer::TokenKind::Colon, "expected ':' after 'contradiction'");
+        // Accept ":" or "that" (English: "suppose for contradiction that P")
+        if (check(lexer::TokenKind::Identifier) && peek().lexeme == "that")
+            advance();
+        else
+            expect(lexer::TokenKind::Colon, "expected ':' or 'that' after 'contradiction'");
         for_contradiction = true;
     }
 
@@ -959,7 +963,11 @@ ast::Step Parser::parseHaveStep() {
 
     expect(lexer::TokenKind::Colon, "expected ':' after hypothesis name");
     auto prop = parseProp();
-    expect(lexer::TokenKind::KwBy, "expected 'by' after proposition");
+    // Accept "from" as a natural alias for "by": "have h : P from premise"
+    if (check(lexer::TokenKind::KwFrom))
+        advance();
+    else
+        expect(lexer::TokenKind::KwBy, "expected 'by' or 'from' after proposition");
     auto refs = parseJustification();
     std::optional<ast::ExprPtr> witness;
     if (check(lexer::TokenKind::KwAt)) {
@@ -987,11 +995,14 @@ ast::Step Parser::parseThenStep() {
     return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::move(witness)}};
 }
 
-// contradiction : <justification>
+// contradiction (":" | "from") <justification>
 ast::Step Parser::parseContradictionStep() {
     const auto loc = peek().loc;
     advance(); // consume "contradiction"
-    expect(lexer::TokenKind::Colon, "expected ':' after 'contradiction'");
+    if (check(lexer::TokenKind::KwFrom))
+        advance(); // accept "from" as natural alias for ":"
+    else
+        expect(lexer::TokenKind::Colon, "expected ':' or 'from' after 'contradiction'");
     auto refs = parseJustification();
     return {loc, ast::ContradictionStep{std::move(refs)}};
 }
