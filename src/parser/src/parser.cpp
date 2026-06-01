@@ -737,8 +737,17 @@ ast::Prop Parser::parseAtomicProp() {
 // ── Proof step parsing ─────────────────────────────────────────────────────────
 
 // justification = ref { ("and" | "with") ref }
+//               | "decide"
+//
+// "by decide" is a tactic: the checker evaluates the proposition numerically.
+// Represented as the single sentinel ref "__decide__" so no new AST field is needed.
 std::vector<std::string> Parser::parseJustification() {
     std::vector<std::string> refs;
+    if (check(lexer::TokenKind::KwDecide)) {
+        advance();
+        refs.push_back("__decide__");
+        return refs;
+    }
     if (!check(lexer::TokenKind::Identifier)) return refs;
     refs.push_back(std::string{advance().lexeme});
     while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
