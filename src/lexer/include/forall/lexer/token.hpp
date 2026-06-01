@@ -42,7 +42,8 @@ enum class TokenKind {
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,
     KwInduction,                // "induction"
-    KwDecide,                   // "decide"  (tactic keyword)
+    KwDecide,                   // "decide"    (tactic keyword)
+    KwNormNum,                  // "norm_num"  (tactic keyword)
     // "base" and "inductive" are context-sensitive — lexed as Identifier
 
     // Punctuation
