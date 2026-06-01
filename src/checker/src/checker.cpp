@@ -5,6 +5,7 @@
 #include <forall/pretty/to_string.hpp>
 
 #include <array>
+#include <atomic>
 #include <fstream>
 #include <map>
 #include <optional>
@@ -100,6 +101,15 @@ public:
         return nullptr;
     }
 };
+
+// ── fresh name generator ───────────────────────────────────────────────────────
+// Returns a unique internal name for anonymous steps (have _ : ...) and
+// unlabelled cases blocks (cases <ref>).  Names begin with "__" so they can
+// never conflict with user identifiers.
+static std::string fresh_name() {
+    static std::atomic<unsigned> counter{0};
+    return "__anon_" + std::to_string(++counter) + "__";
+}
 
 // ── resolve_refs ───────────────────────────────────────────────────────────────
 
@@ -552,7 +562,9 @@ bool check_cases_step(const ast::CasesStep& s,
                    "OrElim failed: " + result.error().message});
         return false;
     }
-    env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
+    // RL5: if the user omitted the result label, generate a fresh internal name.
+    const std::string result_name = s.name.empty() ? fresh_name() : s.name;
+    env.insert_or_assign(result_name, HypEntry{std::move(*result), EntryKind::Derived});
     return true;
 }
 
@@ -854,7 +866,9 @@ bool check_step(const ast::Step& step,
         }
 
         // have <name> : <prop> by <refs> [at <expr>]
+        // RL2: name may be "_" for an anonymous step — assign a fresh internal name.
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
+            const std::string step_name = (s.name == "_") ? fresh_name() : s.name;
             // "by decide" — evaluate numerically; no refs needed
             if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
                 const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
@@ -878,7 +892,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 auto r = kernel.introduce_axiom(s.prop);
-                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             // "by norm_num" — polynomial ring equality with variable support
@@ -899,7 +913,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 auto r = kernel.introduce_axiom(s.prop);
-                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             // "by ring" — polynomial identity over commutative ring (same normalization as norm_num)
@@ -920,7 +934,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 auto r = kernel.introduce_axiom(s.prop);
-                env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
@@ -946,10 +960,10 @@ bool check_step(const ast::Step& step,
             auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
-                           "kernel rejected '" + s.name + "': " + r.error().message});
+                           "kernel rejected '" + step_name + "': " + r.error().message});
                 return false;
             }
-            env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Derived});
+            env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
             return true;
         }
 
