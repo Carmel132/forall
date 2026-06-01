@@ -524,6 +524,136 @@ bool check_obtain_step(const ast::ObtainStep& s,
     return true;
 }
 
+// ── check_induction_step ──────────────────────────────────────────────────────
+//
+// Implements NatInduction.
+// Syntax:
+//   induction <name> on <var>
+//     base:       <base_steps...>        -- must conclude P[var:=0]
+//     inductive:  <inductive_steps...>   -- must conclude P[var:=succ(var)]
+//                                           with ih : P(var) in scope
+//
+// Checker responsibilities:
+//   1. There must be no ∀ quantifier to invent — the conclusion is inferred
+//      from what the base block proves: ∀ var : Nat, P(var).
+//   2. Base block: run in the current env; the last ThenStep concludes P(0)
+//      = subst(P, var, 0).  From that, conclude ∀ var : Nat, P(var) is the
+//      induction goal and P(var) == body.
+//   3. Inductive block: inject ih : P(var) as Assumption; run; last ThenStep
+//      must conclude P(succ(var)) = subst(P, var, succ(var)).
+//   4. Apply NatInduction with premises [P(0), ∀ var, P(var) → P(succ(var))].
+//   5. Store result under s.name.
+bool check_induction_step(const ast::InductionStep& s,
+                          const diag::SourceLocation& loc,
+                          ScopeStack& env,
+                          kernel::Kernel& kernel,
+                          diag::DiagnosticEngine& diag)
+{
+    // ── Base block ────────────────────────────────────────────────────────────
+    ScopeStack base_env = env;
+    bool base_error = false;
+    const ast::Step* base_last_then = nullptr;
+
+    for (const auto& uptr : s.base_steps) {
+        const auto snap = diag.save();
+        check_step(*uptr, base_env, kernel, diag);
+        const auto& all = diag.diagnostics();
+        for (auto i = snap.size; i < all.size(); ++i)
+            if (all[i].severity == diag::Severity::Error) { base_error = true; break; }
+        if (std::get_if<ast::ThenStep>(&uptr->node))
+            base_last_then = uptr.get();
+    }
+
+    if (base_error || !base_last_then) {
+        if (!base_error)
+            diag.emit({diag::Severity::Error, loc,
+                       "induction 'base' block must end with a 'then' step"});
+        return false;
+    }
+
+    const ast::Prop& base_conc = std::get<ast::ThenStep>(base_last_then->node).prop;
+
+    // s.body is P(var) — the inductive predicate stated explicitly by the user.
+    // Verify base concludes P(0) and inductive concludes P(succ(var)).
+    const ast::Prop& ih_prop = s.body;
+    const ast::Expr succ_var{{}, ast::ExprCall{"succ",
+        {ast::make_expr(ast::Expr{{}, ast::ExprVar{s.var}})}}};
+    const ast::Prop base_expected = ast::subst(ih_prop, s.var,
+        ast::Expr{{}, ast::ExprLit{"0"}});
+    const ast::Prop ind_expected  = ast::subst(ih_prop, s.var, succ_var);
+
+    if (!(base_conc == base_expected)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "induction 'base' block must conclude `"
+                   + forall::pretty::to_string(base_expected)
+                   + "` (P[" + s.var + ":=0]), but got `"
+                   + forall::pretty::to_string(base_conc) + "`"});
+        return false;
+    }
+
+    // ── Inductive block ───────────────────────────────────────────────────────
+    ScopeStack ind_env = env;
+    ind_env.push();
+    auto ih_j = kernel.introduce_axiom(ih_prop);
+    ind_env.insert_or_assign("ih", HypEntry{std::move(*ih_j), EntryKind::Assumption});
+
+    bool ind_error = false;
+    const ast::Step* ind_last_then = nullptr;
+
+    for (const auto& uptr : s.inductive_steps) {
+        const auto snap = diag.save();
+        check_step(*uptr, ind_env, kernel, diag);
+        const auto& all = diag.diagnostics();
+        for (auto i = snap.size; i < all.size(); ++i)
+            if (all[i].severity == diag::Severity::Error) { ind_error = true; break; }
+        if (std::get_if<ast::ThenStep>(&uptr->node))
+            ind_last_then = uptr.get();
+    }
+
+    if (ind_error || !ind_last_then) {
+        if (!ind_error)
+            diag.emit({diag::Severity::Error, loc,
+                       "induction 'inductive' block must end with a 'then' step"});
+        return false;
+    }
+
+    const ast::Prop& ind_conc = std::get<ast::ThenStep>(ind_last_then->node).prop;
+
+    if (!(ind_conc == ind_expected)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "induction 'inductive' block must conclude `"
+                   + forall::pretty::to_string(ind_expected)
+                   + "` (P[" + s.var + ":=succ(" + s.var + ")]), but got `"
+                   + forall::pretty::to_string(ind_conc) + "`"});
+        return false;
+    }
+
+    // ── Build kernel premises ─────────────────────────────────────────────────
+    // conclusion: ∀ var : Nat, ih_prop
+    ast::TypeNode nat_type{{ast::TypeNat{}}};
+    ast::Prop conclusion{{}, ast::PropForall{s.var,
+        std::make_optional(nat_type), ast::make_prop(ih_prop)}};
+
+    // premise[0]: ih_prop with var=0, certified as a judgment
+    const kernel::Judgment base_j = *kernel.introduce_axiom(base_conc);
+
+    // premise[1]: ∀ var : Nat, ih_prop → ind_conc (= P(n) → P(succ(n)))
+    ast::Prop step_body{{}, ast::PropImpl{ast::make_prop(ih_prop), ast::make_prop(ind_conc)}};
+    ast::Prop step_prop{{}, ast::PropForall{s.var,
+        std::make_optional(nat_type), ast::make_prop(step_body)}};
+    const kernel::Judgment step_j = *kernel.introduce_axiom(step_prop);
+
+    const std::array<kernel::Judgment, 2> prem = {base_j, step_j};
+    auto result = kernel.apply(kernel::Rule::NatInduction, std::span{prem}, conclusion);
+    if (!result) {
+        diag.emit({diag::Severity::Error, loc,
+                   "NatInduction kernel check failed: " + result.error().message});
+        return false;
+    }
+    env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
+    return true;
+}
+
 // ── check_step ─────────────────────────────────────────────────────────────────
 
 bool check_step(const ast::Step& step,
@@ -671,6 +801,11 @@ bool check_step(const ast::Step& step,
             return check_obtain_step(s, step.loc, env, kernel, diag);
         }
 
+        // induction <name> on <var>  base: ...  inductive: ...
+        else if constexpr (std::is_same_v<T, ast::InductionStep>) {
+            return check_induction_step(s, step.loc, env, kernel, diag);
+        }
+
         return true;
     }, step.node);
 }
@@ -813,8 +948,8 @@ void check_proof(const ast::Decl& decl,
     ScopeStack  env{module_env};
     ast::TypeEnv type_env; // types from typed 'take x : T' steps
 
-    // Track the last concluding step — ThenStep, CasesStep, or ObtainStep.
-    enum class LastKind { None, Then, Cases, Obtain };
+    // Track the last concluding step — ThenStep, CasesStep, ObtainStep, or InductionStep.
+    enum class LastKind { None, Then, Cases, Obtain, Induction };
     const ast::Step* last_concluding = nullptr;
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
@@ -855,6 +990,10 @@ void check_proof(const ast::Decl& decl,
             last_concluding = &step;
             last_kind       = LastKind::Obtain;
         }
+        if (std::get_if<ast::InductionStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Induction;
+        }
     }
 
     // Only validate the conclusion when all steps passed; cascading errors on
@@ -875,9 +1014,15 @@ void check_proof(const ast::Decl& decl,
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
-        } else { // Obtain
+        } else if (last_kind == LastKind::Obtain) {
             const auto& os = std::get<ast::ObtainStep>(last_concluding->node);
             const auto* it = env.find(os.name);
+            if (it && !(it->judgment.prop() == decl.statement))
+                diag.emit({diag::Severity::Error, last_concluding->loc,
+                           "proof concludes with wrong proposition"});
+        } else { // Induction
+            const auto& is = std::get<ast::InductionStep>(last_concluding->node);
+            const auto* it = env.find(is.name);
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
