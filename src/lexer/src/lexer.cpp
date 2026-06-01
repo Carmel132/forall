@@ -240,6 +240,10 @@ Token Lexer::nextToken() {
             {"case",         TokenKind::KwCase},
             {"cases",        TokenKind::KwCases},
             {"on",           TokenKind::KwOn},
+            {"induction",    TokenKind::KwInduction},
+            // "base" and "inductive" are context-sensitive: parsed by the
+            // parser as identifiers with specific lexeme values so they remain
+            // usable as ordinary names outside induction blocks.
         };
         for (const auto& [kw, kind] : keywords)
             if (word == kw) return make(kind);

@@ -41,6 +41,8 @@ enum class TokenKind {
 
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,
+    KwInduction,                // "induction"
+    // "base" and "inductive" are context-sensitive — lexed as Identifier
 
     // Punctuation
     Colon, ColonColon,          // :  ::
