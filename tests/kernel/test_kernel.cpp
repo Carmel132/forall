@@ -366,3 +366,95 @@ TEST(KernelTest, ExistsElim_WrongArity) {
     auto r = k.apply(kernel::Rule::ExistsElim, prem, atom("Q"));
     EXPECT_FALSE(r.has_value());
 }
+
+// ── NatInduction ──────────────────────────────────────────────────────────────
+// Helper: ExprCall for succ(var)
+static Expr esucc(std::string var) {
+    return {diag::SourceLocation{},
+            ExprCall{"succ", {make_expr(evar(std::move(var)))}}};
+}
+// Helper: ∀ var : Nat, body
+static Prop prop_forall_nat(std::string var, Prop body) {
+    TypeNode nat{{TypeNat{}}};
+    return {diag::SourceLocation{},
+            PropForall{std::move(var), std::make_optional(nat),
+                       make_prop(std::move(body))}};
+}
+
+TEST(KernelTest, NatInduction_Valid) {
+    // Prove ∀ n : Nat, P(n)  given P(0) and ∀ n : Nat, P(n) → P(succ(n))
+    // where P(n) = n = n  (a trivially true atomic relation for testing)
+    kernel::Kernel k;
+
+    // body: n = n
+    Prop body        = prop_rel(evar("n"), RelOp::Eq, evar("n"));
+    // base: 0 = 0
+    Prop base        = subst(body, "n", elit("0"));
+    // step: ∀ n : Nat, (n = n) → (succ(n) = succ(n))
+    Prop step_body   = prop_impl(body, subst(body, "n", esucc("n")));
+    Prop step_prop   = prop_forall_nat("n", step_body);
+    // conclusion: ∀ n : Nat, n = n
+    Prop conclusion  = prop_forall_nat("n", body);
+
+    auto j_base = k.introduce_axiom(base); ASSERT_TRUE(j_base);
+    auto j_step = k.introduce_axiom(step_prop); ASSERT_TRUE(j_step);
+    std::vector<kernel::Judgment> prem{*j_base, *j_step};
+    auto r = k.apply(kernel::Rule::NatInduction, prem, conclusion);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(std::get_if<PropForall>(&r->prop().node));
+}
+
+TEST(KernelTest, NatInduction_WrongBase) {
+    // base case has wrong proposition — should fail
+    kernel::Kernel k;
+    Prop body       = prop_rel(evar("n"), RelOp::Eq, evar("n"));
+    Prop wrong_base = atom("WrongBase");
+    Prop step_body  = prop_impl(body, subst(body, "n", esucc("n")));
+    Prop step_prop  = prop_forall_nat("n", step_body);
+    Prop conclusion = prop_forall_nat("n", body);
+
+    auto j_base = k.introduce_axiom(wrong_base); ASSERT_TRUE(j_base);
+    auto j_step = k.introduce_axiom(step_prop);  ASSERT_TRUE(j_step);
+    std::vector<kernel::Judgment> prem{*j_base, *j_step};
+    auto r = k.apply(kernel::Rule::NatInduction, prem, conclusion);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, NatInduction_WrongStep) {
+    // step proposition doesn't match ∀ n, P(n) → P(succ(n)) — should fail
+    kernel::Kernel k;
+    Prop body       = prop_rel(evar("n"), RelOp::Eq, evar("n"));
+    Prop base       = subst(body, "n", elit("0"));
+    Prop wrong_step = atom("WrongStep");
+    Prop conclusion = prop_forall_nat("n", body);
+
+    auto j_base = k.introduce_axiom(base);       ASSERT_TRUE(j_base);
+    auto j_step = k.introduce_axiom(wrong_step); ASSERT_TRUE(j_step);
+    std::vector<kernel::Judgment> prem{*j_base, *j_step};
+    auto r = k.apply(kernel::Rule::NatInduction, prem, conclusion);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, NatInduction_ConclusionMustBeForall) {
+    // conclusion is not ∀ — should fail
+    kernel::Kernel k;
+    Prop body       = prop_rel(evar("n"), RelOp::Eq, evar("n"));
+    Prop base       = subst(body, "n", elit("0"));
+    Prop step_body  = prop_impl(body, subst(body, "n", esucc("n")));
+    Prop step_prop  = prop_forall_nat("n", step_body);
+
+    auto j_base = k.introduce_axiom(base);      ASSERT_TRUE(j_base);
+    auto j_step = k.introduce_axiom(step_prop); ASSERT_TRUE(j_step);
+    std::vector<kernel::Judgment> prem{*j_base, *j_step};
+    auto r = k.apply(kernel::Rule::NatInduction, prem, body); // body, not ∀
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, NatInduction_WrongArity) {
+    kernel::Kernel k;
+    Prop body = prop_rel(evar("n"), RelOp::Eq, evar("n"));
+    auto j    = k.introduce_axiom(body); ASSERT_TRUE(j);
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::NatInduction, prem, prop_forall_nat("n", body));
+    EXPECT_FALSE(r.has_value());
+}

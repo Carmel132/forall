@@ -2023,3 +2023,84 @@ TEST(ParserTest, GroupedPropInImplication) {
     const auto* conj = std::get_if<PropAnd>(&impl->lhs->node);
     ASSERT_NE(conj, nullptr);
 }
+
+// ── InductionStep parser tests ────────────────────────────────────────────────
+
+TEST(ParserTest, InductionStep_Basic) {
+    auto r = parse_str(R"(
+theorem t : for all n : Nat, n = n
+proof
+  induction result on n : n = n
+    base:
+      then 0 = 0 by ax
+    inductive:
+      then succ(n) = succ(n) by ih
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 1u);
+    const auto* ind = get_step<InductionStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ind, nullptr);
+    EXPECT_EQ(ind->name, "result");
+    EXPECT_EQ(ind->var, "n");
+    // body should be the prop "n = n" (a PropRel)
+    EXPECT_NE(std::get_if<PropRel>(&ind->body.node), nullptr);
+    EXPECT_EQ(ind->base_steps.size(), 1u);
+    EXPECT_EQ(ind->inductive_steps.size(), 1u);
+    EXPECT_NE(std::get_if<ThenStep>(&ind->base_steps[0]->node), nullptr);
+    EXPECT_NE(std::get_if<ThenStep>(&ind->inductive_steps[0]->node), nullptr);
+}
+
+TEST(ParserTest, InductionStep_MultipleStepsPerBlock) {
+    auto r = parse_str(R"(
+theorem t : for all n : Nat, P
+proof
+  induction result on n : P
+    base:
+      suppose h : P
+      then P by h
+    inductive:
+      suppose h : P
+      then P by h
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ind = get_step<InductionStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ind, nullptr);
+    EXPECT_EQ(ind->base_steps.size(), 2u);
+    EXPECT_EQ(ind->inductive_steps.size(), 2u);
+}
+
+TEST(ParserTest, InductionStep_InductionKeywordLexed) {
+    // Verify 'induction' is lexed as a keyword; 'base' and 'inductive' as identifiers
+    auto r = parse_str(R"(
+theorem t : P
+proof
+  induction result on n : P
+    base:
+      then P by ax
+    inductive:
+      then P by ih
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    EXPECT_NE(get_step<InductionStep>(*r.mod.decls[0]->proof, 0), nullptr);
+}
+
+TEST(ParserTest, InductionStep_BodyIsForallProp) {
+    // body can be a complex proposition — quantified
+    auto r = parse_str(R"(
+theorem t : for all n : Nat, for all m : Nat, n = m implies m = n
+proof
+  induction result on n : for all m : Nat, n = m implies m = n
+    base:
+      then for all m : Nat, 0 = m implies m = 0 by ax
+    inductive:
+      then for all m : Nat, succ(n) = m implies m = succ(n) by ih
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ind = get_step<InductionStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ind, nullptr);
+    EXPECT_NE(std::get_if<PropForall>(&ind->body.node), nullptr);
+}

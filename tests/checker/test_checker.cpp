@@ -1487,3 +1487,74 @@ axiom ax : for all A : Set Nat, for all B : Set Nat, A subseteq B
     EXPECT_FALSE(has_warning(diag, "type mismatch"));
 }
 
+// ── Induction step ────────────────────────────────────────────────────────────
+
+TEST(CheckerTest, ValidInduction_TrivialProp) {
+    // Prove ∀ n : Nat, n = n  by induction on n : n = n
+    auto diag = run_checker("induction_trivial", R"(
+axiom refl_0   : 0 = 0
+axiom refl_sn  : for all n : Nat, succ(n) = succ(n)
+theorem all_n_eq_n : for all n : Nat, n = n
+proof
+  induction result on n : n = n
+    base:
+      then 0 = 0 by refl_0
+    inductive:
+      then succ(n) = succ(n) by refl_sn at n
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidInduction_UsesIH) {
+    // Inductive step uses ih (= P(n)) to conclude P(succ(n))
+    auto diag = run_checker("induction_uses_ih", R"(
+axiom base_ax : P(0)
+axiom step_ax : for all n : Nat, P(n) implies P(succ(n))
+theorem all_P : for all n : Nat, P(n)
+proof
+  induction result on n : P(n)
+    base:
+      then P(0) by base_ax
+    inductive:
+      have step_n : P(n) implies P(succ(n)) by step_ax at n
+      then P(succ(n)) by step_n and ih
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidInduction_WrongInductiveConclusion) {
+    // Inductive block concludes wrong proposition (1 = 1 instead of succ(n) = succ(n))
+    auto diag = run_checker("induction_wrong_ind", R"(
+axiom base_ax : 0 = 0
+axiom wrong_ax : 1 = 1
+theorem t : for all n : Nat, n = n
+proof
+  induction result on n : n = n
+    base:
+      then 0 = 0 by base_ax
+    inductive:
+      then 1 = 1 by wrong_ax
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "inductive"));
+}
+
+TEST(CheckerTest, InvalidInduction_BaseMissingThenStep) {
+    // Base block has no 'then' step
+    auto diag = run_checker("induction_no_base_then", R"(
+axiom base_ax : 0 = 0
+theorem t : for all n : Nat, n = n
+proof
+  induction result on n : n = n
+    base:
+      suppose h : 0 = 0
+    inductive:
+      then succ(n) = succ(n) by ih
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
