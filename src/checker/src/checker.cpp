@@ -31,6 +31,11 @@ struct HypEntry {
 // Module-level flat map: axioms + proved lemmas/definitions accumulate here.
 using HypEnv = std::map<std::string, HypEntry>;
 
+// Maps type_name → set of class names it has been declared to implement.
+// Forward-declared here so CheckContext can reference it; full definition
+// and class_axioms table live in the typeclass section further below.
+using InstanceTable = std::map<std::string, std::set<std::string>>;
+
 // ── ScopeStack ─────────────────────────────────────────────────────────────────
 //
 // Replaces the flat HypEnv for proof-local checking.  Each nested scope (cases
@@ -378,11 +383,26 @@ static std::optional<bool> decide_proprel(const ast::PropRel& rel) {
     }
 }
 
+// ── CheckContext ──────────────────────────────────────────────────────────────
+//
+// Read-only context threaded through check_step and all sub-checkers.
+// Carries the proof-local type environment, the module-level instance table,
+// the module environment (for axiom-set resolution), and the function signature
+// table (for type inference).  All fields are references into data owned by
+// check_proof / check_module — no copies.
+struct CheckContext {
+    const ast::TypeEnv&      type_env;     // var → type from 'take x : T' steps
+    const InstanceTable&     instances;    // type_name → {class_names}
+    const HypEnv&            module_env;   // axiom/lemma entries (for norm_num)
+    const ast::FuncSigTable& sigs;         // function signatures
+};
+
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
 bool check_step(const ast::Step& step,
                 ScopeStack& env,
                 kernel::Kernel& kernel,
-                diag::DiagnosticEngine& diag);
+                diag::DiagnosticEngine& diag,
+                const CheckContext& ctx);
 
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
@@ -395,7 +415,8 @@ bool check_cases_step(const ast::CasesStep& s,
                       const diag::SourceLocation& loc,
                       ScopeStack& env,
                       kernel::Kernel& kernel,
-                      diag::DiagnosticEngine& diag)
+                      diag::DiagnosticEngine& diag,
+                      const CheckContext& ctx)
 {
     // 1. Look up the disjunction
     const auto* disj_entry = env.find(s.disjunct_ref);
@@ -445,7 +466,7 @@ bool check_cases_step(const ast::CasesStep& s,
 
         for (const auto& uptr : arm.steps) {
             const auto snap = diag.diagnostics().size();
-            check_step(*uptr, arm_env, kernel, diag);
+            check_step(*uptr, arm_env, kernel, diag, ctx);
             const auto& all = diag.diagnostics();
             for (auto j = snap; j < all.size(); ++j) {
                 if (all[j].severity == diag::Severity::Error) {
@@ -535,7 +556,8 @@ bool check_obtain_step(const ast::ObtainStep& s,
                        const diag::SourceLocation& loc,
                        ScopeStack& env,
                        kernel::Kernel& kernel,
-                       diag::DiagnosticEngine& diag)
+                       diag::DiagnosticEngine& diag,
+                       const CheckContext& ctx)
 {
     // 1. Look up the existential
     const auto* ex_entry = env.find(s.exists_ref);
@@ -589,7 +611,7 @@ bool check_obtain_step(const ast::ObtainStep& s,
 
     for (const auto& uptr : s.steps) {
         const auto snap = diag.diagnostics().size();
-        check_step(*uptr, sub_env, kernel, diag);
+        check_step(*uptr, sub_env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
         for (auto j = snap; j < all.size(); ++j) {
             if (all[j].severity == diag::Severity::Error) {
@@ -656,7 +678,8 @@ bool check_induction_step(const ast::InductionStep& s,
                           const diag::SourceLocation& loc,
                           ScopeStack& env,
                           kernel::Kernel& kernel,
-                          diag::DiagnosticEngine& diag)
+                          diag::DiagnosticEngine& diag,
+                          const CheckContext& ctx)
 {
     // ── Base block ────────────────────────────────────────────────────────────
     ScopeStack base_env = env;
@@ -665,7 +688,7 @@ bool check_induction_step(const ast::InductionStep& s,
 
     for (const auto& uptr : s.base_steps) {
         const auto snap = diag.save();
-        check_step(*uptr, base_env, kernel, diag);
+        check_step(*uptr, base_env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
         for (auto i = snap.size; i < all.size(); ++i)
             if (all[i].severity == diag::Severity::Error) { base_error = true; break; }
@@ -711,7 +734,7 @@ bool check_induction_step(const ast::InductionStep& s,
 
     for (const auto& uptr : s.inductive_steps) {
         const auto snap = diag.save();
-        check_step(*uptr, ind_env, kernel, diag);
+        check_step(*uptr, ind_env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
         for (auto i = snap.size; i < all.size(); ++i)
             if (all[i].severity == diag::Severity::Error) { ind_error = true; break; }
@@ -768,7 +791,8 @@ bool check_induction_step(const ast::InductionStep& s,
 bool check_step(const ast::Step& step,
                 ScopeStack& env,
                 kernel::Kernel& kernel,
-                diag::DiagnosticEngine& diag)
+                diag::DiagnosticEngine& diag,
+                const CheckContext& ctx)
 {
     return std::visit([&](const auto& s) -> bool {
         using T = std::decay_t<decltype(s)>;
@@ -954,17 +978,17 @@ bool check_step(const ast::Step& step,
 
         // cases <name> : <ref>  case ... => ... case ... => ...
         else if constexpr (std::is_same_v<T, ast::CasesStep>) {
-            return check_cases_step(s, step.loc, env, kernel, diag);
+            return check_cases_step(s, step.loc, env, kernel, diag, ctx);
         }
 
         // obtain <name> from <ref>  case <var> [: T] , <hyp> : P => <steps...>
         else if constexpr (std::is_same_v<T, ast::ObtainStep>) {
-            return check_obtain_step(s, step.loc, env, kernel, diag);
+            return check_obtain_step(s, step.loc, env, kernel, diag, ctx);
         }
 
         // induction <name> on <var>  base: ...  inductive: ...
         else if constexpr (std::is_same_v<T, ast::InductionStep>) {
-            return check_induction_step(s, step.loc, env, kernel, diag);
+            return check_induction_step(s, step.loc, env, kernel, diag, ctx);
         }
 
         return true;
@@ -1098,7 +1122,8 @@ void check_proof(const ast::Decl& decl,
                  const HypEnv& module_env,
                  kernel::Kernel& kernel,
                  diag::DiagnosticEngine& diag,
-                 const ast::FuncSigTable& sigs = {})
+                 const ast::FuncSigTable& sigs = {},
+                 const InstanceTable& instances = {})
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -1122,8 +1147,9 @@ void check_proof(const ast::Decl& decl,
             if (ts->type.has_value())
                 type_env[ts->var] = *ts->type;
 
+        const CheckContext ctx{type_env, instances, module_env, sigs};
         const auto snap = diag.diagnostics().size();
-        check_step(step, env, kernel, diag);
+        check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
         for (auto i = snap; i < all.size(); ++i) {
             if (all[i].severity == diag::Severity::Error) {
@@ -1202,8 +1228,6 @@ void check_proof(const ast::Decl& decl,
 // This makes implicit resolution loud on failure: if a required axiom is absent,
 // the user gets a precise diagnostic naming the missing axiom.
 
-using InstanceTable = std::map<std::string, std::set<std::string>>;
-
 // Required axiom-name suffixes per algebraic class.
 // Convention: for type T, the axiom must be named <T>_<suffix>.
 // E.g.  instance Real : Ring  requires axioms  Real_add_comm, Real_add_assoc, etc.
@@ -1272,6 +1296,64 @@ static bool check_instance(const std::string& type_name,
     return ok;
 }
 
+// ── resolve_ring_axioms ────────────────────────────────────────────────────────
+//
+// C2-P3: Axiom-set reachability.
+// Given a type name (e.g. "Real"), the current InstanceTable, and the current
+// module_env, returns a map from law-name suffix (e.g. "add_comm") to the
+// corresponding Judgment for "<TypeName>_add_comm".
+//
+// Returns an error string if:
+//   - the type has no registered instance for any Ring-or-above class, or
+//   - any required axiom is missing from module_env.
+//
+// The returned map covers the most-specific class the type implements
+// (OrderedField > Field > CommRing > Ring > Monoid > Semigroup).
+// The norm_num tactic calls this at step-check time to obtain the axiom set.
+
+struct RingAxioms {
+    std::string                          class_name; // e.g. "OrderedField"
+    std::map<std::string, kernel::Judgment> axioms;  // suffix → Judgment
+};
+
+[[nodiscard]] [[maybe_unused]] std::expected<RingAxioms, std::string>
+resolve_ring_axioms(const std::string& type_name,
+                    const InstanceTable& instances,
+                    const HypEnv& module_env)
+{
+    // Ordered from most specific to least specific.
+    static constexpr std::string_view ordered_classes[] = {
+        "OrderedField", "Field", "CommRing", "Ring", "Monoid", "Semigroup",
+    };
+
+    auto inst_it = instances.find(type_name);
+    if (inst_it == instances.end())
+        return std::unexpected("type '" + type_name + "' has no registered typeclass instance");
+
+    const auto& registered = inst_it->second;
+    std::string chosen_class;
+    for (std::string_view cls : ordered_classes) {
+        if (registered.count(std::string{cls})) { chosen_class = std::string{cls}; break; }
+    }
+    if (chosen_class.empty())
+        return std::unexpected("type '" + type_name + "' has no Ring-or-above instance");
+
+    auto cls_it = class_axioms.find(chosen_class);
+    if (cls_it == class_axioms.end())
+        return std::unexpected("internal: class '" + chosen_class + "' not in class_axioms");
+
+    RingAxioms result;
+    result.class_name = chosen_class;
+    for (std::string_view suffix : cls_it->second) {
+        std::string key = type_name + "_" + std::string{suffix};
+        auto env_it = module_env.find(key);
+        if (env_it == module_env.end())
+            return std::unexpected("missing axiom '" + key + "' for type '" + type_name + "'");
+        result.axioms.emplace(std::string{suffix}, env_it->second.judgment);
+    }
+    return result;
+}
+
 // ── check_module ───────────────────────────────────────────────────────────────
 //
 // Parses and validates a single .forall file, returning the module-level
@@ -1331,7 +1413,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
