@@ -2146,3 +2146,54 @@ TEST(ParserTest, InstanceDecl_MissingTypeName) {
     auto r = parse_str("instance : Ring");
     EXPECT_TRUE(r.diag.hasErrors());
 }
+
+// ── RL3: contradiction from / RL6: suppose for contradiction that ─────────────
+
+TEST(ParserTest, ContradictionFrom) {
+    // "contradiction from nh and h" — "from" is an alias for ":"
+    auto r = parse_str(R"(theorem t : false
+proof
+  suppose h : P
+  suppose nh : not P
+  contradiction from nh and h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& steps = r.mod.decls[0]->proof->steps;
+    ASSERT_EQ(steps.size(), 3u);
+    const auto* cs = std::get_if<ContradictionStep>(&steps[2].node);
+    ASSERT_NE(cs, nullptr);
+    EXPECT_EQ(cs->justification.size(), 2u);
+    EXPECT_EQ(cs->justification[0], "nh");
+    EXPECT_EQ(cs->justification[1], "h");
+}
+
+TEST(ParserTest, SupposeForContradictionThat) {
+    // "suppose for contradiction that P" — "that" replaces ":"
+    auto r = parse_str(R"(theorem t : false
+proof
+  suppose for contradiction that P
+  have bot : false by ax and h
+  then false by bot
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ss = get_step<SupposeStep>(r.mod.decls[0]->proof.value(), 0);
+    ASSERT_NE(ss, nullptr);
+    EXPECT_TRUE(ss->for_contradiction);
+}
+
+// ── RL7: "from" as alias for "by" in have steps ───────────────────────────────
+
+TEST(ParserTest, HaveStepFrom) {
+    // "have h : P from ax" — "from" is an alias for "by"
+    auto r = parse_str(R"(axiom ax : P
+theorem t : P
+proof
+  have h : P from ax
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* hs = get_step<HaveStep>(r.mod.decls[1]->proof.value(), 0);
+    ASSERT_NE(hs, nullptr);
+    EXPECT_EQ(hs->justification.size(), 1u);
+    EXPECT_EQ(hs->justification[0], "ax");
+}

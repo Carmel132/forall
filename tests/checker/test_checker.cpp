@@ -2011,3 +2011,90 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── RL1: auto-discharge (then P → Q with no justification) ───────────────────
+
+TEST(CheckerTest, AutoDischarge_ImplIntro_Basic) {
+    // "then P → Q" with no 'by' clause — auto-finds suppose[P] and derived[Q]
+    auto diag = run_checker("auto_discharge_impl_basic", R"(
+axiom ax : P -> Q
+theorem t : P -> Q
+proof
+  suppose h : P
+  have hq : Q by ax and h
+  then P -> Q
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AutoDischarge_ImplIntro_Chain) {
+    // Multi-level implication: inner implication stored as 'have', outer auto-discharged.
+    // ThenStep results are not stored in env; use 'have' for intermediate implications.
+    auto diag = run_checker("auto_discharge_chain", R"(
+theorem t : P -> Q -> P
+proof
+  suppose hp : P
+  suppose hq : Q
+  have qp : Q -> P by hq and hp
+  then P -> Q -> P
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AutoDischarge_NotIntro) {
+    // "then not P" auto-discharge: suppose[P] and derived[false] in scope.
+    auto diag = run_checker("auto_discharge_not", R"(
+theorem t : P -> not P -> false
+proof
+  suppose hp : P
+  suppose hnp : not P
+  have bot : false by hnp and hp
+  have np_impl : not P -> false by hnp and bot
+  then P -> not P -> false
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, AutoDischarge_MissingAssumption_Error) {
+    // Auto-discharge should fail if there's no matching suppose in scope
+    auto diag = run_checker("auto_discharge_no_assume", R"(
+theorem t : P -> Q
+proof
+  have hq : Q by ax
+  then P -> Q
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "auto-discharge"));
+}
+
+TEST(CheckerTest, AutoDischarge_MissingConsequent_Error) {
+    // Auto-discharge should fail if the consequent has not been derived
+    auto diag = run_checker("auto_discharge_no_conseq", R"(
+theorem t : P -> Q
+proof
+  suppose hp : P
+  then P -> Q
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "auto-discharge"));
+}
+
+// ── RL1 + RL7: combined — "have h : P from ax" + "then P -> Q" (no by) ──────
+
+TEST(CheckerTest, AutoDischarge_WithFromAlias) {
+    auto diag = run_checker("auto_discharge_with_from", R"(
+axiom ax : P -> Q
+theorem t : P -> Q
+proof
+  suppose h : P
+  have hq : Q from ax and h
+  then P -> Q
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
