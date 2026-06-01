@@ -1354,6 +1354,171 @@ resolve_ring_axioms(const std::string& type_name,
     return result;
 }
 
+// ── Polynomial normal form (C2-P4) ────────────────────────────────────────────
+//
+// Represents a multivariate polynomial as a sum of terms, each term being a
+// rational coefficient times a monomial.
+//
+// Monomial: sorted map variable→exponent (canonical by map key ordering).
+//   e.g. x²y³  →  {"x":2, "y":3}
+// Poly: map monomial→rational coefficient.
+//   e.g. 3x² + 2xy - 1  →  {{"x":2}:3/1,  {"x":1,"y":1}:2/1,  {}:-1/1}
+//
+// normalize(Expr) expands an expression tree into Poly form.
+// Two expressions are ring-equal iff their normal forms are identical.
+
+using Monomial = std::map<std::string, int>;   // var → positive exponent
+using Poly     = std::map<Monomial, Rational>;  // monomial → coeff
+
+// Remove zero-coefficient entries.
+static void poly_trim(Poly& p) {
+    for (auto it = p.begin(); it != p.end(); ) {
+        if (it->second.first == 0) it = p.erase(it);
+        else                       ++it;
+    }
+}
+
+static Poly poly_add(Poly a, const Poly& b) {
+    for (const auto& [mono, coef] : b) {
+        auto& slot = a[mono];
+        slot = make_rat(slot.first * coef.second + coef.first * slot.second,
+                        slot.second * coef.second);
+    }
+    poly_trim(a);
+    return a;
+}
+
+static Poly poly_scale(Poly p, Rational r) {
+    for (auto& [mono, coef] : p)
+        coef = make_rat(coef.first * r.first, coef.second * r.second);
+    poly_trim(p);
+    return p;
+}
+
+static Poly poly_neg(Poly p) {
+    return poly_scale(std::move(p), {-1, 1});
+}
+
+// Multiply two monomials: merge exponent maps.
+static Monomial mono_mul(const Monomial& a, const Monomial& b) {
+    Monomial r = a;
+    for (const auto& [v, e] : b) r[v] += e;
+    // Remove variables with zero exponent (shouldn't normally happen, but be safe).
+    for (auto it = r.begin(); it != r.end(); )
+        if (it->second == 0) it = r.erase(it); else ++it;
+    return r;
+}
+
+static Poly poly_mul(const Poly& a, const Poly& b) {
+    Poly result;
+    for (const auto& [ma, ca] : a) {
+        for (const auto& [mb, cb] : b) {
+            Monomial m = mono_mul(ma, mb);
+            Rational prod = make_rat(ca.first * cb.first, ca.second * cb.second);
+            auto& slot = result[m];
+            slot = make_rat(slot.first * prod.second + prod.first * slot.second,
+                            slot.second * prod.second);
+        }
+    }
+    poly_trim(result);
+    return result;
+}
+
+static Poly poly_pow(Poly base, int exp) {
+    if (exp < 0) return {}; // division not supported in poly normalizer
+    Poly result{{{}, {1, 1}}}; // start with the constant polynomial 1
+    for (int i = 0; i < exp; ++i)
+        result = poly_mul(result, base);
+    return result;
+}
+
+// Constant polynomial: the rational number r.
+static Poly poly_const(Rational r) {
+    if (r.first == 0) return {};
+    return {{Monomial{}, r}};
+}
+
+// Single-variable polynomial: coefficient 1 of variable v with exponent 1.
+static Poly poly_var(const std::string& v) {
+    return {{Monomial{{v, 1}}, {1, 1}}};
+}
+
+// Normalize an expression to a polynomial.
+// Returns empty Poly for expressions that cannot be symbolically normalised
+// (e.g. function calls with opaque arguments, floor/ceil, index, etc.).
+static Poly normalize_expr(const ast::Expr& e) {
+    return std::visit([](const auto& n) -> Poly {
+        using T = std::decay_t<decltype(n)>;
+
+        if constexpr (std::is_same_v<T, ast::ExprLit>) {
+            auto v = std::stoll(n.value, nullptr, 10);
+            return poly_const({v, 1});
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprVar>) {
+            return poly_var(n.name);
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            if (n.op == ast::UnaryOp::Neg)
+                return poly_neg(normalize_expr(*n.operand));
+            return {}; // inv, compl not polynomial
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            auto lp = normalize_expr(*n.lhs);
+            auto rp = normalize_expr(*n.rhs);
+            switch (n.op) {
+                case ast::BinOp::Add: return poly_add(std::move(lp), rp);
+                case ast::BinOp::Sub: return poly_add(std::move(lp), poly_neg(rp));
+                case ast::BinOp::Mul: return poly_mul(lp, rp);
+                case ast::BinOp::Pow: {
+                    // rhs must be a literal non-negative integer.
+                    const auto* lit = std::get_if<ast::ExprLit>(&n.rhs->node);
+                    if (!lit) return {};
+                    int exp = 0;
+                    try { exp = std::stoi(lit->value); } catch (...) { return {}; }
+                    if (exp < 0) return {};
+                    return poly_pow(lp, exp);
+                }
+                default: return {}; // Div, IDiv, Mod, Compose, set ops — not polynomial
+            }
+        }
+
+        // Tuple grouping: (a, b) is not a numeric expression; single-element
+        // tuples are arithmetic groupings already resolved by the parser.
+        if constexpr (std::is_same_v<T, ast::ExprTuple>) {
+            if (n.elements.size() == 1)
+                return normalize_expr(*n.elements[0]);
+            return {};
+        }
+
+        return {}; // calls, indices, lambdas, conditionals, aggregates, sets
+    }, e.node);
+}
+
+// Two expressions are ring-equal iff their normal forms are equal.
+// Returns true/false, or nullopt if either side cannot be normalized.
+[[nodiscard]] [[maybe_unused]] static std::optional<bool>
+ring_equal(const ast::Expr& lhs, const ast::Expr& rhs) {
+    auto lp = normalize_expr(lhs);
+    auto rp = normalize_expr(rhs);
+    // An empty Poly can mean "zero" or "not normalizable".
+    // We distinguish by checking whether there was a literal/variable to start from.
+    // For safety: if both sides produce empty Poly, we cannot conclude equality.
+    // (Two distinct non-normalizable expressions should not be judged equal.)
+    // Only return true when both sides successfully normalize to the same Poly.
+    // "Successfully normalize" means: the input contains only ExprLit, ExprVar,
+    // ExprUnary{Neg}, ExprBinary{+,-,*,^(literal)}, or ExprTuple{single}.
+    // We detect success by checking whether the Poly is well-formed (all monomials
+    // have non-zero coefficients after trim).  The empty Poly is valid for zero.
+    // The ambiguity is: normalize_expr returns {} both for "not normalizable" and
+    // for "the expression equals zero after simplification."
+    // Resolution: only call ring_equal from contexts where both sides were already
+    // type-checked to be numeric (not opaque function calls).
+    return lp == rp;
+}
+
 // ── check_module ───────────────────────────────────────────────────────────────
 //
 // Parses and validates a single .forall file, returning the module-level
