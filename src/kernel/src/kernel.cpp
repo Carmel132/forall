@@ -182,6 +182,14 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── ⊤-intro (trivially true) ─────────────────────────────────────────────
+    case Rule::TrueIntro: {
+        if (!premises.empty()) return wrong_arity(0);
+        if (!std::get_if<PropTrue>(&conclusion.node))
+            return mismatch("TrueIntro: conclusion must be ⊤");
+        return make(conclusion);
+    }
+
     // ── P from ⊥  (ex falso quodlibet) ───────────────────────────────────────
     case Rule::FalseElim: {
         if (premises.size() != 1) return wrong_arity(1);

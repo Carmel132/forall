@@ -24,6 +24,7 @@ namespace forall::kernel {
 //   OrElim     : Γ ⊢ A ∨ B, Γ,A ⊢ C, Γ,B ⊢ C              →  Γ ⊢ C
 //   NotIntro   : Γ, A ⊢ ⊥                                   →  Γ ⊢ ¬A
 //   NotElim    : Γ ⊢ ¬A,  Γ ⊢ A                             →  Γ ⊢ ⊥
+//   TrueIntro  :                                              →  Γ ⊢ ⊤  (trivially true)
 //   FalseElim  : Γ ⊢ ⊥                                      →  Γ ⊢ P  (ex falso)
 //   ForallElim : Γ ⊢ ∀x.P,  witness t                      →  Γ ⊢ P[x:=t]
 //   ExistsIntro: Γ ⊢ P[x:=t],  witness t                   →  Γ ⊢ ∃x.P
@@ -38,7 +39,7 @@ enum class Rule {
     ImplIntro, ImplElim,
     OrIntroL, OrIntroR, OrElim,
     NotIntro, NotElim,
-    FalseElim,
+    TrueIntro, FalseElim,
     ForallElim,
     ExistsIntro,
     ForallIntro,
