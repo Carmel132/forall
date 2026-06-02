@@ -268,7 +268,7 @@ ast::Expr Parser::parseSetExpr() {
             std::optional<ast::TypeNode> type;
             if (check(lexer::TokenKind::Colon)) {
                 advance();
-                if (check(lexer::TokenKind::Identifier))
+                if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
                     type = parseType();
                 else
                     diag_.emit({diag::Severity::Error, peek().loc,
@@ -311,7 +311,7 @@ ast::Expr Parser::parseLambda() {
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance();
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc,
@@ -375,7 +375,7 @@ ast::Expr Parser::parseAggregate() {
 
     if (check(lexer::TokenKind::Colon)) {
         advance(); // typed binder: sum i : T
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc,
@@ -497,7 +497,7 @@ ast::Prop Parser::parseQuantifier() {
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance();
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
@@ -820,6 +820,30 @@ std::vector<std::string> Parser::parseJustification() {
 ast::TypeNode Parser::parseType() {
     using K = lexer::TokenKind;
     const auto loc = peek().loc;
+
+    // PB4: Tuple type "(Nat, Int)"  — TypeTuple with two or more elements.
+    if (check(K::LParen)) {
+        advance(); // consume '('
+        std::vector<ast::TypeNode> elems;
+        if (!check(K::Identifier)) {
+            diag_.emit({diag::Severity::Error, peek().loc, "expected type inside '('"});
+        } else {
+            elems.push_back(parseType());
+            while (check(K::Comma)) {
+                advance();
+                if (!check(K::Identifier)) {
+                    diag_.emit({diag::Severity::Error, peek().loc, "expected type after ','"});
+                    break;
+                }
+                elems.push_back(parseType());
+            }
+        }
+        expect(K::RParen, "expected ')' after tuple type");
+        if (elems.size() == 1)
+            return std::move(elems[0]); // "(T)" == T
+        return ast::type_tuple(std::move(elems));
+    }
+
     const auto name = advance().lexeme;
     ast::TypeNode base;
     if (name == "Nat")       base = ast::TypeNode{ast::TypeNat{}};
@@ -868,7 +892,7 @@ ast::Step Parser::parseLetStep() {
     if (check(lexer::TokenKind::KwBe)) {
         advance();
         consumeArticle();
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
     }
     return {loc, ast::LetStep{std::move(var), std::move(type)}};
@@ -888,7 +912,7 @@ ast::Step Parser::parseTakeStep() {
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
         advance(); // consume ':'
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
@@ -928,7 +952,7 @@ ast::Step Parser::parseObtainStep() {
     std::optional<ast::TypeNode> type;
     if (check(K::Colon)) {
         advance(); // consume ':'
-        if (check(K::Identifier))
+        if (check(K::Identifier) || check(K::LParen))
             type = parseType();
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
@@ -1284,7 +1308,7 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
                         "expected parameter name"});
         expect(lexer::TokenKind::Colon, "expected ':' in definition parameter");
         ast::TypeNode ptype{ast::TypeUser{"?"}};
-        if (check(lexer::TokenKind::Identifier))
+        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             ptype = parseType();
         expect(lexer::TokenKind::RParen, "expected ')' to close parameter");
         params.push_back({std::move(pname), std::move(ptype)});
