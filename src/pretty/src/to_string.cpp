@@ -34,6 +34,11 @@ std::string to_string(const ast::TypeNode& t) {
                 elem = "(" + elem + ")";
             return "Set " + elem;
         }
+        if constexpr (std::is_same_v<T, ast::TypePi>) {
+            // (x : A) -> B
+            return "(" + n.var + " : " + to_string(*n.domain) + ") -> "
+                   + to_string(*n.codomain);
+        }
         return "?";
     }, t.node);
 }
