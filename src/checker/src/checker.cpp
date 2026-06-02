@@ -1205,6 +1205,16 @@ bool check_step(const ast::Step& step,
             return check_induction_step(s, step.loc, env, kernel, diag, ctx);
         }
 
+        // rewrite h — handled before the step loop in check_proof; no-op here
+        else if constexpr (std::is_same_v<T, ast::RewriteStep>) {
+            // RewriteStep is intercepted in check_proof before entering check_step.
+            // If we reach here, it's inside a nested proof context (cases arm, etc.)
+            // where goal rewriting is not yet supported.
+            diag.emit({diag::Severity::Error, step.loc,
+                       "'rewrite' is only supported at the top level of a proof block"});
+            return false;
+        }
+
         // show P — goal documentation; verifies P matches the theorem statement
         else if constexpr (std::is_same_v<T, ast::ShowStep>) {
             if (!ctx.goal) {
@@ -1400,6 +1410,11 @@ void check_proof(const ast::Decl& decl,
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
 
+    // Current proof goal — starts as decl.statement, may be transformed by RewriteStep.
+    // Allocations live in this vector so pointers remain valid across loop iterations.
+    std::vector<ast::Prop> goal_history;
+    const ast::Prop* current_goal = &decl.statement;
+
     for (const auto& step : decl.proof->steps) {
         // Populate type_env before processing the step so TakeStep vars are
         // available for the type-mismatch check on the same iteration.
@@ -1407,7 +1422,52 @@ void check_proof(const ast::Decl& decl,
             if (ts->type.has_value())
                 type_env[ts->var] = *ts->type;
 
-        const CheckContext ctx{type_env, instances, module_env, sigs, &decl.statement};
+        // MS1: RewriteStep transforms the current goal before check_step runs.
+        if (const auto* rw = std::get_if<ast::RewriteStep>(&step.node)) {
+            const HypEntry* h = env.find(rw->hyp_ref);
+            if (!h) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "rewrite: unknown hypothesis '" + rw->hyp_ref + "'"});
+                had_step_errors = true;
+                continue;
+            }
+            const auto* eq = std::get_if<ast::PropRel>(&h->judgment.prop().node);
+            if (!eq || eq->op != ast::RelOp::Eq) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "rewrite: hypothesis '" + rw->hyp_ref
+                           + "' must be an equality (lhs = rhs)"});
+                had_step_errors = true;
+                continue;
+            }
+            // For variable rewriting: lhs must be an ExprVar.
+            const auto* lhs_var = std::get_if<ast::ExprVar>(&eq->lhs->node);
+            const auto* rhs_var = std::get_if<ast::ExprVar>(&eq->rhs->node);
+            if (!lhs_var && !rhs_var) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "rewrite: equality must have a variable on at least one side"});
+                had_step_errors = true;
+                continue;
+            }
+            // Choose which side to substitute.
+            ast::Prop new_goal;
+            if (!rw->reverse && lhs_var) {
+                new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
+            } else if (rhs_var) {
+                new_goal = ast::subst(*current_goal, rhs_var->name, *eq->lhs);
+            } else {
+                // reverse requested but only lhs is a var — still forward
+                new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
+            }
+            if (new_goal == *current_goal) {
+                diag.emit({diag::Severity::Warning, step.loc,
+                           "rewrite: equality does not appear in goal — no effect"});
+            }
+            goal_history.push_back(std::move(new_goal));
+            current_goal = &goal_history.back();
+            continue; // not a proof step, just goal transformation
+        }
+
+        const CheckContext ctx{type_env, instances, module_env, sigs, current_goal};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -1462,13 +1522,13 @@ void check_proof(const ast::Decl& decl,
                        "proof of '" + decl.name + "' has no concluding 'then' step"});
         } else if (last_kind == LastKind::Then) {
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
-            // RL4: __qed__ sentinel substitutes decl.statement — skip prop check.
+            // RL4: __qed__ sentinel substitutes current goal — skip prop check.
             const bool is_qed_sentinel = !ts.justification.empty()
                                          && ts.justification[0] == "__qed__";
-            if (!is_qed_sentinel && ts.prop != decl.statement)
+            if (!is_qed_sentinel && ts.prop != *current_goal)
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with `" + forall::pretty::to_string(ts.prop)
-                           + "`, expected `" + forall::pretty::to_string(decl.statement) + "`"});
+                           + "`, expected `" + forall::pretty::to_string(*current_goal) + "`"});
         } else if (last_kind == LastKind::Cases) {
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
             const auto* it = env.find(cs.name);
