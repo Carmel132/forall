@@ -144,10 +144,20 @@ struct ExprAgg {                                                     // sum/prod
     ExprPtr                    body;
 };
 
+// ExprApp represents application of an arbitrary expression (typically a
+// lambda) to a list of arguments.  This arises after substitution replaces a
+// function-position variable with an ExprLambda: subst_expr converts
+// ExprCall{name, args} where name == var and the replacement is a lambda into
+// ExprApp{lambda, substituted_args}.  beta_reduce then collapses these redexes.
+struct ExprApp {                                                     // e(arg1, arg2, ...)
+    ExprPtr              func;
+    std::vector<ExprPtr> args;
+};
+
 using ExprNode = std::variant<
     ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
     ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg,
-    ExprSetLit, ExprSetCompr
+    ExprSetLit, ExprSetCompr, ExprApp
 >;
 
 struct Expr {
@@ -411,5 +421,35 @@ std::set<std::string> free_vars(const Expr& expr);
 // free variables of `replacement` are not captured by inner binders of `prop`.
 Prop subst(const Prop& prop, const std::string& var, const Expr& replacement);
 Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
+
+// ── Beta-reduction ────────────────────────────────────────────────────────────
+//
+// Reduces ExprApp{ExprLambda{x,_,body}, [arg, ...]} → subst(body, x, arg)
+// and then reduces any further ExprApp nodes that may appear after substitution.
+// Also collapses ExprCall{name, args} where name is the bound variable of a
+// surrounding lambda (handled via subst_expr producing ExprApp) — see note in
+// subst_expr below.
+// Recurses into all subexpressions; all other ExprNode variants are reconstructed.
+//
+// beta_reduce(Prop) recurses into all PropNode variants that contain ExprPtr
+// fields (PropRel, PropPred) and sub-props (PropNot/And/Or/Impl/Forall/Exists).
+[[nodiscard]] Expr beta_reduce(const Expr& e);
+[[nodiscard]] Prop beta_reduce(const Prop& p);
+
+// ── Eta-reduction ─────────────────────────────────────────────────────────────
+//
+// Reduces ExprLambda{x, t, ExprCall{name, args}} where the last arg is
+// ExprVar{x} and x does not appear free in ExprCall{name, args_without_last}
+// → ExprCall{name, args_without_last}  (or ExprVar{name} if no args remain).
+// Recurses into subexpressions after reducing the outermost lambda.
+[[nodiscard]] Expr eta_reduce(const Expr& e);
+
+// ── Definitional equality ─────────────────────────────────────────────────────
+//
+// Two expressions/propositions are definitionally equal if they are structurally
+// equal after beta- and eta-reduction.  Used by the kernel to compare props that
+// may differ by a beta-redex introduced through ForallElim/ExistsIntro witnesses.
+[[nodiscard]] bool defn_eq(const Expr& a, const Expr& b);
+[[nodiscard]] bool defn_eq(const Prop& a, const Prop& b);
 
 } // namespace forall::ast

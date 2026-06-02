@@ -76,6 +76,12 @@ bool Expr::operator==(const Expr& other) const {
         }
         else if constexpr (std::is_same_v<T, ExprSetCompr>)
             return x.var == y.var && x.type == y.type && *x.pred == *y.pred;
+        else if constexpr (std::is_same_v<T, ExprApp>) {
+            if (*x.func != *y.func || x.args.size() != y.args.size()) return false;
+            for (std::size_t i = 0; i < x.args.size(); ++i)
+                if (!(*x.args[i] == *y.args[i])) return false;
+            return true;
+        }
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }
@@ -159,6 +165,9 @@ static void collect_fv_expr(const Expr& expr, std::set<std::string>& out) {
             collect_fv_expr(*e.body, inner);
             inner.erase(e.var);
             out.insert(inner.begin(), inner.end());
+        } else if constexpr (std::is_same_v<T, ExprApp>) {
+            collect_fv_expr(*e.func, out);
+            for (const auto& a : e.args) collect_fv_expr(*a, out);
         }
     }, expr.node);
 }
@@ -225,10 +234,17 @@ static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r) 
         } else if constexpr (std::is_same_v<T, ExprAbs>) {
             return Expr{loc, ExprAbs{make_expr(subst_expr(*e.operand, var, r))}};
         } else if constexpr (std::is_same_v<T, ExprCall>) {
+            // First substitute into args.
             std::vector<ExprPtr> args;
             args.reserve(e.args.size());
             for (const auto& a : e.args)
                 args.push_back(make_expr(subst_expr(*a, var, r)));
+            // If the function name is the variable being substituted and the
+            // replacement is a lambda, we have a beta-redex.  Convert to ExprApp
+            // so that beta_reduce can collapse it.
+            if (e.name == var) {
+                return Expr{loc, ExprApp{make_expr(r), std::move(args)}};
+            }
             return Expr{loc, ExprCall{e.name, std::move(args)}};
         } else if constexpr (std::is_same_v<T, ExprIndex>) {
             return Expr{loc, ExprIndex{
@@ -271,6 +287,14 @@ static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r) 
             return Expr{loc, ExprAgg{e.op, e.var, e.type, e.rel,
                 std::move(new_bound),
                 make_expr(subst_expr(*e.body, var, r))}};
+        } else if constexpr (std::is_same_v<T, ExprApp>) {
+            std::vector<ExprPtr> args;
+            args.reserve(e.args.size());
+            for (const auto& a : e.args)
+                args.push_back(make_expr(subst_expr(*a, var, r)));
+            return Expr{loc, ExprApp{
+                make_expr(subst_expr(*e.func, var, r)),
+                std::move(args)}};
         }
         return expr; // unreachable — all ExprNode alternatives listed above
     }, expr.node);
@@ -325,6 +349,273 @@ Prop subst(const Prop& prop, const std::string& var, const Expr& replacement) {
 
 Expr subst(const Expr& expr, const std::string& var, const Expr& replacement) {
     return subst_expr(expr, var, replacement);
+}
+
+// ── beta_reduce implementation ────────────────────────────────────────────────
+//
+// Reduces ExprApp{ExprLambda{x, t, body}, [arg0, arg1, ...]}:
+//   1. substitute arg0 for x in body  → reduced_body
+//   2. if remaining args, wrap as ExprApp{reduced_body, [arg1, ...]} and recurse
+//   3. otherwise return beta_reduce(reduced_body)
+//
+// After handling ExprApp, recurse into all subexpressions of all other variants.
+
+static Expr beta_reduce_expr(const Expr& e);
+static Prop beta_reduce_prop(const Prop& p);
+
+static Expr beta_reduce_expr(const Expr& e) {
+    return std::visit([&](const auto& n) -> Expr {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = e.loc;
+
+        if constexpr (std::is_same_v<T, ExprLit> || std::is_same_v<T, ExprVar>) {
+            return e;
+        } else if constexpr (std::is_same_v<T, ExprBinary>) {
+            return Expr{loc, ExprBinary{n.op,
+                make_expr(beta_reduce_expr(*n.lhs)),
+                make_expr(beta_reduce_expr(*n.rhs))}};
+        } else if constexpr (std::is_same_v<T, ExprUnary>) {
+            return Expr{loc, ExprUnary{n.op,
+                make_expr(beta_reduce_expr(*n.operand))}};
+        } else if constexpr (std::is_same_v<T, ExprAbs>) {
+            return Expr{loc, ExprAbs{make_expr(beta_reduce_expr(*n.operand))}};
+        } else if constexpr (std::is_same_v<T, ExprCall>) {
+            std::vector<ExprPtr> args;
+            args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                args.push_back(make_expr(beta_reduce_expr(*a)));
+            return Expr{loc, ExprCall{n.name, std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ExprIndex>) {
+            return Expr{loc, ExprIndex{
+                make_expr(beta_reduce_expr(*n.array)),
+                make_expr(beta_reduce_expr(*n.index))}};
+        } else if constexpr (std::is_same_v<T, ExprTuple>) {
+            std::vector<ExprPtr> elems;
+            elems.reserve(n.elements.size());
+            for (const auto& el : n.elements)
+                elems.push_back(make_expr(beta_reduce_expr(*el)));
+            return Expr{loc, ExprTuple{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ExprSetLit>) {
+            std::vector<ExprPtr> elems;
+            elems.reserve(n.elements.size());
+            for (const auto& el : n.elements)
+                elems.push_back(make_expr(beta_reduce_expr(*el)));
+            return Expr{loc, ExprSetLit{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ExprSetCompr>) {
+            // Do not reduce into the binder body without proper substitution;
+            // but the pred is a Prop so we can reduce its Expr leaves.
+            return Expr{loc, ExprSetCompr{n.var, n.type,
+                make_prop(beta_reduce_prop(*n.pred))}};
+        } else if constexpr (std::is_same_v<T, ExprLambda>) {
+            // Recurse into the body but do not treat the whole lambda as a redex.
+            return Expr{loc, ExprLambda{n.var, n.type,
+                make_expr(beta_reduce_expr(*n.body))}};
+        } else if constexpr (std::is_same_v<T, ExprIf>) {
+            return Expr{loc, ExprIf{
+                make_prop(beta_reduce_prop(*n.cond)),
+                make_expr(beta_reduce_expr(*n.then_)),
+                make_expr(beta_reduce_expr(*n.else_))}};
+        } else if constexpr (std::is_same_v<T, ExprAgg>) {
+            std::optional<ExprPtr> new_bound;
+            if (n.bound) new_bound = make_expr(beta_reduce_expr(**n.bound));
+            return Expr{loc, ExprAgg{n.op, n.var, n.type, n.rel,
+                std::move(new_bound),
+                make_expr(beta_reduce_expr(*n.body))}};
+        } else if constexpr (std::is_same_v<T, ExprApp>) {
+            // Reduce the function and args first.
+            Expr func_reduced = beta_reduce_expr(*n.func);
+            std::vector<ExprPtr> args_reduced;
+            args_reduced.reserve(n.args.size());
+            for (const auto& a : n.args)
+                args_reduced.push_back(make_expr(beta_reduce_expr(*a)));
+
+            // If the function reduces to a lambda, apply it.
+            const ExprLambda* lam = std::get_if<ExprLambda>(&func_reduced.node);
+            if (lam && !args_reduced.empty()) {
+                // Consume the first argument via substitution.
+                Expr body_subst = subst(*lam->body, lam->var, *args_reduced[0]);
+                if (args_reduced.size() == 1) {
+                    // All args consumed — reduce the substituted body.
+                    return beta_reduce_expr(body_subst);
+                }
+                // Remaining args: wrap in a new ExprApp and reduce again.
+                std::vector<ExprPtr> remaining(args_reduced.begin() + 1,
+                                               args_reduced.end());
+                Expr next{loc, ExprApp{make_expr(body_subst), std::move(remaining)}};
+                return beta_reduce_expr(next);
+            }
+            // Function did not reduce to a lambda (or no args) — leave as ExprApp.
+            return Expr{loc, ExprApp{make_expr(func_reduced), std::move(args_reduced)}};
+        }
+        return e; // unreachable
+    }, e.node);
+}
+
+static Prop beta_reduce_prop(const Prop& p) {
+    return std::visit([&](const auto& n) -> Prop {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = p.loc;
+
+        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>
+                                                 || std::is_same_v<T, PropTrue>) {
+            return p;
+        } else if constexpr (std::is_same_v<T, PropNot>) {
+            return Prop{loc, PropNot{make_prop(beta_reduce_prop(*n.inner))}};
+        } else if constexpr (std::is_same_v<T, PropAnd>) {
+            return Prop{loc, PropAnd{make_prop(beta_reduce_prop(*n.lhs)),
+                                     make_prop(beta_reduce_prop(*n.rhs))}};
+        } else if constexpr (std::is_same_v<T, PropOr>) {
+            return Prop{loc, PropOr{make_prop(beta_reduce_prop(*n.lhs)),
+                                    make_prop(beta_reduce_prop(*n.rhs))}};
+        } else if constexpr (std::is_same_v<T, PropImpl>) {
+            return Prop{loc, PropImpl{make_prop(beta_reduce_prop(*n.lhs)),
+                                      make_prop(beta_reduce_prop(*n.rhs))}};
+        } else if constexpr (std::is_same_v<T, PropForall>) {
+            return Prop{loc, PropForall{n.var, n.type,
+                make_prop(beta_reduce_prop(*n.body))}};
+        } else if constexpr (std::is_same_v<T, PropExists>) {
+            return Prop{loc, PropExists{n.var, n.type,
+                make_prop(beta_reduce_prop(*n.body))}};
+        } else if constexpr (std::is_same_v<T, PropRel>) {
+            return Prop{loc, PropRel{
+                make_expr(beta_reduce_expr(*n.lhs)),
+                make_expr(beta_reduce_expr(*n.rhs)),
+                n.op}};
+        } else if constexpr (std::is_same_v<T, PropPred>) {
+            std::vector<ExprPtr> args;
+            args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                args.push_back(make_expr(beta_reduce_expr(*a)));
+            return Prop{loc, PropPred{n.name, std::move(args)}};
+        }
+        return p; // unreachable
+    }, p.node);
+}
+
+Expr beta_reduce(const Expr& e) { return beta_reduce_expr(e); }
+Prop beta_reduce(const Prop& p) { return beta_reduce_prop(p); }
+
+// ── eta_reduce implementation ─────────────────────────────────────────────────
+//
+// Reduces ExprLambda{x, t, ExprCall{name, args}} where the last arg is
+// ExprVar{x} and x does not appear free in ExprCall{name, args_without_last}:
+//   fun x => f(a1, a2, x)  →  f(a1, a2)   (if len>1)
+//   fun x => f(x)          →  ExprVar{"f"} (if args==[x])
+//
+// Recurses into all subexpressions.
+
+static Expr eta_reduce_expr(const Expr& e);
+
+static Expr eta_reduce_expr(const Expr& e) {
+    return std::visit([&](const auto& n) -> Expr {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = e.loc;
+
+        if constexpr (std::is_same_v<T, ExprLambda>) {
+            // First recurse into the body.
+            Expr body_reduced = eta_reduce_expr(*n.body);
+
+            // Check for eta-redex: body must be ExprCall{name, [..., ExprVar{x}]}
+            if (const auto* call = std::get_if<ExprCall>(&body_reduced.node)) {
+                if (!call->args.empty()) {
+                    const auto* last_var = std::get_if<ExprVar>(&call->args.back()->node);
+                    if (last_var && last_var->name == n.var) {
+                        // Build ExprCall without last arg to check free vars.
+                        std::vector<ExprPtr> without_last(
+                            call->args.begin(),
+                            call->args.end() - 1);
+                        Expr shorter{loc, ExprCall{call->name, without_last}};
+                        // Check that x does not appear free in the shortened call.
+                        // free_vars of ExprCall only looks at args, but we also
+                        // need to ensure x != call->name (ExprCall name is not
+                        // an ExprVar — it is a bare string identifier — but if
+                        // call->name == n.var, substituting f(x) where f is a
+                        // variable is not a true eta-redex without ExprApp).
+                        // We treat call->name as a constant identifier here;
+                        // the only free variable concern is in the args.
+                        auto fvs = free_vars(shorter);
+                        if (fvs.find(n.var) == fvs.end()) {
+                            // Eta-reduce.
+                            if (without_last.empty()) {
+                                // fun x => f(x) → ExprVar{f}
+                                return Expr{loc, ExprVar{call->name}};
+                            }
+                            return shorter;
+                        }
+                    }
+                }
+            }
+            // No eta-redex or conditions not met; reconstruct with reduced body.
+            return Expr{loc, ExprLambda{n.var, n.type, make_expr(body_reduced)}};
+        } else if constexpr (std::is_same_v<T, ExprLit> || std::is_same_v<T, ExprVar>) {
+            return e;
+        } else if constexpr (std::is_same_v<T, ExprBinary>) {
+            return Expr{loc, ExprBinary{n.op,
+                make_expr(eta_reduce_expr(*n.lhs)),
+                make_expr(eta_reduce_expr(*n.rhs))}};
+        } else if constexpr (std::is_same_v<T, ExprUnary>) {
+            return Expr{loc, ExprUnary{n.op,
+                make_expr(eta_reduce_expr(*n.operand))}};
+        } else if constexpr (std::is_same_v<T, ExprAbs>) {
+            return Expr{loc, ExprAbs{make_expr(eta_reduce_expr(*n.operand))}};
+        } else if constexpr (std::is_same_v<T, ExprCall>) {
+            std::vector<ExprPtr> args;
+            args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                args.push_back(make_expr(eta_reduce_expr(*a)));
+            return Expr{loc, ExprCall{n.name, std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ExprIndex>) {
+            return Expr{loc, ExprIndex{
+                make_expr(eta_reduce_expr(*n.array)),
+                make_expr(eta_reduce_expr(*n.index))}};
+        } else if constexpr (std::is_same_v<T, ExprTuple>) {
+            std::vector<ExprPtr> elems;
+            elems.reserve(n.elements.size());
+            for (const auto& el : n.elements)
+                elems.push_back(make_expr(eta_reduce_expr(*el)));
+            return Expr{loc, ExprTuple{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ExprSetLit>) {
+            std::vector<ExprPtr> elems;
+            elems.reserve(n.elements.size());
+            for (const auto& el : n.elements)
+                elems.push_back(make_expr(eta_reduce_expr(*el)));
+            return Expr{loc, ExprSetLit{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ExprSetCompr>) {
+            // We don't eta-reduce inside set comprehension predicates via Prop.
+            return e;
+        } else if constexpr (std::is_same_v<T, ExprIf>) {
+            return Expr{loc, ExprIf{n.cond,
+                make_expr(eta_reduce_expr(*n.then_)),
+                make_expr(eta_reduce_expr(*n.else_))}};
+        } else if constexpr (std::is_same_v<T, ExprAgg>) {
+            std::optional<ExprPtr> new_bound;
+            if (n.bound) new_bound = make_expr(eta_reduce_expr(**n.bound));
+            return Expr{loc, ExprAgg{n.op, n.var, n.type, n.rel,
+                std::move(new_bound),
+                make_expr(eta_reduce_expr(*n.body))}};
+        } else if constexpr (std::is_same_v<T, ExprApp>) {
+            std::vector<ExprPtr> args;
+            args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                args.push_back(make_expr(eta_reduce_expr(*a)));
+            return Expr{loc, ExprApp{
+                make_expr(eta_reduce_expr(*n.func)),
+                std::move(args)}};
+        }
+        return e; // unreachable
+    }, e.node);
+}
+
+Expr eta_reduce(const Expr& e) { return eta_reduce_expr(e); }
+
+// ── defn_eq implementation ────────────────────────────────────────────────────
+
+bool defn_eq(const Expr& a, const Expr& b) {
+    return beta_reduce(eta_reduce(a)) == beta_reduce(eta_reduce(b));
+}
+
+bool defn_eq(const Prop& a, const Prop& b) {
+    return beta_reduce(a) == beta_reduce(b);
 }
 
 // ── Type inference ─────────────────────────────────────────────────────────────
@@ -493,6 +784,28 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
                 }
             }
             // Return the codomain after consuming all args; for 0-arg calls, return whole sig.
+            return n.args.empty() ? TypeNode{*cur} : *cur->codomain;
+        }
+
+        if constexpr (std::is_same_v<T, ExprApp>) {
+            // Infer the type of the function expression; expect a TypeFun.
+            auto func_t = infer_type(*n.func, env, sigs);
+            if (!func_t) return func_t;
+            const TypeFun* cur = std::get_if<TypeFun>(&func_t->node);
+            if (!cur)
+                return err("ExprApp: function expression does not have a function type");
+            for (std::size_t i = 0; i < n.args.size(); ++i) {
+                auto arg_t = infer_type(*n.args[i], env, sigs);
+                if (!arg_t) return arg_t;
+                if (!(*arg_t == *cur->domain))
+                    return mismatch("ExprApp: argument type mismatch at position "
+                                    + std::to_string(i + 1));
+                if (i + 1 < n.args.size()) {
+                    cur = std::get_if<TypeFun>(&cur->codomain->node);
+                    if (!cur)
+                        return err("ExprApp: too many arguments");
+                }
+            }
             return n.args.empty() ? TypeNode{*cur} : *cur->codomain;
         }
 
