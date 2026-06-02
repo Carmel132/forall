@@ -464,6 +464,11 @@ static std::optional<LinConstraint> negate_linear(const LinConstraint& c);
 static bool fourier_motzkin(std::vector<LinConstraint> cs);
 static std::vector<LinConstraint> collect_linear_hypotheses(const ScopeStack& env);
 
+// Forward declaration for simp_tactic (defined in the tactics section below).
+static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStack& env,
+                                           diag::DiagnosticEngine& diag,
+                                           const diag::SourceLocation& loc);
+
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
 // Implements OrElim with named case arms.
@@ -1003,6 +1008,19 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by simp" — propositional simplification (MT2)
+            if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
+                auto app = simp_tactic(s.prop, env, diag, step.loc);
+                if (!app) return false;
+                auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by simp' internal error: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -1228,6 +1246,18 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 kernel.introduce_axiom(s.prop);
+                return true;
+            }
+            // "by simp" — propositional simplification (ThenStep variant)
+            if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
+                auto app = simp_tactic(s.prop, env, diag, step.loc);
+                if (!app) return false;
+                auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by simp' internal error: " + r.error().message});
+                    return false;
+                }
                 return true;
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
@@ -2159,6 +2189,51 @@ static std::optional<LinConstraint> negate_linear(const LinConstraint& c) {
     for (const auto& [v, coeff] : c.coeffs)
         neg.coeffs[v] = rat_neg(coeff);
     return neg;
+}
+
+// ── simp: propositional simplification tactic (MT2) ──────────────────────────
+//
+// Tries to close the goal by exhaustive combination of hypotheses in scope.
+// Checks n=0, n=1, n=2, n=3 premise combinations via infer_rule.
+// Returns the first matching RuleApp, or nullopt with a diagnostic on failure.
+static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStack& env,
+                                           diag::DiagnosticEngine& diag,
+                                           const diag::SourceLocation& loc)
+{
+    // Collect all hypotheses into a vector.
+    std::vector<const HypEntry*> all;
+    env.for_each([&](const std::string&, const HypEntry& e) { all.push_back(&e); });
+
+    // Create a muted diagnostic engine for probe calls.
+    diag::DiagnosticEngine probe_diag;
+
+    // n=0: TrueIntro
+    {
+        std::vector<const HypEntry*> empty;
+        if (auto r = infer_rule(goal, empty, probe_diag, loc)) return r;
+    }
+    // n=1
+    for (auto* a : all) {
+        std::vector<const HypEntry*> ps{a};
+        if (auto r = infer_rule(goal, ps, probe_diag, loc)) return r;
+    }
+    // n=2
+    for (std::size_t i = 0; i < all.size(); ++i)
+        for (std::size_t j = 0; j < all.size(); ++j) {
+            std::vector<const HypEntry*> ps{all[i], all[j]};
+            if (auto r = infer_rule(goal, ps, probe_diag, loc)) return r;
+        }
+    // n=3
+    for (std::size_t i = 0; i < all.size(); ++i)
+        for (std::size_t j = 0; j < all.size(); ++j)
+            for (std::size_t k = 0; k < all.size(); ++k) {
+                std::vector<const HypEntry*> ps{all[i], all[j], all[k]};
+                if (auto r = infer_rule(goal, ps, probe_diag, loc)) return r;
+            }
+    diag.emit({diag::Severity::Error, loc,
+               "'by simp' could not close goal `" + forall::pretty::to_string(goal)
+               + "` — add explicit justification"});
+    return std::nullopt;
 }
 
 // ── check_module ───────────────────────────────────────────────────────────────

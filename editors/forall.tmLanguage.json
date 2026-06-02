@@ -48,7 +48,7 @@
 
     "proof-justification": {
       "name": "keyword.operator.proof.forall",
-      "match": "\\b(by|with|at|from|decide|norm_num|ring|linarith)\\b"
+      "match": "\\b(by|with|at|from|decide|norm_num|ring|linarith|simp)\\b"
     },
 
     "logical-connective": {
