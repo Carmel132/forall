@@ -1487,6 +1487,18 @@ static void check_proprel_types(const ast::Prop& prop,
         auto is_set = [](const ast::TypeNode& t) {
             return std::holds_alternative<ast::TypeSet>(t.node);
         };
+        // Helper: returns true if `from` can be coerced to `to` via the numeric tower.
+        auto numeric_coercible = [](const ast::TypeNode& from, const ast::TypeNode& to) -> bool {
+            auto rank = [](const ast::TypeNode& t) -> int {
+                if (std::holds_alternative<ast::TypeNat>(t.node))  return 0;
+                if (std::holds_alternative<ast::TypeInt>(t.node))  return 1;
+                if (std::holds_alternative<ast::TypeRat>(t.node))  return 2;
+                if (std::holds_alternative<ast::TypeReal>(t.node)) return 3;
+                return -1;
+            };
+            int rf = rank(from), rt = rank(to);
+            return rf >= 0 && rt >= 0 && rf <= rt;
+        };
         using Op = ast::RelOp;
         if (rel->op == Op::In || rel->op == Op::NotIn) {
             // element ∈ set — rhs must be TypeSet{T} and lhs must have type T.
@@ -1495,7 +1507,8 @@ static void check_proprel_types(const ast::Prop& prop,
                            "type mismatch: right-hand side of membership relation is not a set"});
             } else {
                 const auto& rset = std::get<ast::TypeSet>(rt->node);
-                if (!(*lt == *rset.element_type)) {
+                // DT7: allow numeric tower coercions for membership checks.
+                if (!(*lt == *rset.element_type) && !numeric_coercible(*lt, *rset.element_type)) {
                     diag.emit({diag::Severity::Warning, loc,
                                "type mismatch: '"
                                + forall::pretty::to_string(*rel->lhs)
@@ -1592,13 +1605,17 @@ void check_proof(const ast::Decl& decl,
             type_env[param.name] = param.type;
             for (const auto& sf : fields) {
                 if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
-                    const std::string hyp_name = param.name + "_" + fa->name;
+                    const std::string hyp_name      = param.name + "_" + fa->name;
+                    const std::string hyp_name_dot  = param.name + "." + fa->name;
                     // Inject the axiom as-is (uninstantiated) — it represents the
                     // generic axiom for this structure parameter.
                     auto r = kernel.introduce_axiom(fa->prop);
-                    if (r)
-                        env.insert_or_assign(hyp_name,
-                                             HypEntry{std::move(*r), EntryKind::Derived});
+                    if (r) {
+                        HypEntry entry{*r, EntryKind::Derived};
+                        env.insert_or_assign(hyp_name,     entry);
+                        // DT6: also register under "param.axiom_name" (dot notation)
+                        env.insert_or_assign(hyp_name_dot, std::move(entry));
+                    }
                 }
                 if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
                     const std::string sig_name = param.name + "_" + ft->name;
@@ -1656,11 +1673,15 @@ void check_proof(const ast::Decl& decl,
                             const auto& fields = sit->second;
                             for (const auto& sf : fields) {
                                 if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
-                                    const std::string hyp_name = ts->var + "_" + fa->name;
+                                    const std::string hyp_name     = ts->var + "_" + fa->name;
+                                    const std::string hyp_name_dot = ts->var + "." + fa->name;
                                     auto r = kernel.introduce_axiom(fa->prop);
-                                    if (r)
-                                        env.insert_or_assign(hyp_name,
-                                            HypEntry{std::move(*r), EntryKind::Derived});
+                                    if (r) {
+                                        HypEntry entry{*r, EntryKind::Derived};
+                                        env.insert_or_assign(hyp_name,     entry);
+                                        // DT6: also register under "var.axiom_name"
+                                        env.insert_or_assign(hyp_name_dot, std::move(entry));
+                                    }
                                 }
                                 if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
                                     const std::string sig_name = ts->var + "_" + ft->name;
