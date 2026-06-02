@@ -420,6 +420,7 @@ struct CheckContext {
     const InstanceTable&     instances;    // type_name → {class_names}
     const HypEnv&            module_env;   // axiom/lemma entries (for norm_num)
     const ast::FuncSigTable& sigs;         // function signatures
+    const ast::Prop*         goal;         // theorem statement (for RL4 __qed__ sentinel)
 };
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
@@ -969,6 +970,22 @@ bool check_step(const ast::Step& step,
 
         // then <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::ThenStep>) {
+            // RL4: "__qed__" sentinel — bare "then" with no proposition.
+            // Substitute the theorem's goal, then continue as a normal ThenStep.
+            // The __qed__ sentinel is always first; extra refs follow it.
+            if (!s.justification.empty() && s.justification[0] == "__qed__") {
+                if (!ctx.goal) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "bare 'then' (goal-close) is not valid outside a theorem proof"});
+                    return false;
+                }
+                // Build a synthetic ThenStep with the real goal and remaining refs.
+                std::vector<std::string> real_refs(s.justification.begin() + 1,
+                                                   s.justification.end());
+                ast::Step synth{step.loc, ast::ThenStep{*ctx.goal, std::move(real_refs), s.witness}};
+                return check_step(synth, env, kernel, diag, ctx);
+            }
+
             // RL1: auto-discharge — allow bare "then P → Q" or "then ¬P" with no
             // justification by finding the most-recent matching Assumption in scope.
             if (s.justification.empty()) {
@@ -1326,7 +1343,7 @@ void check_proof(const ast::Decl& decl,
             if (ts->type.has_value())
                 type_env[ts->var] = *ts->type;
 
-        const CheckContext ctx{type_env, instances, module_env, sigs};
+        const CheckContext ctx{type_env, instances, module_env, sigs, &decl.statement};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -1341,8 +1358,13 @@ void check_proof(const ast::Decl& decl,
         // conclusion, seeding the TypeEnv from their type annotations.
         if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
             check_prop_types_deep(hs->prop, type_env, sigs, diag);
-        if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node))
-            check_prop_types_deep(ts_s->prop, type_env, sigs, diag);
+        if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node)) {
+            // Don't type-check the dummy PropFalse{} in a __qed__ sentinel step.
+            const bool is_qed = !ts_s->justification.empty()
+                                 && ts_s->justification[0] == "__qed__";
+            if (!is_qed)
+                check_prop_types_deep(ts_s->prop, type_env, sigs, diag);
+        }
 
         if (std::get_if<ast::ThenStep>(&step.node)) {
             last_concluding = &step;
@@ -1370,7 +1392,10 @@ void check_proof(const ast::Decl& decl,
                        "proof of '" + decl.name + "' has no concluding 'then' step"});
         } else if (last_kind == LastKind::Then) {
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
-            if (ts.prop != decl.statement)
+            // RL4: __qed__ sentinel substitutes decl.statement — skip prop check.
+            const bool is_qed_sentinel = !ts.justification.empty()
+                                         && ts.justification[0] == "__qed__";
+            if (!is_qed_sentinel && ts.prop != decl.statement)
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with `" + forall::pretty::to_string(ts.prop)
                            + "`, expected `" + forall::pretty::to_string(decl.statement) + "`"});
