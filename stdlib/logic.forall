@@ -1,0 +1,17 @@
+-- Classical propositional logic axioms.
+-- These are the standard classical extensions to intuitionistic logic.
+-- Users who want constructive (intuitionistic) proofs should not import this file.
+-- Note: P, Q, R are opaque propositional variables here (axiom schemas).
+
+-- Law of excluded middle: every proposition is either true or false.
+axiom excluded_middle_P : P or not P
+axiom excluded_middle_Q : Q or not Q
+axiom excluded_middle_R : R or not R
+
+-- Double-negation elimination: from ¬¬P, derive P.
+axiom double_neg_elim_P : not (not P) -> P
+axiom double_neg_elim_Q : not (not Q) -> Q
+
+-- Proof by contradiction: (¬P → ⊥) → P.
+axiom by_contradiction_P : (not P -> false) -> P
+axiom by_contradiction_Q : (not Q -> false) -> Q
