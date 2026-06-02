@@ -50,6 +50,7 @@ enum class TokenKind {
     KwNormNum,                  // "norm_num"  (tactic keyword)
     KwRing,                     // "ring"      (tactic keyword)
     KwLinarith,                 // "linarith"  (linear arithmetic tactic)
+    KwSimp,                     // "simp"      (propositional simplification tactic)
     // "base" and "inductive" are context-sensitive — lexed as Identifier
 
     // Punctuation
