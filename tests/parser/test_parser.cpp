@@ -2257,6 +2257,49 @@ TEST(ParserTest, MultiVarBinder_SingleVarStillWorks) {
     ASSERT_NE(body, nullptr); EXPECT_EQ(body->name, "P");
 }
 
+TEST(ParserTest, BoundedBinder_ForallLt) {
+    // PB3: "for all i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)"
+    auto r = parse_str("axiom a : for all i < n, P(i)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    EXPECT_EQ(fa->var, "i");
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(fa->type->node));
+    // body is (i < n) → P(i)
+    const auto* impl = std::get_if<ast::PropImpl>(&fa->body->node);
+    ASSERT_NE(impl, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&impl->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::Lt);
+}
+
+TEST(ParserTest, BoundedBinder_ForallGt) {
+    // PB3: "for all i > 0, P(i)" desugars to "∀ i : Nat, i > 0 → P(i)"
+    auto r = parse_str("axiom a : for all i > 0, P(i)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr); EXPECT_EQ(fa->var, "i");
+    const auto* impl = std::get_if<ast::PropImpl>(&fa->body->node);
+    ASSERT_NE(impl, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&impl->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::Gt);
+}
+
+TEST(ParserTest, BoundedBinder_ExistsLeq) {
+    // PB3: "there exists i <= n, P(i)"
+    auto r = parse_str("axiom a : there exists i <= n, P(i)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ex = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(ex, nullptr); EXPECT_EQ(ex->var, "i");
+    const auto* impl = std::get_if<ast::PropImpl>(&ex->body->node);
+    ASSERT_NE(impl, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&impl->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::LtEq);
+}
+
 TEST(ParserTest, DoubleNegation_Axiom) {
     // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
     auto r = parse_str("axiom dne : not (not P) -> P");
