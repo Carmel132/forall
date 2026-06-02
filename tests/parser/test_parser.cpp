@@ -2300,6 +2300,44 @@ TEST(ParserTest, BoundedBinder_ExistsLeq) {
     EXPECT_EQ(guard->op, ast::RelOp::LtEq);
 }
 
+TEST(ParserTest, TupleType_Pair_InForallBinder) {
+    // PB4: "for all p : (Nat, Nat), P" uses TypeTuple
+    auto r = parse_str("axiom a : for all p : (Nat, Nat), P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* tt = std::get_if<ast::TypeTuple>(&fa->type->node);
+    ASSERT_NE(tt, nullptr);
+    ASSERT_EQ(tt->elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(tt->elements[0]->node));
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(tt->elements[1]->node));
+}
+
+TEST(ParserTest, TupleType_Triple) {
+    // PB4: three-element tuple type in a binder
+    auto r = parse_str("axiom a : for all t : (Nat, Int, Real), P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    const auto* tt = std::get_if<ast::TypeTuple>(&fa->type.value().node);
+    ASSERT_NE(tt, nullptr);
+    ASSERT_EQ(tt->elements.size(), 3u);
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(tt->elements[0]->node));
+    EXPECT_TRUE(std::holds_alternative<ast::TypeInt>(tt->elements[1]->node));
+    EXPECT_TRUE(std::holds_alternative<ast::TypeReal>(tt->elements[2]->node));
+}
+
+TEST(ParserTest, TupleType_SingleParenIsNotTuple) {
+    // PB4: "(Nat)" should reduce to just Nat (not TypeTuple{Nat})
+    auto r = parse_str("axiom a : for all x : (Nat), P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(fa->type->node));
+}
+
 TEST(ParserTest, DoubleNegation_Axiom) {
     // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
     auto r = parse_str("axiom dne : not (not P) -> P");
