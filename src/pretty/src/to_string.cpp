@@ -117,6 +117,7 @@ static int expr_prec(const ast::ExprNode& n) {
 static bool is_prop_atom(const ast::PropNode& n) {
     return std::holds_alternative<ast::Atomic>(n)
         || std::holds_alternative<ast::PropFalse>(n)
+        || std::holds_alternative<ast::PropTrue>(n)
         || std::holds_alternative<ast::PropPred>(n)
         || std::holds_alternative<ast::PropRel>(n);
 }
@@ -261,6 +262,9 @@ std::string ts_prop(const ast::Prop& p) {
         }
         else if constexpr (std::is_same_v<T, ast::PropFalse>) {
             return "\xe2\x8a\xa5";  // ⊥ U+22A5
+        }
+        else if constexpr (std::is_same_v<T, ast::PropTrue>) {
+            return "\xe2\x8a\xa4";  // ⊤ U+22A4
         }
         else if constexpr (std::is_same_v<T, ast::PropNot>) {
             // Grammar: negation = "¬" atomic_prop.  Operand must be atomic.
