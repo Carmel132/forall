@@ -246,8 +246,9 @@ struct CasesStep {
 };
 
 struct LetStep {
-    std::string           var;
-    std::optional<TypeNode> type; // e.g. TypeProp for "let P be a Prop"
+    std::string             var;
+    std::optional<TypeNode> type;       // e.g. TypeProp for "let P be a Prop"
+    std::optional<ExprPtr>  definition; // e.g. ExprBinary{/} for "let delta = eps / 2"
 };
 
 // take x [: T] — introduces a fresh term variable for ∀-intro.
