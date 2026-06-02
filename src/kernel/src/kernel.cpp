@@ -1,6 +1,13 @@
 #include <forall/kernel/kernel.hpp>
 #include <forall/ast/node.hpp>
 
+// Definitional equality: structural equality after beta + eta normalisation.
+// Used throughout apply() so that ForallElim with a lambda witness succeeds when
+// the substituted body differs from the stated conclusion only by beta-reduction.
+static bool props_eq(const forall::ast::Prop& a, const forall::ast::Prop& b) {
+    return forall::ast::defn_eq(a, b);
+}
+
 namespace forall::kernel {
 
 namespace {
@@ -51,7 +58,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
     // ── Assumption: premise is the conclusion itself (context managed outside) ─
     case Rule::Assumption:
         if (premises.size() != 1) return wrong_arity(1);
-        if (!(premises[0].prop() == conclusion))
+        if (!props_eq(premises[0].prop(), conclusion))
             return mismatch("assumption must match conclusion");
         return make(conclusion);
 
@@ -61,9 +68,9 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* conj = std::get_if<PropAnd>(&conclusion.node);
         if (!conj)
             return mismatch("AndIntro: conclusion must be A ∧ B");
-        if (!(premises[0].prop() == *conj->lhs))
+        if (!props_eq(premises[0].prop(), *conj->lhs))
             return mismatch("AndIntro: first premise must match left conjunct");
-        if (!(premises[1].prop() == *conj->rhs))
+        if (!props_eq(premises[1].prop(), *conj->rhs))
             return mismatch("AndIntro: second premise must match right conjunct");
         return make(conclusion);
     }
@@ -74,7 +81,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* conj = std::get_if<PropAnd>(&premises[0].prop().node);
         if (!conj)
             return mismatch("AndElimL: premise must be A ∧ B");
-        if (!(conclusion == *conj->lhs))
+        if (!props_eq(conclusion, *conj->lhs))
             return mismatch("AndElimL: conclusion must be left conjunct A");
         return make(conclusion);
     }
@@ -85,7 +92,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* conj = std::get_if<PropAnd>(&premises[0].prop().node);
         if (!conj)
             return mismatch("AndElimR: premise must be A ∧ B");
-        if (!(conclusion == *conj->rhs))
+        if (!props_eq(conclusion, *conj->rhs))
             return mismatch("AndElimR: conclusion must be right conjunct B");
         return make(conclusion);
     }
@@ -98,7 +105,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* impl = std::get_if<PropImpl>(&conclusion.node);
         if (!impl)
             return mismatch("ImplIntro: conclusion must be A → B");
-        if (!(premises[0].prop() == *impl->rhs))
+        if (!props_eq(premises[0].prop(), *impl->rhs))
             return mismatch("ImplIntro: premise must be the consequent B");
         return make(conclusion);
     }
@@ -109,9 +116,9 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* impl = std::get_if<PropImpl>(&premises[0].prop().node);
         if (!impl)
             return mismatch("ImplElim: first premise must be A → B");
-        if (!(premises[1].prop() == *impl->lhs))
+        if (!props_eq(premises[1].prop(), *impl->lhs))
             return mismatch("ImplElim: second premise must be antecedent A");
-        if (!(conclusion == *impl->rhs))
+        if (!props_eq(conclusion, *impl->rhs))
             return mismatch("ImplElim: conclusion must be consequent B");
         return make(conclusion);
     }
@@ -122,7 +129,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* disj = std::get_if<PropOr>(&conclusion.node);
         if (!disj)
             return mismatch("OrIntroL: conclusion must be A ∨ B");
-        if (!(premises[0].prop() == *disj->lhs))
+        if (!props_eq(premises[0].prop(), *disj->lhs))
             return mismatch("OrIntroL: premise must match left disjunct A");
         return make(conclusion);
     }
@@ -133,7 +140,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* disj = std::get_if<PropOr>(&conclusion.node);
         if (!disj)
             return mismatch("OrIntroR: conclusion must be A ∨ B");
-        if (!(premises[0].prop() == *disj->rhs))
+        if (!props_eq(premises[0].prop(), *disj->rhs))
             return mismatch("OrIntroR: premise must match right disjunct B");
         return make(conclusion);
     }
@@ -150,9 +157,9 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* rcase = std::get_if<PropImpl>(&premises[2].prop().node);
         if (!lcase || !rcase)
             return mismatch("OrElim: second and third premises must be A → C and B → C");
-        if (!(*lcase->lhs == *disj->lhs) || !(*rcase->lhs == *disj->rhs))
+        if (!props_eq(*lcase->lhs, *disj->lhs) || !props_eq(*rcase->lhs, *disj->rhs))
             return mismatch("OrElim: case premises must match the disjuncts");
-        if (!(conclusion == *lcase->rhs) || !(conclusion == *rcase->rhs))
+        if (!props_eq(conclusion, *lcase->rhs) || !props_eq(conclusion, *rcase->rhs))
             return mismatch("OrElim: both cases must conclude C");
         return make(conclusion);
     }
@@ -175,7 +182,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* neg = std::get_if<PropNot>(&premises[0].prop().node);
         if (!neg)
             return mismatch("NotElim: first premise must be ¬A");
-        if (!(premises[1].prop() == *neg->inner))
+        if (!props_eq(premises[1].prop(), *neg->inner))
             return mismatch("NotElim: second premise must be A");
         if (!std::get_if<PropFalse>(&conclusion.node))
             return mismatch("NotElim: conclusion must be ⊥");
@@ -211,7 +218,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         if (!fa)
             return mismatch("ForallElim: premise must be ∀ x, P");
         const ast::Prop expected = ast::subst(*fa->body, fa->var, *witness);
-        if (!(conclusion == expected))
+        if (!props_eq(conclusion, expected))
             return mismatch("ForallElim: conclusion must be P[x:=t]");
         return make(conclusion);
     }
@@ -229,7 +236,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         if (!ex)
             return mismatch("ExistsIntro: conclusion must be ∃ x, P");
         const ast::Prop expected = ast::subst(*ex->body, ex->var, *witness);
-        if (!(premises[0].prop() == expected))
+        if (!props_eq(premises[0].prop(), expected))
             return mismatch("ExistsIntro: premise must be P[x:=t]");
         return make(conclusion);
     }
@@ -244,7 +251,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         const auto* fa = std::get_if<PropForall>(&conclusion.node);
         if (!fa)
             return mismatch("ForallIntro: conclusion must be ∀ x, P");
-        if (!(premises[0].prop() == *fa->body))
+        if (!props_eq(premises[0].prop(), *fa->body))
             return mismatch("ForallIntro: premise must equal the body of ∀ x, P");
         return make(conclusion);
     }
@@ -258,7 +265,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         if (premises.size() != 2) return wrong_arity(2);
         if (!std::get_if<PropExists>(&premises[0].prop().node))
             return mismatch("ExistsElim: first premise must be ∃ x, P");
-        if (!(premises[1].prop() == conclusion))
+        if (!props_eq(premises[1].prop(), conclusion))
             return mismatch("ExistsElim: second premise must equal conclusion Q");
         return make(conclusion);
     }
@@ -284,7 +291,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
 
         const ast::Prop base_expected = ast::subst(*fa->body, fa->var,
             ast::Expr{{}, ast::ExprLit{"0"}});
-        if (!(premises[0].prop() == base_expected))
+        if (!props_eq(premises[0].prop(), base_expected))
             return mismatch("NatInduction: first premise must be P[n:=0]");
 
         // step premise: ∀ n : Nat, P(n) → P(succ(n))
@@ -294,7 +301,7 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         ast::Prop step_body{{}, ast::PropImpl{fa->body, ast::make_prop(p_succ_n)}};
         ast::Prop step_expected{{},
             ast::PropForall{fa->var, fa->type, ast::make_prop(step_body)}};
-        if (!(premises[1].prop() == step_expected))
+        if (!props_eq(premises[1].prop(), step_expected))
             return mismatch("NatInduction: second premise must be ∀ n : Nat, P(n) → P(succ(n))");
 
         return make(conclusion);
