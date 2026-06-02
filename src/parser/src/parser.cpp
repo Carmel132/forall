@@ -628,6 +628,7 @@ ast::Prop Parser::parseAtomicProp() {
                 case lexer::TokenKind::Exists:      // ∃ / "there exists"
                 case lexer::TokenKind::KwThere:     // "there" (part of "there exists")
                 case lexer::TokenKind::KwFalse:     // "false" / ⊥
+                case lexer::TokenKind::Not:         // ¬ / "not"
                     return true;
                 default:
                     return false;
