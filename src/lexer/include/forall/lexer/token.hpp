@@ -12,7 +12,7 @@ enum class TokenKind {
 
     // Declaration keywords
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
-    KwProof, KwEnd, KwImport, KwInstance, KwStructure,
+    KwProof, KwEnd, KwImport, KwInstance, KwStructure, KwQuotient,
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,

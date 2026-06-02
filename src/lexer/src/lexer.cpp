@@ -192,6 +192,7 @@ Token Lexer::nextToken() {
             {"import",       TokenKind::KwImport},
             {"instance",     TokenKind::KwInstance},
             {"structure",    TokenKind::KwStructure},
+            {"quotient",     TokenKind::KwQuotient},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},
