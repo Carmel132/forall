@@ -43,7 +43,7 @@
 
     "proof-structure": {
       "name": "keyword.control.proof.forall",
-      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|done|let|take|obtain|be|we|on|induction|base|inductive|show|exact)\\b|□"
+      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|done|let|take|obtain|be|we|on|induction|base|inductive|show|exact|rewrite)\\b|□"
     },
 
     "proof-justification": {

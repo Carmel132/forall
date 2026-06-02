@@ -124,6 +124,10 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return indent + "exact " + s.hyp_ref;
         }
 
+        if constexpr (std::is_same_v<T, ast::RewriteStep>) {
+            return indent + "rewrite " + (s.reverse ? "\xe2\x86\x90 " : "") + s.hyp_ref;
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
