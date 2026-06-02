@@ -248,6 +248,19 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
 
     case ast::DeclKind::Instance:
         return "instance " + decl.name + " : " + decl.instance_class;
+
+    case ast::DeclKind::Structure: {
+        std::string r = "structure " + decl.name + " :=\n";
+        for (const auto& field : decl.fields) {
+            if (const auto* ft = std::get_if<ast::FieldTerm>(&field))
+                r += "  " + ft->name + " : " + to_string(ft->type) + "\n";
+            else if (const auto* fa = std::get_if<ast::FieldAxiom>(&field))
+                r += "  axiom " + fa->name + " : " + to_string(fa->prop) + "\n";
+        }
+        // Remove trailing newline so format_module's own "\n" separator works correctly.
+        if (!r.empty() && r.back() == '\n') r.pop_back();
+        return r;
+    }
     }
     return {};
 }
