@@ -8,6 +8,7 @@
 #include <atomic>
 #include <fstream>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -89,6 +90,14 @@ public:
             for (const auto& [name, entry] : frame)
                 if (entry.kind == EntryKind::Assumption)
                     f(name, entry);
+    }
+
+    // Calls f(name, entry) for every entry (Assumption or Derived) across all frames.
+    template<typename F>
+    void for_each(F&& f) const {
+        for (const auto& frame : frames_)
+            for (const auto& [name, entry] : frame)
+                f(name, entry);
     }
 
     // Find the innermost Derived entry whose proposition equals p.
@@ -319,6 +328,14 @@ using Rational = std::pair<long long, long long>; // numerator / denominator
 using Monomial = std::map<std::string, int>;   // var → positive exponent
 using Poly     = std::map<Monomial, Rational>;  // monomial → coeff
 
+// Linear constraint for linarith (MT1): sum(coeff_i * x_i) - rhs  sense  0
+// sense: -1 = strict <, 0 = =, 1 = ≤
+struct LinConstraint {
+    std::map<std::string, Rational> coeffs;
+    Rational                        rhs;
+    int                             sense;
+};
+
 static long long gcd(long long a, long long b) {
     a = a < 0 ? -a : a; b = b < 0 ? -b : b;
     while (b) { a %= b; std::swap(a, b); }
@@ -439,6 +456,13 @@ bool check_step(const ast::Step& step,
 
 // Forward declaration for normalize_expr (defined in C2-P4 section further below).
 static Poly normalize_expr(const ast::Expr& e);
+
+// Forward declarations for linarith helpers (defined after ring_equal below).
+struct LinConstraint;
+static std::optional<LinConstraint> extract_linear(const ast::PropRel& rel);
+static std::optional<LinConstraint> negate_linear(const LinConstraint& c);
+static bool fourier_motzkin(std::vector<LinConstraint> cs);
+static std::vector<LinConstraint> collect_linear_hypotheses(const ScopeStack& env);
 
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
@@ -945,6 +969,40 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by linarith" — linear arithmetic over ordered fields (MT1)
+            if (s.justification.size() == 1 && s.justification[0] == "__linarith__") {
+                auto hyps = collect_linear_hypotheses(env);
+                // Add the negated goal as a hypothesis.
+                const auto* goal_rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!goal_rel) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' only applies to relational propositions (e.g. x < y, a ≤ b)"});
+                    return false;
+                }
+                auto goal_lc = extract_linear(*goal_rel);
+                if (!goal_lc) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' could not extract a linear constraint from goal"});
+                    return false;
+                }
+                auto neg_goal = negate_linear(*goal_lc);
+                if (!neg_goal) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' does not support equality goals; use 'by ring' for equations"});
+                    return false;
+                }
+                hyps.push_back(std::move(*neg_goal));
+                if (!fourier_motzkin(hyps)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' could not derive `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` from the linear hypotheses in scope"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(s.prop);
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -1135,6 +1193,38 @@ bool check_step(const ast::Step& step,
                                "'by ring': `"
                                + forall::pretty::to_string(s.prop)
                                + "` does not hold as a ring identity"});
+                    return false;
+                }
+                kernel.introduce_axiom(s.prop);
+                return true;
+            }
+            // "by linarith" — linear arithmetic (ThenStep variant)
+            if (s.justification.size() == 1 && s.justification[0] == "__linarith__") {
+                auto hyps = collect_linear_hypotheses(env);
+                const auto* goal_rel = std::get_if<ast::PropRel>(&s.prop.node);
+                if (!goal_rel) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' only applies to relational propositions"});
+                    return false;
+                }
+                auto goal_lc = extract_linear(*goal_rel);
+                if (!goal_lc) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' could not extract a linear constraint from goal"});
+                    return false;
+                }
+                auto neg_goal = negate_linear(*goal_lc);
+                if (!neg_goal) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' does not support equality goals"});
+                    return false;
+                }
+                hyps.push_back(std::move(*neg_goal));
+                if (!fourier_motzkin(hyps)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by linarith' could not derive `"
+                               + forall::pretty::to_string(s.prop)
+                               + "` from the linear hypotheses in scope"});
                     return false;
                 }
                 kernel.introduce_axiom(s.prop);
@@ -1857,6 +1947,218 @@ ring_equal(const ast::Expr& lhs, const ast::Expr& rhs) {
     // Resolution: only call ring_equal from contexts where both sides were already
     // type-checked to be numeric (not opaque function calls).
     return lp == rp;
+}
+
+// ── linarith: linear arithmetic decision procedure (MT1) ──────────────────────
+//
+// Checks whether a set of linear inequalities over ℚ is unsatisfiable using
+// Fourier-Motzkin elimination.  A constraint is:
+//   { coefficients: map<var,Rational>, const_term: Rational, op: Lt/LtEq/Eq }
+// Representing:  sum(coeff_i * x_i) + const_term  op  0
+// e.g. "x + 2y < 5"  →  { {x:1, y:2}, -5, Lt }
+//
+// LinConstraint is declared near Poly above (needed by check_step forward decls).
+
+static Rational rat_neg(Rational r) { return {-r.first, r.second}; }
+static Rational rat_add(Rational a, Rational b) {
+    long long n = a.first * b.second + b.first * a.second;
+    long long d = a.second * b.second;
+    if (d < 0) { n = -n; d = -d; }
+    auto g = std::gcd(std::abs(n), d);
+    return {n/g, d/g};
+}
+static Rational rat_mul(Rational a, Rational b) {
+    long long n = a.first * b.first;
+    long long d = a.second * b.second;
+    if (d < 0) { n = -n; d = -d; }
+    auto g = std::gcd(std::abs(n), d);
+    return {n==0?0:n/g, d/g};
+}
+
+// Check if a Poly is linear (all monomials have degree ≤ 1).
+// Extract as map<var, coeff> + constant term.
+static bool poly_to_linear(const Poly& p,
+                            std::map<std::string, Rational>& out_coeffs,
+                            Rational& out_const)
+{
+    out_const = {0, 1};
+    for (const auto& [mono, coeff] : p) {
+        if (coeff.first == 0) continue;
+        if (mono.empty()) {
+            // constant term
+            out_const = rat_add(out_const, coeff);
+        } else if (mono.size() == 1 && mono.begin()->second == 1) {
+            // linear term: variable with exponent 1
+            const std::string& var = mono.begin()->first;
+            auto it = out_coeffs.find(var);
+            if (it == out_coeffs.end()) out_coeffs[var] = coeff;
+            else it->second = rat_add(it->second, coeff);
+        } else {
+            return false; // non-linear
+        }
+    }
+    return true;
+}
+
+// Extract a linear constraint from "lhs op rhs": lhs - rhs op 0
+// Returns nullopt if the relation is not linear.
+static std::optional<LinConstraint>
+extract_linear(const ast::PropRel& rel) {
+    auto lp = normalize_expr(*rel.lhs);
+    auto rp = normalize_expr(*rel.rhs);
+    // Compute lp - rp
+    Poly diff = lp;
+    for (const auto& [m, c] : rp)
+        diff[m] = rat_add(poly_get(diff, m), rat_neg(c));
+    // Trim zeros
+    for (auto it = diff.begin(); it != diff.end(); ) {
+        if (it->second.first == 0) it = diff.erase(it); else ++it;
+    }
+    std::map<std::string, Rational> coeffs;
+    Rational cst;
+    if (!poly_to_linear(diff, coeffs, cst)) return std::nullopt;
+    // sense: Lt→-1, LtEq/Gt/GtEq flipped, Eq→0
+    int sense = 0;
+    switch (rel.op) {
+        case ast::RelOp::Lt:    sense = -1; break;
+        case ast::RelOp::LtEq:  sense =  1; break;
+        case ast::RelOp::Eq:    sense =  0; break;
+        case ast::RelOp::GtEq:  // lhs >= rhs → rhs - lhs <= 0 → flip
+            for (auto& [v,c] : coeffs) c = rat_neg(c);
+            cst = rat_neg(cst);
+            sense = 1;
+            break;
+        case ast::RelOp::Gt:   // lhs > rhs → rhs - lhs < 0 → flip
+            for (auto& [v,c] : coeffs) c = rat_neg(c);
+            cst = rat_neg(cst);
+            sense = -1;
+            break;
+        default: return std::nullopt;
+    }
+    return LinConstraint{std::move(coeffs), cst, sense};
+}
+
+// Fourier-Motzkin: returns true if the constraint set is UNSATISFIABLE.
+// Works by projecting out variables one at a time.
+// Fourier-Motzkin: returns true if the constraint set is UNSATISFIABLE.
+//
+// Encoding: each LinConstraint represents  Σ coeffs[v]*v - rhs  sense  0
+// where sense=-1 means strict <, sense=1 means ≤.
+//
+// To check for contradiction: add negated goal to the set and check unsat.
+static bool fourier_motzkin(std::vector<LinConstraint> cs) {
+    if (cs.empty()) return false;
+
+    // Helper: add scaled constraint (scalar * c) to another constraint.
+    auto scale = [](const LinConstraint& c, Rational s) -> LinConstraint {
+        LinConstraint r;
+        r.sense = c.sense;
+        r.rhs   = rat_mul(c.rhs, s);
+        for (const auto& [v, coeff] : c.coeffs) {
+            Rational scaled = rat_mul(coeff, s);
+            if (scaled.first != 0) r.coeffs[v] = scaled;
+        }
+        return r;
+    };
+
+    // Helper: add two constraints (sum of coefficients and rhs).
+    auto add_constraints = [](const LinConstraint& a, const LinConstraint& b, int sense) -> LinConstraint {
+        LinConstraint r;
+        r.sense = sense;
+        r.rhs   = rat_add(a.rhs, b.rhs);
+        r.coeffs = a.coeffs;
+        for (const auto& [v, c] : b.coeffs) {
+            auto it = r.coeffs.find(v);
+            Rational combined = rat_add(it != r.coeffs.end() ? it->second : Rational{0,1}, c);
+            if (combined.first != 0) r.coeffs[v] = combined;
+            else if (it != r.coeffs.end()) r.coeffs.erase(it);
+        }
+        return r;
+    };
+
+    // Collect all variable names.
+    std::set<std::string> vars;
+    for (const auto& c : cs)
+        for (const auto& [v, _] : c.coeffs) vars.insert(v);
+
+    for (const auto& var : vars) {
+        // Split into upper-bounded (coeff > 0: var contributes positively → bounds var from above via ≤)
+        // and lower-bounded (coeff < 0: var contributes negatively → bounds var from below).
+        std::vector<LinConstraint> ub, lb, free;
+        for (const auto& c : cs) {
+            auto it = c.coeffs.find(var);
+            if (it == c.coeffs.end() || it->second.first == 0) { free.push_back(c); continue; }
+            if (it->second.first > 0) ub.push_back(c);
+            else                      lb.push_back(c);
+        }
+        // FM projection: for each (u, l) pair combine to eliminate var.
+        // u: a_u * var + ... ≤ rhs_u → var ≤ (rhs_u - ...) / a_u
+        // l: a_l * var + ... ≤ rhs_l (a_l < 0) → var ≥ (rhs_l - ...) / a_l → var ≥ (rhs_l - ...)/a_l
+        // Combined: (rhs_l - sum_l) / a_l ≤ (rhs_u - sum_u) / a_u
+        // Scale: a_u*(rhs_l - sum_l) ≤ (-a_l)*(rhs_u - sum_u)
+        // Or: a_u*(sum_l coeffs) + (-a_l)*(sum_u coeffs) - (a_u*rhs_l + (-a_l)*rhs_u) sense 0
+        // Which is: scale(l, a_u) + scale(u, -a_l) combined
+        std::vector<LinConstraint> next = free;
+        for (const auto& u : ub) {
+            Rational a_u = u.coeffs.at(var);             // > 0
+            for (const auto& l : lb) {
+                Rational a_l = l.coeffs.at(var);          // < 0
+                Rational neg_a_l{-a_l.first, a_l.second}; // > 0
+                // Combined: scale(u, neg_a_l) + scale(l, a_u), eliminates var
+                auto su = scale(u, neg_a_l);
+                auto sl = scale(l, a_u);
+                su.coeffs.erase(var);
+                sl.coeffs.erase(var);
+                int sense = (u.sense == -1 || l.sense == -1) ? -1 : 1;
+                auto combined = add_constraints(su, sl, sense);
+                next.push_back(combined);
+            }
+        }
+        cs = next;
+    }
+    // After eliminating all variables, check for constant contradictions.
+    // Each remaining constraint has the form: 0 - rhs sense 0, i.e. -rhs sense 0.
+    for (const auto& c : cs) {
+        if (!c.coeffs.empty()) continue;
+        // Constraint: -rhs sense 0
+        long long neg_rhs_num = -c.rhs.first;
+        // Check if -rhs sense 0 is FALSE (which proves contradiction).
+        bool contradiction = false;
+        if (c.sense == -1) contradiction = !(neg_rhs_num <  0); // need -rhs < 0
+        else               contradiction = !(neg_rhs_num <= 0); // need -rhs ≤ 0
+        if (contradiction) return true;
+    }
+    return false;
+}
+
+// Collect all PropRel hypotheses from the scope stack.
+static std::vector<LinConstraint> collect_linear_hypotheses(const ScopeStack& env) {
+    std::vector<LinConstraint> result;
+    env.for_each([&](const std::string&, const HypEntry& e) {
+        const auto* rel = std::get_if<ast::PropRel>(&e.judgment.prop().node);
+        if (!rel) return;
+        auto lc = extract_linear(*rel);
+        if (lc) result.push_back(std::move(*lc));
+    });
+    return result;
+}
+
+// Negate a linear constraint (for adding the negated goal).
+// If goal is "a ≤ b" → negated is "a > b" (sense -1, same coeffs, same rhs)
+// If goal is "a < b" → negated is "a ≥ b" (sense 1)
+// If goal is "a = b" → negated is "a ≠ b" — not linearly representable directly;
+//   we try both "a < b" and "a > b" and return false for = (skip)
+static std::optional<LinConstraint> negate_linear(const LinConstraint& c) {
+    // Encoding: A sense 0 where A = Σ coeffs[i]*xi - rhs.
+    // ¬(A < 0) ↔ A ≥ 0 ↔ -A ≤ 0   → negate coeffs, negate rhs, flip sense to 1
+    // ¬(A ≤ 0) ↔ A > 0 ↔ -A < 0   → negate coeffs, negate rhs, flip sense to -1
+    if (c.sense == 0) return std::nullopt; // ¬(A = 0) — skip equality negation
+    LinConstraint neg;
+    neg.sense = (c.sense == -1) ? 1 : -1;
+    neg.rhs   = rat_neg(c.rhs);
+    for (const auto& [v, coeff] : c.coeffs)
+        neg.coeffs[v] = rat_neg(coeff);
+    return neg;
 }
 
 // ── check_module ───────────────────────────────────────────────────────────────
