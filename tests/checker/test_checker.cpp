@@ -2589,3 +2589,44 @@ end
         if (d.severity == diag::Severity::Error) ++error_count;
     EXPECT_GE(error_count, 2);
 }
+
+// ── Structure declarations ─────────────────────────────────────────────────────
+
+TEST(CheckerTest, ValidStructureAxiomsInScope) {
+    // After declaring a structure with an axiom field named "hyp", the generated
+    // module-level name is "<StructName>_hyp".
+    auto diag = run_checker("struct_axioms_in_scope", R"(
+structure G :=
+  axiom hyp : P
+
+theorem use_struct : P
+proof
+  then P by G_hyp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidStructureEmpty) {
+    // An empty structure (no fields) should be accepted without errors.
+    auto diag = run_checker("struct_empty", R"(
+structure Empty :=
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidStructureAxiomUsedInProof) {
+    // Full round-trip: declare structure with an axiom, then prove a theorem
+    // using the generated axiom name.
+    auto diag = run_checker("struct_axiom_used", R"(
+structure Alg :=
+  axiom base_prop : P -> Q
+
+theorem derive_q : Q
+proof
+  suppose hp : P
+  then Q by Alg_base_prop and hp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}

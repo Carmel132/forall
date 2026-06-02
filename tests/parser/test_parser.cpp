@@ -2442,3 +2442,73 @@ end)");
     EXPECT_EQ(rw->hyp_ref, "eq");
     EXPECT_FALSE(rw->reverse);
 }
+
+// ── Structure declarations ─────────────────────────────────────────────────────
+
+TEST(ParserTest, StructureBasic) {
+    auto r = parse_str(R"(
+structure Point :=
+  x : Real
+  y : Real
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Structure);
+    EXPECT_EQ(d.name, "Point");
+    ASSERT_EQ(d.fields.size(), 2u);
+    // Both fields should be FieldTerm
+    const auto* f0 = std::get_if<ast::FieldTerm>(&d.fields[0]);
+    ASSERT_NE(f0, nullptr);
+    EXPECT_EQ(f0->name, "x");
+    EXPECT_EQ(f0->type, ast::type_real());
+    const auto* f1 = std::get_if<ast::FieldTerm>(&d.fields[1]);
+    ASSERT_NE(f1, nullptr);
+    EXPECT_EQ(f1->name, "y");
+    EXPECT_EQ(f1->type, ast::type_real());
+}
+
+TEST(ParserTest, StructureWithAxioms) {
+    // Group-like structure: 4 term fields + 4 axiom fields
+    auto r = parse_str(R"(
+structure Group :=
+  carrier : Type
+  mul : carrier -> carrier -> carrier
+  one : carrier
+  inv : carrier -> carrier
+  axiom mul_assoc : for all a b c : carrier, mul(mul(a, b), c) = mul(a, mul(b, c))
+  axiom one_mul : for all a : carrier, mul(one, a) = a
+  axiom mul_one : for all a : carrier, mul(a, one) = a
+  axiom mul_inv : for all a : carrier, mul(inv(a), a) = one
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Structure);
+    EXPECT_EQ(d.name, "Group");
+    ASSERT_EQ(d.fields.size(), 8u);
+    // First 4 are FieldTerm
+    EXPECT_NE(std::get_if<ast::FieldTerm>(&d.fields[0]), nullptr);
+    EXPECT_NE(std::get_if<ast::FieldTerm>(&d.fields[1]), nullptr);
+    EXPECT_NE(std::get_if<ast::FieldTerm>(&d.fields[2]), nullptr);
+    EXPECT_NE(std::get_if<ast::FieldTerm>(&d.fields[3]), nullptr);
+    // Last 4 are FieldAxiom
+    const auto* a0 = std::get_if<ast::FieldAxiom>(&d.fields[4]);
+    ASSERT_NE(a0, nullptr);
+    EXPECT_EQ(a0->name, "mul_assoc");
+    const auto* a1 = std::get_if<ast::FieldAxiom>(&d.fields[5]);
+    ASSERT_NE(a1, nullptr);
+    EXPECT_EQ(a1->name, "one_mul");
+    const auto* a2 = std::get_if<ast::FieldAxiom>(&d.fields[6]);
+    ASSERT_NE(a2, nullptr);
+    EXPECT_EQ(a2->name, "mul_one");
+    const auto* a3 = std::get_if<ast::FieldAxiom>(&d.fields[7]);
+    ASSERT_NE(a3, nullptr);
+    EXPECT_EQ(a3->name, "mul_inv");
+}
+
+TEST(ParserTest, StructureMalformed) {
+    // Missing name — should emit a parse error
+    auto r = parse_str("structure :=");
+    EXPECT_TRUE(r.diag.hasErrors());
+}
