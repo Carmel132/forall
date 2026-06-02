@@ -20,6 +20,9 @@ public:
 
     void check(const std::filesystem::path& path);
 
+    // Check source content from a string buffer (for LSP in-memory validation).
+    void check_content(const std::string& source, const std::string& filename);
+
 private:
     diag::DiagnosticEngine&  diag_;
     std::filesystem::path    stdlib_root_; // empty = use file-relative resolution

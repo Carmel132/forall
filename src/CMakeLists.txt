@@ -22,4 +22,9 @@ add_executable(forall main.cpp)
 target_link_libraries(forall PRIVATE forall::checker forall::formatter forall::parser forall::lexer)
 set_target_properties(forall PROPERTIES OUTPUT_NAME "forall")
 
-install(TARGETS forall RUNTIME DESTINATION bin)
+# LSP server (Phase 1: JSON-RPC over stdio, textDocument/publishDiagnostics)
+add_executable(forall-lsp lsp/main.cpp)
+target_link_libraries(forall-lsp PRIVATE forall::checker forall::parser forall::lexer)
+set_target_properties(forall-lsp PROPERTIES OUTPUT_NAME "forall-lsp")
+
+install(TARGETS forall forall-lsp RUNTIME DESTINATION bin)

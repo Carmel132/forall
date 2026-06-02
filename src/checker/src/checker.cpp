@@ -2471,4 +2471,75 @@ void Checker::check(const std::filesystem::path& path) {
     check_module(path, kernel, diag_, visited, stdlib_root_);
 }
 
+void Checker::check_content(const std::string& source, const std::string& filename) {
+    // Lex and parse from the in-memory buffer.
+    lexer::Lexer lex{source, filename, diag_};
+    auto tokens = lex.tokenize();
+    parser::Parser parser{tokens, diag_};
+    ast::Module mod = parser.parse();
+    mod.path = filename;
+
+    // Run the checker on the parsed module — same logic as check_module but
+    // without file I/O. Imports in the content are resolved from the file's
+    // parent directory (derived from filename) or from stdlib_root_.
+    const std::filesystem::path file_path{filename};
+    const auto current_dir = file_path.parent_path().empty()
+                             ? std::filesystem::current_path()
+                             : file_path.parent_path();
+
+    kernel::Kernel kernel;
+    HypEnv module_env;
+    ast::FuncSigTable sig_table;
+    InstanceTable instance_table;
+    std::set<std::filesystem::path> visited;
+    if (!filename.empty())
+        visited.insert(std::filesystem::weakly_canonical(file_path));
+
+    for (const auto& decl : mod.decls) {
+        switch (decl->kind) {
+        case ast::DeclKind::Import: {
+            const std::string& iname = decl->name;
+            std::filesystem::path import_path;
+            if (!stdlib_root_.empty() && iname.substr(0, 7) == "stdlib/")
+                import_path = stdlib_root_ / iname.substr(7);
+            else
+                import_path = current_dir / iname;
+            auto canonical = std::filesystem::weakly_canonical(import_path);
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
+                for (auto& [n, e] : imported.env) module_env.insert_or_assign(n, e);
+                for (auto& [t, cls] : imported.instances)
+                    for (const auto& c : cls) instance_table[t].insert(c);
+            }
+            break;
+        }
+        case ast::DeclKind::Axiom:
+        case ast::DeclKind::Definition:
+        case ast::DeclKind::Theorem:
+        case ast::DeclKind::Lemma:
+        case ast::DeclKind::Instance:
+        default: {
+            // Re-use the same logic via a temporary single-decl module.
+            // Simplest: delegate to a shared helper. For now, inline the key ops.
+            // Axiom/Definition: introduce_axiom
+            if (decl->kind == ast::DeclKind::Axiom || decl->kind == ast::DeclKind::Definition) {
+                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                auto r = kernel.introduce_axiom(decl->statement);
+                if (r) module_env.insert_or_assign(decl->name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+            } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
+                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table);
+                if (!diag_.hasErrors()) {
+                    auto r = kernel.introduce_axiom(decl->statement);
+                    if (r) module_env.insert_or_assign(decl->name,
+                                                       HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            }
+            break;
+        }
+        }
+    }
+}
+
 } // namespace forall::checker

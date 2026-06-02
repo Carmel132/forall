@@ -1,0 +1,266 @@
+// forall-lsp: Language Server Protocol Phase 1
+//
+// Implements LSP 3.17 over JSON-RPC via stdin/stdout.
+// Phase 1 capabilities: textDocument/didOpen, didChange, didSave →
+//   re-run checker → emit textDocument/publishDiagnostics.
+//
+// No external JSON library required — we do minimal hand-rolled JSON
+// parsing and generation for the small subset needed.
+
+#include <forall/checker/checker.hpp>
+#include <forall/diagnostics/diagnostic.hpp>
+
+#include <cstdlib>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+
+// ── Minimal JSON-RPC helpers ─────────────────────────────────────────────────
+
+// Read a single JSON-RPC message from stdin.
+// Format: "Content-Length: N\r\n\r\n<N bytes of JSON>"
+static std::optional<std::string> read_message() {
+    std::string header;
+    std::size_t content_length = 0;
+    while (std::getline(std::cin, header)) {
+        if (header == "\r" || header.empty()) break;
+        const std::string prefix = "Content-Length: ";
+        if (header.substr(0, prefix.size()) == prefix)
+            content_length = std::stoul(header.substr(prefix.size()));
+    }
+    if (content_length == 0 || !std::cin.good()) return std::nullopt;
+    std::string body(content_length, '\0');
+    std::cin.read(body.data(), static_cast<std::streamsize>(content_length));
+    if (!std::cin.good()) return std::nullopt;
+    return body;
+}
+
+// Write a JSON-RPC message to stdout.
+static void write_message(const std::string& json) {
+    std::cout << "Content-Length: " << json.size() << "\r\n\r\n" << json;
+    std::cout.flush();
+}
+
+// Minimal JSON string escape.
+static std::string json_escape(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:   out += c;      break;
+        }
+    }
+    return out;
+}
+
+// Extract a string value for a JSON key (very minimal — single-level only).
+// Returns empty string if not found.
+static std::string json_str(const std::string& json, const std::string& key) {
+    const std::string needle = "\"" + key + "\":\"";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return {};
+    pos += needle.size();
+    auto end = pos;
+    while (end < json.size() && json[end] != '"') {
+        if (json[end] == '\\') ++end; // skip escaped char
+        ++end;
+    }
+    return json.substr(pos, end - pos);
+}
+
+// Extract a numeric id from JSON.  Returns -1 if absent or not numeric.
+static int json_id(const std::string& json) {
+    const std::string needle = "\"id\":";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return -1;
+    pos += needle.size();
+    while (pos < json.size() && (json[pos] == ' ')) ++pos;
+    if (pos < json.size() && json[pos] == '"') return -1; // string id — unsupported
+    try { return std::stoi(json.substr(pos)); } catch (...) { return -1; }
+}
+
+// Extract the "method" field.
+static std::string json_method(const std::string& json) {
+    return json_str(json, "method");
+}
+
+// Extract nested text from textDocument content.
+// Handles: { "textDocument": { "text": "..." } }
+// and:     { "contentChanges": [ { "text": "..." } ] }
+static std::string extract_text(const std::string& json) {
+    // Try direct "text" in textDocument params.
+    auto pos = json.find("\"text\":\"");
+    if (pos == std::string::npos) return {};
+    pos += 8;
+    std::string result;
+    while (pos < json.size() && json[pos] != '"') {
+        if (json[pos] == '\\' && pos + 1 < json.size()) {
+            ++pos;
+            switch (json[pos]) {
+                case '"':  result += '"';  break;
+                case '\\': result += '\\'; break;
+                case 'n':  result += '\n'; break;
+                case 'r':  result += '\r'; break;
+                case 't':  result += '\t'; break;
+                default:   result += json[pos]; break;
+            }
+        } else {
+            result += json[pos];
+        }
+        ++pos;
+    }
+    return result;
+}
+
+// Extract the URI from the message.
+static std::string extract_uri(const std::string& json) {
+    return json_str(json, "uri");
+}
+
+// Convert a file:// URI to a filesystem path.
+static std::string uri_to_path(const std::string& uri) {
+    const std::string prefix = "file://";
+    if (uri.substr(0, prefix.size()) != prefix) return uri;
+    std::string path = uri.substr(prefix.size());
+    // URL-decode %XX sequences.
+    std::string decoded;
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (path[i] == '%' && i + 2 < path.size()) {
+            char hex[3] = {path[i+1], path[i+2], 0};
+            decoded += static_cast<char>(std::strtol(hex, nullptr, 16));
+            i += 2;
+        } else if (path[i] == '/') {
+#ifdef _WIN32
+            decoded += '\\';
+#else
+            decoded += '/';
+#endif
+        } else {
+            decoded += path[i];
+        }
+    }
+    // On Windows, strip leading slash from /C:/... paths.
+#ifdef _WIN32
+    if (!decoded.empty() && decoded[0] == '\\' && decoded.size() > 2 && decoded[2] == ':')
+        decoded = decoded.substr(1);
+#endif
+    return decoded;
+}
+
+// ── Diagnostic → LSP JSON ────────────────────────────────────────────────────
+
+static std::string severity_to_lsp(forall::diag::Severity sev) {
+    switch (sev) {
+        case forall::diag::Severity::Error:   return "1";
+        case forall::diag::Severity::Warning: return "2";
+        case forall::diag::Severity::Note:    return "3";
+    }
+    return "1";
+}
+
+// Build LSP publishDiagnostics JSON for a URI and diagnostic list.
+static std::string make_publish_diagnostics(const std::string& uri,
+                                             const std::vector<forall::diag::Diagnostic>& diags)
+{
+    std::ostringstream out;
+    out << R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":")"
+        << json_escape(uri) << R"(","diagnostics":[)";
+    bool first = true;
+    for (const auto& d : diags) {
+        if (!first) out << ",";
+        first = false;
+        // LSP lines/cols are 0-based; our SourceLocation is 1-based.
+        uint32_t line = d.loc.line > 0 ? d.loc.line - 1 : 0;
+        uint32_t col  = d.loc.col  > 0 ? d.loc.col  - 1 : 0;
+        out << R"({"range":{"start":{"line":)" << line
+            << R"(,"character":)" << col
+            << R"(},"end":{"line":)" << line
+            << R"(,"character":)" << (col + 1)
+            << R"(}},"severity":)" << severity_to_lsp(d.severity)
+            << R"(,"message":")" << json_escape(d.message) << R"("})";
+    }
+    out << R"(]}})";
+    return out.str();
+}
+
+// ── LSP server main loop ─────────────────────────────────────────────────────
+
+static void validate_and_publish(const std::string& uri, const std::string& source) {
+    forall::diag::DiagnosticEngine diag;
+    forall::checker::Checker checker{diag};
+    const std::string path = uri_to_path(uri);
+    checker.check_content(source, path);
+    write_message(make_publish_diagnostics(uri, diag.diagnostics()));
+}
+
+int main() {
+    // Disable sync for faster I/O.
+    std::ios::sync_with_stdio(false);
+
+    // In-memory document store: URI → source text.
+    std::unordered_map<std::string, std::string> documents;
+
+    while (true) {
+        auto msg = read_message();
+        if (!msg) break;
+
+        const std::string& json = *msg;
+        const std::string method = json_method(json);
+        const int id = json_id(json);
+
+        if (method == "initialize") {
+            // Respond with server capabilities.
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id
+                 << R"(,"result":{"capabilities":{"textDocumentSync":1},"serverInfo":{"name":"forall-lsp","version":"0.1.0"}}})";
+            write_message(resp.str());
+
+        } else if (method == "initialized") {
+            // No response needed for notification.
+
+        } else if (method == "shutdown") {
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id << R"(,"result":null})";
+            write_message(resp.str());
+
+        } else if (method == "exit") {
+            break;
+
+        } else if (method == "textDocument/didOpen") {
+            const std::string uri  = extract_uri(json);
+            const std::string text = extract_text(json);
+            if (!uri.empty()) {
+                documents[uri] = text;
+                validate_and_publish(uri, text);
+            }
+
+        } else if (method == "textDocument/didChange") {
+            const std::string uri  = extract_uri(json);
+            const std::string text = extract_text(json);
+            if (!uri.empty() && !text.empty()) {
+                documents[uri] = text;
+                validate_and_publish(uri, text);
+            }
+
+        } else if (method == "textDocument/didSave") {
+            const std::string uri = extract_uri(json);
+            auto it = documents.find(uri);
+            if (it != documents.end())
+                validate_and_publish(uri, it->second);
+
+        } else if (id >= 0) {
+            // Unknown request — respond with null result.
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id << R"(,"result":null})";
+            write_message(resp.str());
+        }
+        // Unknown notifications are silently ignored.
+    }
+    return EXIT_SUCCESS;
+}
