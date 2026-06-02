@@ -45,7 +45,8 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
 
         if constexpr (std::is_same_v<T, ast::LetStep>) {
             std::string r = indent + "let " + s.var;
-            if (s.type) r += " be a " + to_string(*s.type);
+            if (s.definition) r += " = " + to_string(**s.definition);
+            else if (s.type)  r += " be a " + to_string(*s.type);
             return r;
         }
 
