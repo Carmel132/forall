@@ -1,0 +1,35 @@
+import "ordered_field.forall"
+
+-- Real numbers as an ordered field (axiomatic characterisation).
+-- Completeness is the distinguishing axiom separating R from Q.
+
+axiom Real_add_assoc   : for all x y z : Real, (x + y) + z = x + (y + z)
+axiom Real_add_comm    : for all x y : Real, x + y = y + x
+axiom Real_add_zero    : for all x : Real, x + 0 = x
+axiom Real_zero_add    : for all x : Real, 0 + x = x
+axiom Real_add_neg     : for all x : Real, (-x) + x = 0
+axiom Real_mul_assoc   : for all x y z : Real, (x * y) * z = x * (y * z)
+axiom Real_mul_comm    : for all x y : Real, x * y = y * x
+axiom Real_mul_one     : for all x : Real, x * 1 = x
+axiom Real_one_mul     : for all x : Real, 1 * x = x
+axiom Real_distrib_l   : for all x y z : Real, x * (y + z) = x * y + x * z
+axiom Real_distrib_r   : for all x y z : Real, (x + y) * z = x * z + y * z
+axiom Real_no_zero_div : for all x y : Real, x * y = 0 -> x = 0 or y = 0
+axiom Real_one_ne_zero : not (1 = 0)
+axiom Real_mul_inv     : for all x : Real,
+    not (x = 0) -> inv(x) * x = 1
+axiom Real_lt_trans    : for all x y z : Real, x < y -> y < z -> x < z
+axiom Real_lt_add      : for all x y z : Real, x < y -> x + z < y + z
+axiom Real_lt_mul_pos  : for all x y : Real, 0 < x -> 0 < y -> 0 < x * y
+axiom Real_lt_total    : for all x y : Real, x < y or x = y or y < x
+axiom Real_zero_lt_one : 0 < 1
+
+-- Completeness: every nonempty set bounded above has a least upper bound.
+-- The type Set Real requires the set theory stdlib; stated axiomatically here.
+axiom Real_completeness : for all S : Set Real,
+    BoundedAbove(S) -> there exists sup : Real, IsSupremum(S, sup)
+
+-- Archimedean property (derivable from completeness, stated as axiom here
+-- until the derivation machinery supports it).
+axiom Real_archimedean : for all x : Real,
+    0 < x -> there exists n : Nat, n > x

@@ -1,0 +1,30 @@
+import "integral_domain.forall"
+
+structure Field :=
+  carrier : Type
+  add     : carrier -> carrier -> carrier
+  zero    : carrier
+  neg     : carrier -> carrier
+  mul     : carrier -> carrier -> carrier
+  one     : carrier
+  inv     : carrier -> carrier
+  axiom add_assoc      : for all a b c : carrier,
+      add(add(a, b), c) = add(a, add(b, c))
+  axiom add_comm       : for all a b : carrier, add(a, b) = add(b, a)
+  axiom add_zero       : for all a : carrier, add(a, zero) = a
+  axiom zero_add       : for all a : carrier, add(zero, a) = a
+  axiom add_neg        : for all a : carrier, add(neg(a), a) = zero
+  axiom mul_assoc      : for all a b c : carrier,
+      mul(mul(a, b), c) = mul(a, mul(b, c))
+  axiom mul_comm       : for all a b : carrier, mul(a, b) = mul(b, a)
+  axiom mul_one        : for all a : carrier, mul(a, one) = a
+  axiom one_mul        : for all a : carrier, mul(one, a) = a
+  axiom distrib_l      : for all a b c : carrier,
+      mul(a, add(b, c)) = add(mul(a, b), mul(a, c))
+  axiom distrib_r      : for all a b c : carrier,
+      mul(add(a, b), c) = add(mul(a, c), mul(b, c))
+  axiom no_zero_div    : for all a b : carrier,
+      mul(a, b) = zero -> a = zero or b = zero
+  axiom one_ne_zero    : not (one = zero)
+  axiom mul_inv        : for all a : carrier,
+      not (a = zero) -> mul(inv(a), a) = one
