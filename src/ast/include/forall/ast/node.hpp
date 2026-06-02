@@ -164,6 +164,7 @@ inline ExprPtr make_expr(Expr e) {
 // ── Propositions ───────────────────────────────────────────────────────────────
 struct Atomic   { std::string name; };         // P, Q, excluded_middle, …
 struct PropFalse {};                           // ⊥
+struct PropTrue  {};                           // ⊤
 struct PropNot  { PropPtr inner; };            // ¬P
 struct PropAnd  { PropPtr lhs, rhs; };         // P ∧ Q
 struct PropOr   { PropPtr lhs, rhs; };         // P ∨ Q
@@ -195,7 +196,7 @@ struct PropPred {
 };
 
 using PropNode = std::variant<
-    Atomic, PropFalse,
+    Atomic, PropFalse, PropTrue,
     PropNot, PropAnd, PropOr, PropImpl,
     PropForall, PropExists,
     PropRel, PropPred

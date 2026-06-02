@@ -89,7 +89,7 @@ bool Prop::operator==(const Prop& other) const {
         const auto& y = std::get<T>(other.node);
         if constexpr (std::is_same_v<T, Atomic>)
             return x.name == y.name;
-        else if constexpr (std::is_same_v<T, PropFalse>)
+        else if constexpr (std::is_same_v<T, PropFalse> || std::is_same_v<T, PropTrue>)
             return true;
         else if constexpr (std::is_same_v<T, PropNot>)
             return *x.inner == *y.inner;
@@ -166,7 +166,8 @@ static void collect_fv_expr(const Expr& expr, std::set<std::string>& out) {
 static void collect_fv_prop(const Prop& prop, std::set<std::string>& out) {
     std::visit([&](const auto& p) {
         using T = std::decay_t<decltype(p)>;
-        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>) {
+        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>
+                                                 || std::is_same_v<T, PropTrue>) {
             // no term variables
         } else if constexpr (std::is_same_v<T, PropNot>) {
             collect_fv_prop(*p.inner, out);
@@ -280,7 +281,8 @@ static Prop subst_prop(const Prop& prop, const std::string& var, const Expr& r) 
         using T = std::decay_t<decltype(p)>;
         const auto& loc = prop.loc;
 
-        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>) {
+        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>
+                                                 || std::is_same_v<T, PropTrue>) {
             return prop;
         } else if constexpr (std::is_same_v<T, PropNot>) {
             return Prop{loc, PropNot{make_prop(subst_prop(*p.inner, var, r))}};
