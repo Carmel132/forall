@@ -2673,6 +2673,50 @@ ModuleResult check_module(const std::filesystem::path& path,
             }
             break;
         }
+
+        case ast::DeclKind::Quotient: {
+            // Register each FieldAxiom as "<QuotName>_<fieldName>" in module_env.
+            // The axioms typically assert reflexivity, symmetry, and transitivity
+            // of the equivalence relation.
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (!r)
+                        diag.emit({diag::Severity::Error, decl->loc,
+                                    "invalid quotient axiom '" + axiom_name + "': "
+                                    + r.error().message});
+                    else
+                        module_env.insert_or_assign(axiom_name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            }
+            // Warn if the three standard equivalence axioms are not all present.
+            // We detect them by checking whether any axiom field name contains
+            // the substrings "refl", "symm"/"sym", and "trans".
+            bool has_refl  = false;
+            bool has_symm  = false;
+            bool has_trans = false;
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const auto& n = fa->name;
+                    if (n.find("refl")  != std::string::npos) has_refl  = true;
+                    if (n.find("symm")  != std::string::npos) has_symm  = true;
+                    if (n.find("sym")   != std::string::npos) has_symm  = true;
+                    if (n.find("trans") != std::string::npos) has_trans = true;
+                }
+            }
+            if (!has_refl)
+                diag.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a reflexivity axiom (name should contain 'refl')"});
+            if (!has_symm)
+                diag.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a symmetry axiom (name should contain 'symm' or 'sym')"});
+            if (!has_trans)
+                diag.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a transitivity axiom (name should contain 'trans')"});
+            break;
+        }
         }
     }
     return ModuleResult{std::move(module_env), std::move(instance_table)};
@@ -2746,6 +2790,40 @@ void Checker::check_content(const std::string& source, const std::string& filena
                         sig_table[decl->name + "_" + ft->name] = *tf;
                 }
             }
+            break;
+        }
+        case ast::DeclKind::Quotient: {
+            // Register each FieldAxiom as "<QuotName>_<fieldName>" in module_env.
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (r) module_env.insert_or_assign(axiom_name,
+                                                        HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            }
+            // Warn if equivalence axioms are missing.
+            bool has_refl  = false;
+            bool has_symm  = false;
+            bool has_trans = false;
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const auto& n = fa->name;
+                    if (n.find("refl")  != std::string::npos) has_refl  = true;
+                    if (n.find("symm")  != std::string::npos) has_symm  = true;
+                    if (n.find("sym")   != std::string::npos) has_symm  = true;
+                    if (n.find("trans") != std::string::npos) has_trans = true;
+                }
+            }
+            if (!has_refl)
+                diag_.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a reflexivity axiom (name should contain 'refl')"});
+            if (!has_symm)
+                diag_.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a symmetry axiom (name should contain 'symm' or 'sym')"});
+            if (!has_trans)
+                diag_.emit({diag::Severity::Warning, decl->loc,
+                            "quotient '" + decl->name + "' is missing a transitivity axiom (name should contain 'trans')"});
             break;
         }
         case ast::DeclKind::Axiom:
