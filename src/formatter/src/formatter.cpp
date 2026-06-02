@@ -116,6 +116,14 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return r;
         }
 
+        if constexpr (std::is_same_v<T, ast::ShowStep>) {
+            return indent + "show " + to_string(s.prop);
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExactStep>) {
+            return indent + "exact " + s.hyp_ref;
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
