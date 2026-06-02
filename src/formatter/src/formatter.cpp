@@ -227,6 +227,14 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
         return "axiom " + decl.name + " : " + to_string(decl.statement);
 
     case ast::DeclKind::Definition:
+        if (!decl.struct_type.empty()) {
+            // Structure instantiation form
+            std::string r = "definition " + decl.name + " : " + decl.struct_type + " :=\n";
+            for (const auto& [fname, fexpr] : decl.struct_bindings)
+                r += "  " + fname + " := " + to_string(*fexpr) + "\n";
+            if (!r.empty() && r.back() == '\n') r.pop_back();
+            return r;
+        }
         return "definition " + decl.name
                + format_params(decl.params)
                + " : " + to_string(decl.statement);
