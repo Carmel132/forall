@@ -307,9 +307,17 @@ struct InductionStep {
     std::vector<std::unique_ptr<Step>> inductive_steps; // proves P(succ(var)) using ih : P(var)
 };
 
+struct ShowStep {
+    Prop prop;  // asserted goal; checker verifies prop == decl.statement
+};
+
+struct ExactStep {
+    std::string hyp_ref;  // hypothesis name whose prop must equal the current goal
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
-    CasesStep, ObtainStep, InductionStep
+    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep
 >;
 
 struct Step {
