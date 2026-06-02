@@ -2640,3 +2640,54 @@ TEST(ParserTest, TypePiVsTypeTuple) {
     EXPECT_EQ(*tt->elements[0], ast::type_nat());
     EXPECT_EQ(*tt->elements[1], ast::type_real());
 }
+
+// ── DT9: Quotient type declarations ───────────────────────────────────────────
+
+TEST(ParserTest, QuotientBasic) {
+    // quotient Z2 := Int over eq2
+    // No axiom fields — minimal form.
+    auto r = parse_str(R"(
+quotient Z2 := Int over eq2
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Quotient);
+    EXPECT_EQ(d.name, "Z2");
+    EXPECT_EQ(d.quot_carrier, "Int");
+    EXPECT_EQ(d.quot_rel, "eq2");
+    EXPECT_EQ(d.fields.size(), 0u);
+}
+
+TEST(ParserTest, QuotientWithAxioms) {
+    // quotient type with three equivalence axioms
+    auto r = parse_str(R"(
+quotient IntMod2 := Int over mod2_eq
+  axiom mod2_refl  : for all a : Int, mod2_eq(a, a)
+  axiom mod2_symm  : for all a b : Int, mod2_eq(a, b) -> mod2_eq(b, a)
+  axiom mod2_trans : for all a b c : Int, mod2_eq(a, b) -> mod2_eq(b, c) -> mod2_eq(a, c)
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Quotient);
+    EXPECT_EQ(d.name, "IntMod2");
+    EXPECT_EQ(d.quot_carrier, "Int");
+    EXPECT_EQ(d.quot_rel, "mod2_eq");
+    ASSERT_EQ(d.fields.size(), 3u);
+    const auto* a0 = std::get_if<ast::FieldAxiom>(&d.fields[0]);
+    ASSERT_NE(a0, nullptr);
+    EXPECT_EQ(a0->name, "mod2_refl");
+    const auto* a1 = std::get_if<ast::FieldAxiom>(&d.fields[1]);
+    ASSERT_NE(a1, nullptr);
+    EXPECT_EQ(a1->name, "mod2_symm");
+    const auto* a2 = std::get_if<ast::FieldAxiom>(&d.fields[2]);
+    ASSERT_NE(a2, nullptr);
+    EXPECT_EQ(a2->name, "mod2_trans");
+}
+
+TEST(ParserTest, QuotientMalformed) {
+    // Missing name after 'quotient' should produce a parse error
+    auto r = parse_str("quotient :=");
+    EXPECT_TRUE(r.diag.hasErrors());
+}

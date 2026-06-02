@@ -2783,3 +2783,33 @@ end
 )");
     EXPECT_FALSE(diag2.hasErrors());
 }
+
+// ── DT9: Quotient type declarations ───────────────────────────────────────────
+
+TEST(CheckerTest, ValidQuotientDeclaration) {
+    // A quotient declaration with all three standard equivalence axioms inserts
+    // them as "<QuotName>_<axiomName>" entries in module_env without errors.
+    auto diag = run_checker("quotient_declaration", R"(
+quotient IntMod2 := Int over mod2_eq
+  axiom mod2_refl  : for all a : Int, mod2_eq(a, a)
+  axiom mod2_symm  : for all a b : Int, mod2_eq(a, b) -> mod2_eq(b, a)
+  axiom mod2_trans : for all a b c : Int, mod2_eq(a, b) -> mod2_eq(b, c) -> mod2_eq(a, c)
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidQuotientAxiomsUsable) {
+    // Axioms introduced by a quotient declaration are usable in subsequent proofs.
+    auto diag = run_checker("quotient_axioms_usable", R"(
+quotient Q2 := Int over rel
+  axiom rel_refl  : for all a : Int, rel(a, a)
+  axiom rel_symm  : for all a b : Int, rel(a, b) -> rel(b, a)
+  axiom rel_trans : for all a b c : Int, rel(a, b) -> rel(b, c) -> rel(a, c)
+
+theorem use_refl : for all a : Int, rel(a, a)
+proof
+  then for all a : Int, rel(a, a) by Q2_rel_refl
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
