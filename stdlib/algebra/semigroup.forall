@@ -1,0 +1,5 @@
+structure Semigroup :=
+  carrier : Type
+  mul     : carrier -> carrier -> carrier
+  axiom mul_assoc : for all a b c : carrier,
+      mul(mul(a, b), c) = mul(a, mul(b, c))

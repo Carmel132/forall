@@ -1,0 +1,14 @@
+import "group.forall"
+
+structure AbelianGroup :=
+  carrier : Type
+  mul     : carrier -> carrier -> carrier
+  one     : carrier
+  inv     : carrier -> carrier
+  axiom mul_assoc : for all a b c : carrier,
+      mul(mul(a, b), c) = mul(a, mul(b, c))
+  axiom one_mul   : for all a : carrier, mul(one, a) = a
+  axiom mul_one   : for all a : carrier, mul(a, one) = a
+  axiom mul_inv_l : for all a : carrier, mul(inv(a), a) = one
+  axiom inv_mul_r : for all a : carrier, mul(a, inv(a)) = one
+  axiom mul_comm  : for all a b : carrier, mul(a, b) = mul(b, a)
