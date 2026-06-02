@@ -170,7 +170,57 @@ static std::string format_params(const std::vector<ast::Param>& params) {
 
 } // namespace
 
-std::string format_decl(const ast::Decl& decl) {
+// Convert all Unicode math symbols to their ASCII/keyword equivalents.
+// Applied when FormatterOptions::ascii_output is true.
+static std::string to_ascii(std::string s) {
+    struct Replacement { const char* from; const char* to; };
+    static constexpr Replacement reps[] = {
+        // Multi-byte replacements first (longer sequences must come before sub-sequences)
+        {"\xe2\x88\x80", "for all"},     // ∀
+        {"\xe2\x88\x83", "there exists"},// ∃
+        {"\xe2\x86\x92", "->"},          // →
+        {"\xe2\x86\x94", "iff"},         // ↔
+        {"\xe2\x88\xa7", "and"},         // ∧
+        {"\xe2\x88\xa8", "or"},          // ∨
+        {"\xe2\x88\xa4", "true"},        // ⊤
+        {"\xe2\x88\xa5", "false"},       // ⊥
+        {"\xe2\x88\x88", "in"},          // ∈
+        {"\xe2\x88\x89", "not in"},      // ∉
+        {"\xe2\x8a\x86", "subseteq"},    // ⊆
+        {"\xe2\x8a\x82", "subset"},      // ⊂
+        {"\xe2\x8a\x87", "supseteq"},    // ⊇
+        {"\xe2\x88\xaa", "union"},       // ∪
+        {"\xe2\x88\xa9", "inter"},       // ∩
+        {"\xe2\x88\x96", "setminus"},    // ∖
+        {"\xe2\x88\x98", "compose"},     // ∘
+        {"\xe2\x89\xa4", "<="},          // ≤
+        {"\xe2\x89\xa5", ">="},          // ≥
+        {"\xe2\x89\xa0", "/="},          // ≠
+        {"\xe2\x88\x11", "prod"},        // ∏
+        {"\xe2\x88\x91", "sum"},         // ∑
+        {"\xe2\x96\xa1", "end"},         // □
+        {"\xc2\xac", "not "},            // ¬ (with trailing space)
+        {"\xce\xbb", "fun"},             // λ
+    };
+    for (const auto& r : reps) {
+        std::string result;
+        result.reserve(s.size());
+        const std::size_t from_len = std::string_view{r.from}.size();
+        std::size_t i = 0;
+        while (i < s.size()) {
+            if (s.compare(i, from_len, r.from) == 0) {
+                result += r.to;
+                i += from_len;
+            } else {
+                result += s[i++];
+            }
+        }
+        s = std::move(result);
+    }
+    return s;
+}
+
+std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
     switch (decl.kind) {
     case ast::DeclKind::Axiom:
         return "axiom " + decl.name + " : " + to_string(decl.statement);
@@ -201,12 +251,14 @@ std::string format_decl(const ast::Decl& decl) {
     return {};
 }
 
-std::string format_module(const ast::Module& mod) {
+std::string format_module(const ast::Module& mod, const FormatterOptions& opts) {
     std::string r;
     for (std::size_t i = 0; i < mod.decls.size(); ++i) {
         if (i > 0) r += "\n";
-        r += format_decl(*mod.decls[i]) + "\n";
+        r += format_decl(*mod.decls[i], opts) + "\n";
     }
+    if (opts.ascii_output)
+        r = to_ascii(std::move(r));
     return r;
 }
 

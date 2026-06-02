@@ -191,3 +191,31 @@ end)";
     std::string twice = fmt(once);
     EXPECT_EQ(once, twice);
 }
+
+TEST(FormatterTest, AsciiMode_ArrowBecomesAscii) {
+    // IX3: --ascii converts → to ->
+    auto mod = parse_str("axiom mp : P -> Q");
+    auto result = formatter::format_module(mod, formatter::FormatterOptions{.ascii_output = true});
+    EXPECT_NE(result.find("->"), std::string::npos);
+    EXPECT_EQ(result.find("\xe2\x86\x92"), std::string::npos); // no → U+2192
+}
+
+TEST(FormatterTest, AsciiMode_AndBecomesAscii) {
+    // IX3: --ascii converts ∧ to "and"
+    auto mod = parse_str("axiom a : P and Q -> R");
+    auto result = formatter::format_module(mod, formatter::FormatterOptions{.ascii_output = true});
+    // ∧ becomes "and" — which it already was since we wrote "P and Q"
+    // Let's use a unicode source:
+    auto mod2 = parse_str("axiom a : P \xe2\x88\xa7 Q \xe2\x86\x92 R");
+    auto result2 = formatter::format_module(mod2, formatter::FormatterOptions{.ascii_output = true});
+    EXPECT_NE(result2.find("and"), std::string::npos);
+    EXPECT_EQ(result2.find("\xe2\x88\xa7"), std::string::npos); // no ∧
+}
+
+TEST(FormatterTest, UnicodeMode_Default) {
+    // IX3: default mode emits Unicode → not ->
+    auto mod = parse_str("axiom mp : P -> Q");
+    auto result = formatter::format_module(mod);
+    EXPECT_NE(result.find("\xe2\x86\x92"), std::string::npos); // has →
+    EXPECT_EQ(result.find("->"), std::string::npos); // no ->
+}

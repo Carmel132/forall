@@ -39,7 +39,8 @@ static int cmd_check(const fs::path& path, const fs::path& stdlib_root = {}) {
 
 // ── forall fmt [--write | --check] <file> ────────────────────────────────────
 
-static int cmd_fmt(bool write_mode, bool check_mode, const fs::path& path) {
+static int cmd_fmt(bool write_mode, bool check_mode, bool ascii_mode,
+                   const fs::path& path) {
     // Read source.
     std::ifstream file{path};
     if (!file) {
@@ -69,7 +70,8 @@ static int cmd_fmt(bool write_mode, bool check_mode, const fs::path& path) {
         return EXIT_FAILURE;
     }
 
-    const std::string formatted = forall::formatter::format_module(mod);
+    const std::string formatted = forall::formatter::format_module(
+        mod, forall::formatter::FormatterOptions{.ascii_output = ascii_mode});
 
     if (check_mode) {
         // Exit 1 if the file is not already in canonical form.
@@ -127,18 +129,23 @@ int main(int argc, char* argv[]) {
     if (first == "fmt") {
         bool write_mode = false;
         bool check_mode = false;
+        bool ascii_mode = false;
         int file_arg = arg_idx + 1;
 
-        if (file_arg + 1 < argc) {
+        // Parse fmt flags (any order, before the filename).
+        while (file_arg < argc) {
             const std::string_view flag{argv[file_arg]};
-            if (flag == "--write") { write_mode = true; ++file_arg; }
-            else if (flag == "--check") { check_mode = true; ++file_arg; }
+            if      (flag == "--write")   { write_mode = true;  ++file_arg; }
+            else if (flag == "--check")   { check_mode = true;  ++file_arg; }
+            else if (flag == "--ascii")   { ascii_mode = true;  ++file_arg; }
+            else if (flag == "--unicode") { ascii_mode = false; ++file_arg; } // default
+            else break;
         }
         if (file_arg >= argc) {
-            std::println(stderr, "usage: forall fmt [--write|--check] <file.forall>");
+            std::println(stderr, "usage: forall fmt [--write|--check|--ascii|--unicode] <file.forall>");
             return EXIT_FAILURE;
         }
-        return cmd_fmt(write_mode, check_mode, fs::path{argv[file_arg]});
+        return cmd_fmt(write_mode, check_mode, ascii_mode, fs::path{argv[file_arg]});
     }
 
     // Default: check mode (backwards-compatible: forall <file>).
