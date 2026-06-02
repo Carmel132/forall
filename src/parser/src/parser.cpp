@@ -811,6 +811,11 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__ring__");
         return refs;
     }
+    if (check(lexer::TokenKind::KwLinarith)) {
+        advance();
+        refs.push_back("__linarith__");
+        return refs;
+    }
     if (!check(lexer::TokenKind::Identifier)) return refs;
     refs.push_back(std::string{advance().lexeme});
     while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
