@@ -254,6 +254,7 @@ Token Lexer::nextToken() {
             {"ring",         TokenKind::KwRing},
             {"linarith",     TokenKind::KwLinarith},
             {"simp",         TokenKind::KwSimp},
+            // "contra" is context-sensitive — kept as Identifier
             // "base" and "inductive" are context-sensitive: parsed by the
             // parser as identifiers with specific lexeme values so they remain
             // usable as ordinary names outside induction blocks.

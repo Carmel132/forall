@@ -2490,6 +2490,31 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+TEST(CheckerTest, ByContra_Basic) {
+    // ML3: "by contra" closes goal when ⊥ is in scope from contradiction
+    auto diag = run_checker("by_contra", R"(
+axiom ax_p : P
+axiom ax_np : not P
+theorem t : Q
+proof
+  have bot : false by ax_np and ax_p
+  then Q by contra
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ByContra_NoFalse_Error) {
+    // ML3: "by contra" fails when ⊥ is not in scope
+    auto diag = run_checker("by_contra_no_false", R"(
+theorem t : Q
+proof
+  then Q by contra
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
 TEST(CheckerTest, SufficesStep_Basic) {
     // MS5: "suffices h : P" where h : P → goal already in scope — desugars to apply h
     auto diag = run_checker("suffices_basic", R"(

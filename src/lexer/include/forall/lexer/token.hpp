@@ -52,6 +52,7 @@ enum class TokenKind {
     KwRing,                     // "ring"      (tactic keyword)
     KwLinarith,                 // "linarith"  (linear arithmetic tactic)
     KwSimp,                     // "simp"      (propositional simplification tactic)
+    // "contra" is context-sensitive — lexed as Identifier, handled in parseJustification()
     // "base" and "inductive" are context-sensitive — lexed as Identifier
 
     // Punctuation

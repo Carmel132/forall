@@ -1248,6 +1248,35 @@ bool check_step(const ast::Step& step,
                 kernel.introduce_axiom(s.prop);
                 return true;
             }
+            // "by contra" — proof by contradiction (ML3)
+            // Finds hn : ¬P (assumption) and bot : ⊥ (derived) in scope.
+            // Applies FalseElim(⊥) = P.  The ¬P assumption is not needed for FalseElim
+            // but its presence confirms the contradiction was set up correctly.
+            if (s.justification.size() == 1 && s.justification[0] == "__contra__") {
+                ast::Prop false_prop{step.loc, ast::PropFalse{}};
+                const HypEntry* bot = env.find_derived(false_prop);
+                if (!bot) {
+                    // Also check for PropFalse as a named axiom/assumption
+                    env.for_each([&](const std::string&, const HypEntry& e) {
+                        if (std::get_if<ast::PropFalse>(&e.judgment.prop().node)) bot = &e;
+                    });
+                }
+                if (!bot) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contra' requires a proof of ⊥ (false) in scope; "
+                               "use 'suppose for contradiction that ¬P' then derive false first"});
+                    return false;
+                }
+                auto r = kernel.apply(kernel::Rule::FalseElim,
+                                      std::span<const kernel::Judgment>{&bot->judgment, 1},
+                                      s.prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contra' FalseElim failed: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
             // "by simp" — propositional simplification (ThenStep variant)
             if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
                 auto app = simp_tactic(s.prop, env, diag, step.loc);
