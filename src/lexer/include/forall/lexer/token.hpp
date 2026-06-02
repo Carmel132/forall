@@ -23,6 +23,7 @@ enum class TokenKind {
     KwFor, KwAll, KwThere,      // "for all", "there exists"
     KwImplies,                  // "implies"
     KwFalse,                    // "false" / ⊥
+    KwTrue,                     // "true"  / ⊤
     KwIn,                       // "in"
     KwDiv, KwMod,               // integer division and modulo
     KwFun,                      // "fun"

@@ -77,6 +77,8 @@ Token Lexer::nextToken() {
             if (b2 == 0x8F) { consume(3); return make(TokenKind::Pi);          } // ∏ U+220F
             if (b2 == 0x91) { consume(3); return make(TokenKind::Sigma);       } // ∑ U+2211
             if (b2 == 0x98) { consume(3); return make(TokenKind::Circ);        } // ∘ U+2218
+            if (b2 == 0xA4) { consume(3); return make(TokenKind::KwTrue);      } // ⊤ U+22A4
+            if (b2 == 0xA5) { consume(3); return make(TokenKind::KwFalse);     } // ⊥ U+22A5
             if (b2 == 0xA7) { consume(3); return make(TokenKind::And);         } // ∧ U+2227
             if (b2 == 0xA8) { consume(3); return make(TokenKind::Or);          } // ∨ U+2228
             if (b2 == 0xA9) { consume(3); return make(TokenKind::CapSym);      } // ∩ U+2229
@@ -215,6 +217,7 @@ Token Lexer::nextToken() {
             {"implies",      TokenKind::Arrow},   // shares token with →
             {"iff",          TokenKind::Iff},     // biconditional, shares token with ↔
             {"false",        TokenKind::KwFalse},
+            {"true",         TokenKind::KwTrue},
             {"in",           TokenKind::KwIn},
             {"div",          TokenKind::KwDiv},
             {"mod",          TokenKind::KwMod},
