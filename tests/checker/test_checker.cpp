@@ -2348,3 +2348,55 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+TEST(CheckerTest, Linarith_SimpleTransitivity) {
+    // MT1: x < y and y < z implies x < z
+    auto diag = run_checker("linarith_trans", R"(
+theorem t : x < z
+proof
+  suppose h1 : x < y
+  suppose h2 : y < z
+  then x < z by linarith
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Linarith_SimpleLeq) {
+    // MT1: x <= y and y <= z implies x <= z
+    auto diag = run_checker("linarith_leq", R"(
+theorem t : x <= z
+proof
+  suppose h1 : x <= y
+  suppose h2 : y <= z
+  then x <= z by linarith
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Linarith_NotProvable_Error) {
+    // MT1: linarith fails when the goal doesn't follow
+    auto diag = run_checker("linarith_fail", R"(
+theorem t : x < y
+proof
+  suppose h1 : x < z
+  then x < y by linarith
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Linarith_HaveStep) {
+    // MT1: linarith in a have step
+    auto diag = run_checker("linarith_have", R"(
+theorem t : x < z
+proof
+  suppose h1 : x < y
+  suppose h2 : y < z
+  have result : x < z by linarith
+  exact result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
