@@ -1205,6 +1205,52 @@ bool check_step(const ast::Step& step,
             return check_induction_step(s, step.loc, env, kernel, diag, ctx);
         }
 
+        // show P — goal documentation; verifies P matches the theorem statement
+        else if constexpr (std::is_same_v<T, ast::ShowStep>) {
+            if (!ctx.goal) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'show' step used outside a proof context"});
+                return false;
+            }
+            if (!(s.prop == *ctx.goal)) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'show' mismatch: expected '"
+                           + forall::pretty::to_string(*ctx.goal)
+                           + "', got '"
+                           + forall::pretty::to_string(s.prop) + "'"});
+                return false;
+            }
+            return true; // annotation only — no judgment produced
+        }
+
+        // exact h — close goal directly via a named hypothesis
+        else if constexpr (std::is_same_v<T, ast::ExactStep>) {
+            const HypEntry* entry = env.find(s.hyp_ref);
+            if (!entry) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "exact: unknown hypothesis '" + s.hyp_ref + "'"});
+                return false;
+            }
+            if (!ctx.goal) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'exact' step used outside a proof context"});
+                return false;
+            }
+            if (!(entry->judgment.prop() == *ctx.goal)) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "exact: hypothesis '"  + s.hyp_ref + "' has type '"
+                           + forall::pretty::to_string(entry->judgment.prop())
+                           + "', but goal is '"
+                           + forall::pretty::to_string(*ctx.goal) + "'"});
+                return false;
+            }
+            // ExactStep stores the certified judgment — same as a ThenStep by h.
+            // It IS a concluding step, stored so check_proof can validate it.
+            env.insert_or_assign("__exact_result__",
+                                 HypEntry{entry->judgment, EntryKind::Derived});
+            return true;
+        }
+
         return true;
     }, step.node);
 }
@@ -1348,8 +1394,8 @@ void check_proof(const ast::Decl& decl,
     ScopeStack  env{module_env};
     ast::TypeEnv type_env; // types from typed 'take x : T' steps
 
-    // Track the last concluding step — ThenStep, CasesStep, ObtainStep, or InductionStep.
-    enum class LastKind { None, Then, Cases, Obtain, Induction };
+    // Track the last concluding step — ThenStep, CasesStep, ObtainStep, InductionStep, or ExactStep.
+    enum class LastKind { None, Then, Cases, Obtain, Induction, Exact };
     const ast::Step* last_concluding = nullptr;
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
@@ -1376,6 +1422,8 @@ void check_proof(const ast::Decl& decl,
         // conclusion, seeding the TypeEnv from their type annotations.
         if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
             check_prop_types_deep(hs->prop, type_env, sigs, diag);
+        if (const auto* ss = std::get_if<ast::ShowStep>(&step.node))
+            check_prop_types_deep(ss->prop, type_env, sigs, diag);
         if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node)) {
             // Don't type-check the dummy PropFalse{} in a __qed__ sentinel step.
             const bool is_qed = !ts_s->justification.empty()
@@ -1399,6 +1447,10 @@ void check_proof(const ast::Decl& decl,
         if (std::get_if<ast::InductionStep>(&step.node)) {
             last_concluding = &step;
             last_kind       = LastKind::Induction;
+        }
+        if (std::get_if<ast::ExactStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Exact;
         }
     }
 
@@ -1429,12 +1481,13 @@ void check_proof(const ast::Decl& decl,
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
-        } else { // Induction
+        } else if (last_kind == LastKind::Induction) {
             const auto& is = std::get<ast::InductionStep>(last_concluding->node);
             const auto* it = env.find(is.name);
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
+        } else { // Exact — goal check already performed in check_step
         }
     }
 }
