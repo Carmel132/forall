@@ -28,6 +28,7 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseImport();
     [[nodiscard]] std::optional<ast::DeclPtr> parseInstance();
     [[nodiscard]] std::optional<ast::DeclPtr> parseStructure();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseQuotient();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();

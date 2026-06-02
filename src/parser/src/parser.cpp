@@ -1739,7 +1739,7 @@ std::optional<ast::DeclPtr> Parser::parseStructure() {
             case K::KwDefinition:
             case K::KwTheorem: case K::KwLemma:
             case K::KwImport: case K::KwInstance:
-            case K::KwStructure: case K::Eof:
+            case K::KwStructure: case K::KwQuotient: case K::Eof:
                 return true;
             default:
                 return false;
@@ -1814,6 +1814,95 @@ std::optional<ast::DeclPtr> Parser::parseStructure() {
     return decl;
 }
 
+// quotient <Name> := <CarrierType> over <RelName>
+//   [ axiom <name> : <prop> ]
+//   ...
+//
+// Introduces a quotient type Name = CarrierType / RelName.  The optional
+// axiom fields declare properties of the equivalence relation (typically
+// reflexivity, symmetry, transitivity).  The '/' quotient slash is written
+// as the context-sensitive word "over" to avoid ambiguity with division.
+std::optional<ast::DeclPtr> Parser::parseQuotient() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "quotient"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected quotient type name after 'quotient'"});
+        return std::nullopt;
+    }
+    std::string name{advance().lexeme};
+
+    if (!expect(K::ColonEquals, "expected ':=' after quotient name"))
+        return std::nullopt;
+
+    // Carrier type name
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected carrier type name after ':=' in quotient declaration"});
+        return std::nullopt;
+    }
+    std::string carrier{advance().lexeme};
+
+    // Context-sensitive "over" keyword (lexed as Identifier)
+    if (!check(K::Identifier) || peek().lexeme != "over") {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected 'over' after carrier type name in quotient declaration"});
+        return std::nullopt;
+    }
+    advance(); // consume "over"
+
+    // Equivalence relation name
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected relation name after 'over' in quotient declaration"});
+        return std::nullopt;
+    }
+    std::string rel{advance().lexeme};
+
+    // Helper: signals end of the quotient body (top-level declaration start or EOF)
+    auto is_toplevel_kw = [&]() {
+        switch (peek().kind) {
+            case K::KwDefinition:
+            case K::KwTheorem: case K::KwLemma:
+            case K::KwImport: case K::KwInstance:
+            case K::KwStructure: case K::KwQuotient: case K::Eof:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    // Parse optional axiom fields
+    std::vector<ast::StructField> fields;
+    while (!isAtEnd() && !is_toplevel_kw()) {
+        if (check(K::KwAxiom)) {
+            advance(); // consume "axiom"
+            std::string fname;
+            if (check(K::Identifier))
+                fname = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected axiom field name after 'axiom'"});
+            expect(K::Colon, "expected ':' after axiom field name");
+            auto prop = parseProp();
+            fields.push_back(ast::FieldAxiom{std::move(fname), std::move(prop)});
+        } else {
+            // Unknown token in quotient body — stop
+            break;
+        }
+    }
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::Quotient, std::move(name), loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->quot_carrier = std::move(carrier);
+    decl->quot_rel     = std::move(rel);
+    decl->fields       = std::move(fields);
+    return decl;
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
     if (check(K::KwAxiom))      return parseAxiom();
@@ -1823,9 +1912,10 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     if (check(K::KwImport))     return parseImport();
     if (check(K::KwInstance))   return parseInstance();
     if (check(K::KwStructure))  return parseStructure();
+    if (check(K::KwQuotient))   return parseQuotient();
 
     diag_.emit({diag::Severity::Error, peek().loc,
-                "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', or 'structure'; got '"
+                "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', 'structure', or 'quotient'; got '"
                 + peek().lexeme + "'"});
     advance();
     return std::nullopt;
@@ -1837,7 +1927,7 @@ void Parser::syncToDeclaration() {
            && !check(K::KwAxiom) && !check(K::KwDefinition)
            && !check(K::KwTheorem) && !check(K::KwLemma)
            && !check(K::KwImport) && !check(K::KwInstance)
-           && !check(K::KwStructure)) {
+           && !check(K::KwStructure) && !check(K::KwQuotient)) {
         advance();
     }
 }
