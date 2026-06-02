@@ -209,8 +209,12 @@ Token Lexer::nextToken() {
             {"at",           TokenKind::KwAt},
             {"done",         TokenKind::KwDone},
             {"take",         TokenKind::KwTake},
+            {"fix",          TokenKind::KwTake},    // alias: fix x : T ≡ take x : T
             {"obtain",       TokenKind::KwObtain},
             {"from",         TokenKind::KwFrom},
+            {"so",           TokenKind::KwSo},      // alias: so P ≡ then P
+            {"hence",        TokenKind::KwThen},     // alias: hence P ≡ then P
+            {"because",      TokenKind::KwBy},       // alias: because ≡ by
             // Logic keywords (natural-language symbols)
             {"if",           TokenKind::KwIf},
             {"for",          TokenKind::KwFor},
