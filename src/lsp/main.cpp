@@ -176,12 +176,14 @@ static std::string make_publish_diagnostics(const std::string& uri,
         if (!first) out << ",";
         first = false;
         // LSP lines/cols are 0-based; our SourceLocation is 1-based.
-        uint32_t line = d.loc.line > 0 ? d.loc.line - 1 : 0;
-        uint32_t col  = d.loc.col  > 0 ? d.loc.col  - 1 : 0;
+        uint32_t line    = d.loc.line > 0 ? d.loc.line - 1 : 0;
+        uint32_t col     = d.loc.col  > 0 ? d.loc.col  - 1 : 0;
+        // Use end_col when available (exclusive, 1-based → 0-based = end_col - 1).
+        uint32_t end_col = (d.end_col > d.loc.col) ? (d.end_col - 1) : (col + 1);
         out << R"({"range":{"start":{"line":)" << line
             << R"(,"character":)" << col
             << R"(},"end":{"line":)" << line
-            << R"(,"character":)" << (col + 1)
+            << R"(,"character":)" << end_col
             << R"(}},"severity":)" << severity_to_lsp(d.severity)
             << R"(,"message":")" << json_escape(d.message) << R"("})";
     }
