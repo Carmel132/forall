@@ -2450,6 +2450,46 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+TEST(CheckerTest, ApplyStep_Basic) {
+    // MS2: "apply h" where h : A → B transforms goal B to A
+    auto diag = run_checker("apply_basic", R"(
+axiom h_impl : P -> Q
+axiom h_p : P
+theorem t : Q
+proof
+  apply h_impl
+  then P by h_p
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ApplyStep_WrongImplType_Error) {
+    // MS2: "apply h" fails when h's consequent doesn't match the goal
+    auto diag = run_checker("apply_wrong", R"(
+axiom h_impl : P -> R
+theorem t : Q
+proof
+  apply h_impl
+  then P
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ApplyStep_NotImpl_Error) {
+    // MS2: "apply h" fails when h is not an implication
+    auto diag = run_checker("apply_not_impl", R"(
+axiom ax : P
+theorem t : Q
+proof
+  apply ax
+  then Q
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
 TEST(CheckerTest, MultipleErrors_BothDeclarationsChecked) {
     // IX2: checker should report errors from both declarations even when the
     // first has parse-level errors — don't abort after first error.
