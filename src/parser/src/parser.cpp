@@ -226,13 +226,42 @@ ast::Expr Parser::parseExprAtom() {
     // Postfix operators (left-associative, tightest binding):
     //   base[index]  →  ExprIndex
     //   base!        →  ExprCall{"factorial", [base]}
-    while (check(lexer::TokenKind::LBracket) || check(lexer::TokenKind::Bang)) {
+    //   base.field   →  ExprField
+    while (check(lexer::TokenKind::LBracket) || check(lexer::TokenKind::Bang)
+           || check(lexer::TokenKind::Dot)) {
         if (check(lexer::TokenKind::LBracket)) {
             advance();
             auto idx = parseExpr();
             expect(lexer::TokenKind::RBracket, "expected ']' after index expression");
             base = {loc, ast::ExprIndex{ast::make_expr(std::move(base)),
                                         ast::make_expr(std::move(idx))}};
+        } else if (check(lexer::TokenKind::Dot)) {
+            advance(); // consume '.'
+            std::string field_name;
+            // Accept any word token as a field name (identifiers and keywords)
+            if (check(lexer::TokenKind::Identifier)) {
+                field_name = advance().lexeme;
+            } else if (peek().kind != lexer::TokenKind::Eof
+                       && peek().kind != lexer::TokenKind::Error) {
+                // Accept keyword tokens as field names (e.g. "mul", "inv")
+                const auto& lex = peek().lexeme;
+                bool is_word = !lex.empty();
+                for (char c : lex)
+                    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+                        { is_word = false; break; }
+                if (is_word) {
+                    field_name = lex;
+                    advance();
+                } else {
+                    diag_.emit({diag::Severity::Error, peek().loc,
+                                "expected field name after '.'"});
+                }
+            } else {
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected field name after '.'"});
+            }
+            base = {loc, ast::ExprField{ast::make_expr(std::move(base)),
+                                        std::move(field_name)}};
         } else { // Bang — factorial
             advance();
             std::vector<ast::ExprPtr> args{ast::make_expr(std::move(base))};
@@ -1398,35 +1427,96 @@ ast::ProofBlock Parser::parseProofBlock() {
 // ── Declaration parsing ────────────────────────────────────────────────────────
 
 // definition <name> { "(" <var> ":" <type> ")" } ":" <prop>
+// OR (structure instantiation form):
+// definition <name> ":" <StructType> ":="
+//   <field_name> ":=" <expr>
+//   ...
 std::optional<ast::DeclPtr> Parser::parseDefinition() {
+    using K = lexer::TokenKind;
     const auto loc = peek().loc;
     advance(); // consume "definition"
 
-    if (!check(lexer::TokenKind::Identifier)) {
+    if (!check(K::Identifier)) {
         diag_.emit({diag::Severity::Error, peek().loc, "expected definition name"});
         return std::nullopt;
     }
     std::string name{advance().lexeme};
 
+    // Detect structure instantiation: "definition name : TypeName :="
+    // Lookahead: current=Colon, next=Identifier, next+1=ColonEquals
+    if (check(K::Colon)
+        && pos_ + 1 < tokens_.size()
+        && tokens_[pos_ + 1].kind == K::Identifier
+        && pos_ + 2 < tokens_.size()
+        && tokens_[pos_ + 2].kind == K::ColonEquals)
+    {
+        advance(); // consume ':'
+        std::string struct_type{advance().lexeme}; // consume TypeName
+        advance(); // consume ':='
+
+        // Helper: is the current token a valid field binding name followed by ':='?
+        auto is_binding_start = [&]() -> bool {
+            if (pos_ + 1 >= tokens_.size()) return false;
+            if (tokens_[pos_ + 1].kind != K::ColonEquals) return false;
+            const auto k = peek().kind;
+            if (k == K::Identifier) return true;
+            // Accept keyword tokens that are plain word identifiers
+            const auto& lex = peek().lexeme;
+            if (lex.empty()) return false;
+            for (char c : lex)
+                if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+                    return false;
+            return true;
+        };
+
+        // Helper: is the current token a top-level declaration keyword?
+        auto is_toplevel_kw = [&]() {
+            switch (peek().kind) {
+                case K::KwAxiom: case K::KwDefinition:
+                case K::KwTheorem: case K::KwLemma:
+                case K::KwImport: case K::KwInstance:
+                case K::KwStructure: case K::Eof:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        std::map<std::string, ast::ExprPtr> bindings;
+        while (!isAtEnd() && !is_toplevel_kw() && is_binding_start()) {
+            std::string fname{advance().lexeme}; // consume field name
+            advance(); // consume ':='
+            auto fexpr = parseExpr();
+            bindings.emplace(std::move(fname), ast::make_expr(std::move(fexpr)));
+        }
+
+        auto decl = std::make_unique<ast::Decl>(
+            ast::DeclKind::Definition, std::move(name), loc,
+            ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+        decl->struct_type     = std::move(struct_type);
+        decl->struct_bindings = std::move(bindings);
+        return decl;
+    }
+
     // Parse optional parameter list: { "(" id ":" type ")" }
     std::vector<ast::Param> params;
-    while (check(lexer::TokenKind::LParen)) {
+    while (check(K::LParen)) {
         advance(); // (
         std::string pname;
-        if (check(lexer::TokenKind::Identifier))
+        if (check(K::Identifier))
             pname = advance().lexeme;
         else
             diag_.emit({diag::Severity::Error, peek().loc,
                         "expected parameter name"});
-        expect(lexer::TokenKind::Colon, "expected ':' in definition parameter");
+        expect(K::Colon, "expected ':' in definition parameter");
         ast::TypeNode ptype{ast::TypeUser{"?"}};
-        if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
+        if (check(K::Identifier) || check(K::LParen))
             ptype = parseType();
-        expect(lexer::TokenKind::RParen, "expected ')' to close parameter");
+        expect(K::RParen, "expected ')' to close parameter");
         params.push_back({std::move(pname), std::move(ptype)});
     }
 
-    expect(lexer::TokenKind::Colon, "expected ':' after definition name");
+    expect(K::Colon, "expected ':' after definition name");
     auto prop = parseProp();
     auto decl = std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
                                             std::move(prop), std::nullopt);
