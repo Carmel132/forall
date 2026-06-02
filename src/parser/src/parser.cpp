@@ -1518,6 +1518,114 @@ std::optional<ast::DeclPtr> Parser::parseInstance() {
     return decl;
 }
 
+// structure <Name> ":="
+//   { <name> ":" <type>           -- term field
+//   | "axiom" <name> ":" <prop>   -- axiom field
+//   }
+// Parsing stops when the next token is not an identifier (i.e. not the start of
+// another field declaration) or is a top-level declaration keyword.
+//
+// Field names may be any single-token word, including keywords that can serve as
+// identifiers in a field context (e.g. "inv", "mul", "one").  A token is a valid
+// field name start when it is an Identifier OR a keyword whose lexeme is a plain
+// word AND the token AFTER it is a Colon (two-token lookahead).
+std::optional<ast::DeclPtr> Parser::parseStructure() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "structure"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc, "expected structure name after 'structure'"});
+        return std::nullopt;
+    }
+    std::string name{advance().lexeme};
+
+    if (!expect(K::ColonEquals, "expected ':=' after structure name"))
+        return std::nullopt;
+
+    // Helper: is the current token the start of a top-level declaration (signals end of fields)?
+    // Note: KwAxiom is NOT listed here because "axiom <name> : <prop>" is valid inside a
+    // structure body as an axiom field.  The "axiom" branch in the loop below handles it.
+    auto is_toplevel_kw = [&]() {
+        switch (peek().kind) {
+            case K::KwDefinition:
+            case K::KwTheorem: case K::KwLemma:
+            case K::KwImport: case K::KwInstance:
+            case K::KwStructure: case K::Eof:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    // Helper: is the current token a valid term-field name token?
+    // Any word token (Identifier or keyword) followed by ':' is accepted.
+    // This allows field names like "inv", "mul", "one" even though they are
+    // lexed as keyword tokens.
+    auto is_field_name_token = [&]() -> bool {
+        // Must be followed by ':'
+        if (pos_ + 1 >= tokens_.size()) return false;
+        if (tokens_[pos_ + 1].kind != K::Colon) return false;
+        // Current token must be word-like (Identifier or any keyword)
+        const auto k = peek().kind;
+        if (k == K::Identifier) return true;
+        // Accept keyword tokens that are plain words (not symbols/punctuation)
+        switch (k) {
+            // Exclude top-level declaration keywords (handled by is_toplevel_kw above)
+            case K::KwAxiom: return false; // handled separately as axiom field
+            // All other keyword tokens can be field names when followed by ':'
+            default: {
+                // Only accept if the lexeme is an alphanumeric/underscore word
+                const auto& lex = peek().lexeme;
+                for (char c : lex)
+                    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_')
+                        return false;
+                return !lex.empty();
+            }
+        }
+    };
+
+    std::vector<ast::StructField> fields;
+
+    while (!isAtEnd() && !is_toplevel_kw()) {
+        // "axiom" <name> ":" <prop>  — axiom field
+        if (check(K::KwAxiom)) {
+            advance(); // consume "axiom"
+            std::string fname;
+            if (check(K::Identifier))
+                fname = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected axiom field name after 'axiom'"});
+            expect(K::Colon, "expected ':' after axiom field name");
+            auto prop = parseProp();
+            fields.push_back(ast::FieldAxiom{std::move(fname), std::move(prop)});
+        }
+        // <name> ":" <type>  — term field (identifier or keyword followed by ':')
+        else if (is_field_name_token()) {
+            std::string fname{advance().lexeme};
+            advance(); // consume ':'
+            ast::TypeNode ftype{ast::TypeUser{"?"}};
+            if (check(K::Identifier) || check(K::LParen))
+                ftype = parseType();
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected type after ':' in structure field"});
+            fields.push_back(ast::FieldTerm{std::move(fname), std::move(ftype)});
+        }
+        else {
+            // Unknown token — not the start of a field; stop parsing fields.
+            break;
+        }
+    }
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::Structure, std::move(name), loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->fields = std::move(fields);
+    return decl;
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
     if (check(K::KwAxiom))      return parseAxiom();
@@ -1526,9 +1634,10 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     if (check(K::KwLemma))      return parseTheorem(ast::DeclKind::Lemma);
     if (check(K::KwImport))     return parseImport();
     if (check(K::KwInstance))   return parseInstance();
+    if (check(K::KwStructure))  return parseStructure();
 
     diag_.emit({diag::Severity::Error, peek().loc,
-                "expected 'axiom', 'definition', 'theorem', 'lemma', or 'instance'; got '"
+                "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', or 'structure'; got '"
                 + peek().lexeme + "'"});
     advance();
     return std::nullopt;
@@ -1539,7 +1648,8 @@ void Parser::syncToDeclaration() {
     while (!isAtEnd()
            && !check(K::KwAxiom) && !check(K::KwDefinition)
            && !check(K::KwTheorem) && !check(K::KwLemma)
-           && !check(K::KwImport) && !check(K::KwInstance)) {
+           && !check(K::KwImport) && !check(K::KwInstance)
+           && !check(K::KwStructure)) {
         advance();
     }
 }
