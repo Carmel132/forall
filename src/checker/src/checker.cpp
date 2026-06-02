@@ -1562,7 +1562,8 @@ void check_proof(const ast::Decl& decl,
                  kernel::Kernel& kernel,
                  diag::DiagnosticEngine& diag,
                  const ast::FuncSigTable& sigs = {},
-                 const InstanceTable& instances = {})
+                 const InstanceTable& instances = {},
+                 const ast::StructEnv* struct_env = nullptr)
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -1572,6 +1573,42 @@ void check_proof(const ast::Decl& decl,
 
     ScopeStack  env{module_env};
     ast::TypeEnv type_env; // types from typed 'take x : T' steps
+
+    // DT5: inject structure fields for theorem/lemma params of structure type.
+    // For each param (name : S) where S is a known structure:
+    //   - register param's type in type_env so field projection type inference works
+    //   - inject FieldAxiom fields as "param_name_axiom_name" hypotheses into env
+    //   - register FieldTerm fields as "param_name_field_name" in the local sig table
+    // We use a local mutable copy of sigs to extend it.
+    ast::FuncSigTable local_sigs = sigs;
+    if (struct_env) {
+        for (const auto& param : decl.params) {
+            const auto* user_t = std::get_if<ast::TypeUser>(&param.type.node);
+            if (!user_t) continue;
+            auto sit = struct_env->find(user_t->name);
+            if (sit == struct_env->end()) continue;
+            const auto& fields = sit->second;
+            // Record the param variable's type so field projection works.
+            type_env[param.name] = param.type;
+            for (const auto& sf : fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
+                    const std::string hyp_name = param.name + "_" + fa->name;
+                    // Inject the axiom as-is (uninstantiated) — it represents the
+                    // generic axiom for this structure parameter.
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (r)
+                        env.insert_or_assign(hyp_name,
+                                             HypEntry{std::move(*r), EntryKind::Derived});
+                }
+                if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
+                    const std::string sig_name = param.name + "_" + ft->name;
+                    // Register in local_sigs if it has a function type.
+                    if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                        local_sigs[sig_name] = *tf;
+                }
+            }
+        }
+    }
 
     // Track the last concluding step — ThenStep, CasesStep, ObtainStep, InductionStep, or ExactStep.
     enum class LastKind { None, Then, Cases, Obtain, Induction, Exact };
@@ -1605,6 +1642,37 @@ void check_proof(const ast::Decl& decl,
         if (const auto* ts = std::get_if<ast::TakeStep>(&step.node))
             if (ts->type.has_value())
                 type_env[ts->var] = *ts->type;
+
+        // DT5: TakeStep struct injection — when "take G : S" and S is a known
+        // structure, inject S's FieldAxiom fields as hypotheses and FieldTerm
+        // fields as signatures, mirroring the param injection done above.
+        if (struct_env) {
+            if (const auto* ts = std::get_if<ast::TakeStep>(&step.node)) {
+                if (ts->type.has_value()) {
+                    const auto* user_t = std::get_if<ast::TypeUser>(&ts->type->node);
+                    if (user_t) {
+                        auto sit = struct_env->find(user_t->name);
+                        if (sit != struct_env->end()) {
+                            const auto& fields = sit->second;
+                            for (const auto& sf : fields) {
+                                if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
+                                    const std::string hyp_name = ts->var + "_" + fa->name;
+                                    auto r = kernel.introduce_axiom(fa->prop);
+                                    if (r)
+                                        env.insert_or_assign(hyp_name,
+                                            HypEntry{std::move(*r), EntryKind::Derived});
+                                }
+                                if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
+                                    const std::string sig_name = ts->var + "_" + ft->name;
+                                    if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                                        local_sigs[sig_name] = *tf;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // MS1: RewriteStep transforms the current goal before check_step runs.
         if (const auto* rw = std::get_if<ast::RewriteStep>(&step.node)) {
@@ -1696,7 +1764,7 @@ void check_proof(const ast::Decl& decl,
             continue; // goal transformation only
         }
 
-        const CheckContext ctx{type_env, instances, module_env, sigs, current_goal, &term_defs};
+        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -1710,15 +1778,15 @@ void check_proof(const ast::Decl& decl,
         // Deep type-check step conclusions: recurses into quantifiers in the
         // conclusion, seeding the TypeEnv from their type annotations.
         if (const auto* hs = std::get_if<ast::HaveStep>(&step.node))
-            check_prop_types_deep(hs->prop, type_env, sigs, diag);
+            check_prop_types_deep(hs->prop, type_env, local_sigs, diag);
         if (const auto* ss = std::get_if<ast::ShowStep>(&step.node))
-            check_prop_types_deep(ss->prop, type_env, sigs, diag);
+            check_prop_types_deep(ss->prop, type_env, local_sigs, diag);
         if (const auto* ts_s = std::get_if<ast::ThenStep>(&step.node)) {
             // Don't type-check the dummy PropFalse{} in a __qed__ sentinel step.
             const bool is_qed = !ts_s->justification.empty()
                                  && ts_s->justification[0] == "__qed__";
             if (!is_qed)
-                check_prop_types_deep(ts_s->prop, type_env, sigs, diag);
+                check_prop_types_deep(ts_s->prop, type_env, local_sigs, diag);
         }
 
         if (std::get_if<ast::ThenStep>(&step.node)) {
@@ -2433,7 +2501,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -2714,7 +2782,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                 }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
                 if (!diag_.hasErrors()) {
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) module_env.insert_or_assign(decl->name,
