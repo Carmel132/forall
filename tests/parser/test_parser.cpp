@@ -131,14 +131,29 @@ TEST(ParserTest, ContradictionStep) {
     EXPECT_EQ(s->justification[1], "h2");
 }
 
-TEST(ParserTest, LetStep) {
+TEST(ParserTest, LetBeForm_StillWorks) {
     auto r = parse_str("theorem t : P\nproof\n  let x be a Nat\nend");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* s = get_step<LetStep>(*r.mod.decls[0]->proof, 0);
     ASSERT_NE(s, nullptr);
     EXPECT_EQ(s->var, "x");
     ASSERT_TRUE(s->type.has_value());
+    EXPECT_FALSE(s->definition.has_value());
     EXPECT_EQ(forall::pretty::to_string(*s->type), "Nat");
+}
+
+TEST(ParserTest, LetExprForm) {
+    auto r = parse_str("theorem t : P\nproof\n  let x = 42\nend");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s = get_step<LetStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->var, "x");
+    EXPECT_FALSE(s->type.has_value());
+    ASSERT_TRUE(s->definition.has_value());
+    // Check the definition is ExprLit{42}
+    const auto* lit = std::get_if<ExprLit>(&(*s->definition)->node);
+    ASSERT_NE(lit, nullptr);
+    EXPECT_EQ(lit->value, "42");
 }
 
 // ── Propositions ───────────────────────────────────────────────────────────────

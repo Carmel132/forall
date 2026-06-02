@@ -187,6 +187,46 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+TEST(CheckerTest, ValidLetExprDef) {
+    // TR3: let x = expr — the binding is a no-op when x not used in props.
+    auto diag = run_checker("valid_let_expr_def", R"(
+theorem trivial : P -> P
+proof
+  let x = 42
+  suppose h : P
+  then P -> P by h and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidLetExprUsedInHave) {
+    // TR3: let delta = eps — delta is substituted to eps in the have step.
+    auto diag = run_checker("valid_let_expr_used_in_have", R"(
+axiom eps_pos : eps > 0
+theorem test : eps > 0
+proof
+  let delta = eps
+  have h : delta > 0 by eps_pos
+  then eps > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidLetExprSubstituted) {
+    // TR3: let delta = eps — delta is substituted in the final then step.
+    auto diag = run_checker("valid_let_expr_substituted", R"(
+axiom eps_pos : eps > 0
+theorem test : eps > 0
+proof
+  let delta = eps
+  then delta > 0 by eps_pos
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 TEST(CheckerTest, ValidLemmaUsedInSubsequentProof) {
     // A proved lemma is accumulated into module_env and can be used as a ref
     // in any declaration that follows it in the same file.
