@@ -2197,3 +2197,30 @@ end)");
     EXPECT_EQ(hs->justification.size(), 1u);
     EXPECT_EQ(hs->justification[0], "ax");
 }
+
+TEST(ParserTest, DoubleNegation_Axiom) {
+    // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
+    auto r = parse_str("axiom dne : not (not P) -> P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    // statement should be (¬¬P) → P
+    const auto* impl = std::get_if<ast::PropImpl>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(impl, nullptr);
+    const auto* outer_not = std::get_if<ast::PropNot>(&impl->lhs->node);
+    ASSERT_NE(outer_not, nullptr);
+    const auto* inner_not = std::get_if<ast::PropNot>(&outer_not->inner->node);
+    ASSERT_NE(inner_not, nullptr);
+    const auto* atom = std::get_if<ast::Atomic>(&inner_not->inner->node);
+    ASSERT_NE(atom, nullptr);
+    EXPECT_EQ(atom->name, "P");
+}
+
+TEST(ParserTest, DoubleNegation_Parenthesized) {
+    // PB1: axiom about "¬(¬P)" using Unicode symbols
+    auto r = parse_str("axiom dne2 : ¬(¬P)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* outer_not = std::get_if<ast::PropNot>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(outer_not, nullptr);
+    const auto* inner_not = std::get_if<ast::PropNot>(&outer_not->inner->node);
+    ASSERT_NE(inner_not, nullptr);
+}
