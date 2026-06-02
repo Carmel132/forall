@@ -2497,6 +2497,25 @@ ModuleResult check_module(const std::filesystem::path& path,
                 instance_table[decl->name].insert(decl->instance_class);
             break;
         }
+
+        case ast::DeclKind::Structure: {
+            // Register each FieldAxiom as "<StructName>_<fieldName>" in module_env.
+            // FieldTerm fields describe the structure's signature; they do not produce axioms.
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (!r)
+                        diag.emit({diag::Severity::Error, decl->loc,
+                                    "invalid structure axiom '" + axiom_name + "': "
+                                    + r.error().message});
+                    else
+                        module_env.insert_or_assign(axiom_name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            }
+            break;
+        }
         }
     }
     return ModuleResult{std::move(module_env), std::move(instance_table)};
@@ -2551,6 +2570,17 @@ void Checker::check_content(const std::string& source, const std::string& filena
                 for (auto& [n, e] : imported.env) module_env.insert_or_assign(n, e);
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
+            }
+            break;
+        }
+        case ast::DeclKind::Structure: {
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (r) module_env.insert_or_assign(axiom_name,
+                                                        HypEntry{std::move(*r), EntryKind::Derived});
+                }
             }
             break;
         }
