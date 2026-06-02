@@ -86,7 +86,8 @@ static bool is_expr_atom(const ast::ExprNode& n) {
         || std::holds_alternative<ast::ExprTuple>(n)
         || std::holds_alternative<ast::ExprSetLit>(n)
         || std::holds_alternative<ast::ExprSetCompr>(n)
-        || std::holds_alternative<ast::ExprApp>(n);
+        || std::holds_alternative<ast::ExprApp>(n)
+        || std::holds_alternative<ast::ExprField>(n);
 }
 
 static int expr_prec(const ast::ExprNode& n) {
@@ -224,6 +225,11 @@ std::string ts_expr(const ast::Expr& e) {
                 s += ts_expr(*n.args[i]);
             }
             return s + ")";
+        }
+        else if constexpr (std::is_same_v<T, ast::ExprField>) {
+            // base.field — base must be atom-level for unambiguous parsing
+            return paren(!is_expr_atom(n.base->node), ts_expr(*n.base))
+                   + "." + n.field_name;
         }
         else if constexpr (std::is_same_v<T, ast::ExprBinary>) {
             const int lp = expr_prec(n.lhs->node);
