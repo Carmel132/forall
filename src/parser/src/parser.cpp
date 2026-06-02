@@ -903,6 +903,7 @@ ast::TypeNode Parser::parseType() {
 }
 
 // let <name> be [a] <type>
+// let <name> = <expr>
 ast::Step Parser::parseLetStep() {
     const auto loc = peek().loc;
     advance(); // consume "let"
@@ -912,6 +913,15 @@ ast::Step Parser::parseLetStep() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after 'let'"});
 
+    // let x = expr  — term-level definition
+    if (check(lexer::TokenKind::Equals)) {
+        advance(); // consume "="
+        auto expr = parseExpr();
+        return {loc, ast::LetStep{std::move(var), std::nullopt,
+                                  ast::make_expr(std::move(expr))}};
+    }
+
+    // let x be [a] T  — type annotation (original form)
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::KwBe)) {
         advance();
@@ -919,7 +929,7 @@ ast::Step Parser::parseLetStep() {
         if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
             type = parseType();
     }
-    return {loc, ast::LetStep{std::move(var), std::move(type)}};
+    return {loc, ast::LetStep{std::move(var), std::move(type), std::nullopt}};
 }
 
 // take <var> [: <type>]
