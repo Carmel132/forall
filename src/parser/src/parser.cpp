@@ -1071,6 +1071,7 @@ ast::Step Parser::parseThenStep() {
             case K::KwHave: case K::KwThen: case K::KwSuppose:
             case K::KwContradiction: case K::KwCases: case K::KwLet:
             case K::KwTake: case K::KwObtain: case K::KwInduction:
+            case K::KwShow: case K::KwExact:
                 return true;
             default:
                 return false;
@@ -1273,6 +1274,27 @@ ast::Step Parser::parseStep() {
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
     if (check(K::KwInduction))    return parseInductionStep();
+
+    // show P — goal annotation step (MS4)
+    if (check(K::KwShow)) {
+        const auto loc = peek().loc;
+        advance(); // consume "show"
+        auto prop = parseProp();
+        return {loc, ast::ShowStep{std::move(prop)}};
+    }
+
+    // exact h — close goal directly via a named hypothesis (MS3)
+    if (check(K::KwExact)) {
+        const auto loc = peek().loc;
+        advance(); // consume "exact"
+        std::string ref;
+        if (check(K::Identifier))
+            ref = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected hypothesis name after 'exact'"});
+        return {loc, ast::ExactStep{std::move(ref)}};
+    }
 
     const auto loc = peek().loc;
     diag_.emit({diag::Severity::Error, loc,
