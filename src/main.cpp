@@ -32,7 +32,10 @@ static int cmd_check(const fs::path& path, const fs::path& stdlib_root = {}) {
             }
             return "unknown";
         }();
-        std::println("{}:{}:{}: {}: {}", d.loc.file, d.loc.line, d.loc.col, sev, d.message);
+        if (d.end_col > 0 && d.end_col > d.loc.col)
+            std::println("{}:{}:{}-{}: {}: {}", d.loc.file, d.loc.line, d.loc.col, d.end_col - 1, sev, d.message);
+        else
+            std::println("{}:{}:{}: {}: {}", d.loc.file, d.loc.line, d.loc.col, sev, d.message);
     }
     return engine.hasErrors() ? EXIT_FAILURE : EXIT_SUCCESS;
 }
