@@ -1,0 +1,35 @@
+-- Commutative ring axioms for Int (ℤ).
+--
+-- Integers form a commutative ring: additive group (with subtraction)
+-- and multiplicative monoid, no multiplicative inverse for non-units.
+-- There is no `mul_inv` axiom (ℤ is not a field).
+--
+-- Axiom names follow the convention  <TypeName>_<law>  so that
+-- `instance Int : CommRing` can resolve them implicitly.
+
+-- Additive group
+axiom Int_add_comm        : for all x : Int, for all y : Int, x + y = y + x
+axiom Int_add_assoc       : for all x : Int, for all y : Int, for all z : Int, (x + y) + z = x + (y + z)
+axiom Int_add_zero        : for all x : Int, x + 0 = x
+axiom Int_zero_add        : for all x : Int, 0 + x = x
+axiom Int_add_neg         : for all x : Int, there exists y : Int, x + y = 0
+
+-- Subtraction defined as addition of negation
+axiom Int_sub_def         : for all x : Int, for all y : Int, there exists z : Int, x - y = x + z
+
+-- Multiplicative monoid
+axiom Int_mul_comm        : for all x : Int, for all y : Int, x * y = y * x
+axiom Int_mul_assoc       : for all x : Int, for all y : Int, for all z : Int, (x * y) * z = x * (y * z)
+axiom Int_mul_one         : for all x : Int, x * 1 = x
+axiom Int_one_mul         : for all x : Int, 1 * x = x
+
+-- Distributivity
+axiom Int_distrib_left    : for all x : Int, for all y : Int, for all z : Int, x * (y + z) = x * y + x * z
+axiom Int_distrib_right   : for all x : Int, for all y : Int, for all z : Int, (x + y) * z = x * z + y * z
+
+-- Order (ℤ is a totally ordered ring)
+axiom Int_order_total     : for all x : Int, for all y : Int, x < y or x = y or y < x
+axiom Int_lt_trans        : for all x : Int, for all y : Int, for all z : Int, x < y implies y < z implies x < z
+axiom Int_lt_add          : for all x : Int, for all y : Int, for all z : Int, x < y implies x + z < y + z
+
+instance Int : CommRing
