@@ -255,6 +255,13 @@ infer_rule(const ast::Prop& conc,
                     {es[0]->judgment, es[1]->judgment, es[2]->judgment}};
     }
 
+    // ── 0 premises ───────────────────────────────────────────────────────────
+    if (n == 0) {
+        // TrueIntro: ⊢ ⊤
+        if (std::get_if<ast::PropTrue>(&conc.node))
+            return RuleApp{R::TrueIntro, {}};
+    }
+
     diag.emit({diag::Severity::Error, loc,
                "cannot infer inference rule for this step from "
                + std::to_string(n) + " reference(s)"});
@@ -1047,6 +1054,17 @@ bool check_step(const ast::Step& step,
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "auto-discharge (NotIntro) failed: " + r.error().message});
+                        return false;
+                    }
+                    return true;
+                }
+                // TrueIntro: conclusion is ⊤ — no premises needed
+                if (std::get_if<ast::PropTrue>(&s.prop.node)) {
+                    std::vector<kernel::Judgment> no_prem;
+                    auto r = kernel.apply(kernel::Rule::TrueIntro, no_prem, s.prop);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "TrueIntro failed: " + r.error().message});
                         return false;
                     }
                     return true;
