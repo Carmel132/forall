@@ -979,17 +979,50 @@ ast::Step Parser::parseHaveStep() {
     return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::move(witness)}};
 }
 
-// then <prop> [by <justification> [at <expr>]]
+// then [<prop>] [(by | from) <justification> [at <expr>]]
+// RL4: if no proposition follows "then", emits a "__qed__" sentinel;
+// the checker substitutes decl.statement as the goal.
 ast::Step Parser::parseThenStep() {
+    using K = lexer::TokenKind;
     const auto loc = peek().loc;
     advance(); // consume "then"
-    auto prop = parseProp();
+
+    // Detect bare "then" (no prop): next token is "by"/"from", a proof terminator,
+    // a step keyword, or EOF.  In those cases use the __qed__ sentinel.
+    // Note: "therefore"/"thus" map to KwThen at the lexer level.
+    auto is_bare_then = [&]() {
+        switch (peek().kind) {
+            case K::KwBy: case K::KwFrom:
+            case K::KwEnd: case K::Eof:
+            case K::KwHave: case K::KwThen: case K::KwSuppose:
+            case K::KwContradiction: case K::KwCases: case K::KwLet:
+            case K::KwTake: case K::KwObtain: case K::KwInduction:
+                return true;
+            default:
+                return false;
+        }
+    };
+
     std::vector<std::string> refs;
     std::optional<ast::ExprPtr> witness;
-    if (check(lexer::TokenKind::KwBy)) {
+
+    if (is_bare_then()) {
+        // Goal-close form (RL4): defer prop to checker via sentinel.
+        ast::Prop dummy{loc, ast::PropFalse{}};
+        refs.push_back("__qed__");
+        if (check(K::KwBy) || check(K::KwFrom)) {
+            advance();
+            auto extra = parseJustification();
+            refs.insert(refs.end(), extra.begin(), extra.end());
+        }
+        return {loc, ast::ThenStep{std::move(dummy), std::move(refs), std::nullopt}};
+    }
+
+    auto prop = parseProp();
+    if (check(K::KwBy) || check(K::KwFrom)) {
         advance();
         refs = parseJustification();
-        if (check(lexer::TokenKind::KwAt)) {
+        if (check(K::KwAt)) {
             advance();
             witness = ast::make_expr(parseExpr());
         }
