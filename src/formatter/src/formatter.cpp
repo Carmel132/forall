@@ -270,6 +270,17 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
         if (!r.empty() && r.back() == '\n') r.pop_back();
         return r;
     }
+
+    case ast::DeclKind::Quotient: {
+        std::string r = "quotient " + decl.name + " := "
+                        + decl.quot_carrier + " over " + decl.quot_rel + "\n";
+        for (const auto& field : decl.fields) {
+            if (const auto* fa = std::get_if<ast::FieldAxiom>(&field))
+                r += "  axiom " + fa->name + " : " + to_string(fa->prop) + "\n";
+        }
+        if (!r.empty() && r.back() == '\n') r.pop_back();
+        return r;
+    }
     }
     return {};
 }
