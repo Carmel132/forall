@@ -2198,6 +2198,65 @@ end)");
     EXPECT_EQ(hs->justification[0], "ax");
 }
 
+TEST(ParserTest, MultiVarBinder_TwoVarsSpaceSep) {
+    // PB2: "for all x y : Nat, P" must parse as PropForall{x, PropForall{y, P}}
+    auto r = parse_str("axiom a : for all x y : Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* outer = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->var, "x");
+    const auto* inner = std::get_if<ast::PropForall>(&outer->body->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->var, "y");
+    const auto* atom = std::get_if<ast::Atomic>(&inner->body->node);
+    ASSERT_NE(atom, nullptr);
+    EXPECT_EQ(atom->name, "P");
+}
+
+TEST(ParserTest, MultiVarBinder_ThreeVarsNoType) {
+    // PB2: "for all x y z, P" nests three foralls
+    auto r = parse_str("axiom a : for all x y z, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* f1 = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(f1, nullptr); EXPECT_EQ(f1->var, "x");
+    const auto* f2 = std::get_if<ast::PropForall>(&f1->body->node);
+    ASSERT_NE(f2, nullptr); EXPECT_EQ(f2->var, "y");
+    const auto* f3 = std::get_if<ast::PropForall>(&f2->body->node);
+    ASSERT_NE(f3, nullptr); EXPECT_EQ(f3->var, "z");
+}
+
+TEST(ParserTest, MultiVarBinder_AndSeparated) {
+    // PB2: "for all x and y : Nat, P" — "and" as separator
+    auto r = parse_str("axiom a : for all x and y : Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* outer = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->var, "x");
+    const auto* inner = std::get_if<ast::PropForall>(&outer->body->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->var, "y");
+}
+
+TEST(ParserTest, MultiVarBinder_ExistsTwo) {
+    // PB2: "there exists x y : Nat, P" — ∃ also supports multi-var
+    auto r = parse_str("axiom a : there exists x y : Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* outer = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(outer, nullptr); EXPECT_EQ(outer->var, "x");
+    const auto* inner = std::get_if<ast::PropExists>(&outer->body->node);
+    ASSERT_NE(inner, nullptr); EXPECT_EQ(inner->var, "y");
+}
+
+TEST(ParserTest, MultiVarBinder_SingleVarStillWorks) {
+    // PB2: single-variable form unchanged
+    auto r = parse_str("axiom a : for all x : Nat, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* f = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(f, nullptr); EXPECT_EQ(f->var, "x");
+    const auto* body = std::get_if<ast::Atomic>(&f->body->node);
+    ASSERT_NE(body, nullptr); EXPECT_EQ(body->name, "P");
+}
+
 TEST(ParserTest, DoubleNegation_Axiom) {
     // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
     auto r = parse_str("axiom dne : not (not P) -> P");
