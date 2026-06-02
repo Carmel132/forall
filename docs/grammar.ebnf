@@ -118,7 +118,10 @@ have_step   = ( "have" | "we" , "have" ) ,
 (* Omitting the "by" clause auto-discharges the most-recent matching      *)
 (* Assumption when the conclusion is an implication (P → Q) or negation  *)
 (* (¬P): ImplIntro or NotIntro is applied automatically.                  *)
-then_step   = ( "then" | "therefore" | "thus" ) , prop ,
+(* RL4: omitting the proposition ("then" or "then by refs") uses the      *)
+(* theorem's goal as the conclusion — no need to re-state the statement. *)
+then_step   = ( "then" | "therefore" | "thus" ) ,
+              [ prop ] ,
               [ ( "by" | "from" ) , justification , [ "at" , expr ] ] ;
 
 (* Contradiction names the two contradictory hypotheses; it derives ⊥.   *)

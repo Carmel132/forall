@@ -2172,3 +2172,43 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── RL4: bare "then" closes goal without repeating the statement ──────────────
+
+TEST(CheckerTest, BareThен_SimpleAxiom) {
+    // "then" with no proposition: checker infers goal from decl.statement
+    auto diag = run_checker("bare_then_axiom", R"(
+axiom ax : P
+theorem t : P
+proof
+  then by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, BareThen_AutoDischarge) {
+    // Bare "then" with no by: auto-discharge P -> Q
+    auto diag = run_checker("bare_then_auto_discharge", R"(
+axiom ax : P -> Q
+theorem t : P -> Q
+proof
+  suppose h : P
+  have hq : Q by ax and h
+  then
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, BareThen_WrongGoal_Error) {
+    // Bare "then" with mismatched goal still fails at conclusion validation
+    auto diag = run_checker("bare_then_wrong_goal", R"(
+axiom ax : Q
+theorem t : P
+proof
+  then by ax
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
