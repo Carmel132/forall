@@ -43,6 +43,8 @@ enum class TokenKind {
     // Proof-step tactic keywords
     KwCase, KwCases, KwOn,
     KwInduction,                // "induction"
+    KwShow,                     // "show"   (goal annotation step)
+    KwExact,                    // "exact"  (close goal by hypothesis)
     KwDecide,                   // "decide"    (tactic keyword)
     KwNormNum,                  // "norm_num"  (tactic keyword)
     KwRing,                     // "ring"      (tactic keyword)

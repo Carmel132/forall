@@ -245,6 +245,8 @@ Token Lexer::nextToken() {
             {"cases",        TokenKind::KwCases},
             {"on",           TokenKind::KwOn},
             {"induction",    TokenKind::KwInduction},
+            {"show",         TokenKind::KwShow},
+            {"exact",        TokenKind::KwExact},
             {"decide",       TokenKind::KwDecide},
             {"norm_num",     TokenKind::KwNormNum},
             {"ring",         TokenKind::KwRing},
