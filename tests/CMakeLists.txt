@@ -22,3 +22,23 @@ add_test(NAME e2e_algebra_comm_ring
         --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
         "${CMAKE_SOURCE_DIR}/stdlib/algebra/comm_ring.forall"
 )
+add_test(NAME e2e_algebra_integral_domain
+    COMMAND $<TARGET_FILE:forall>
+        --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
+        "${CMAKE_SOURCE_DIR}/stdlib/algebra/integral_domain.forall"
+)
+add_test(NAME e2e_algebra_field
+    COMMAND $<TARGET_FILE:forall>
+        --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
+        "${CMAKE_SOURCE_DIR}/stdlib/algebra/field.forall"
+)
+add_test(NAME e2e_algebra_ordered_field
+    COMMAND $<TARGET_FILE:forall>
+        --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
+        "${CMAKE_SOURCE_DIR}/stdlib/algebra/ordered_field.forall"
+)
+add_test(NAME e2e_algebra_real
+    COMMAND $<TARGET_FILE:forall>
+        --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
+        "${CMAKE_SOURCE_DIR}/stdlib/algebra/real.forall"
+)
