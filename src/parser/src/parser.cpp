@@ -629,6 +629,12 @@ ast::Prop Parser::parseAtomicProp() {
         ast::Prop p{loc, ast::PropFalse{}}; mark_end(p); return p;
     }
 
+    // "true" / ⊤
+    if (check(lexer::TokenKind::KwTrue)) {
+        advance();
+        ast::Prop p{loc, ast::PropTrue{}}; mark_end(p); return p;
+    }
+
     // "(" ... ")"
     // Ambiguity: "(expr) [arith-op expr]* rel expr" vs "(prop)".
     //
@@ -670,6 +676,7 @@ ast::Prop Parser::parseAtomicProp() {
                 case lexer::TokenKind::Exists:      // ∃ / "there exists"
                 case lexer::TokenKind::KwThere:     // "there" (part of "there exists")
                 case lexer::TokenKind::KwFalse:     // "false" / ⊥
+                case lexer::TokenKind::KwTrue:      // "true"  / ⊤
                 case lexer::TokenKind::Not:         // ¬ / "not"
                     return true;
                 default:
