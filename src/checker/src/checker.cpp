@@ -1376,11 +1376,13 @@ bool check_step(const ast::Step& step,
                 return false;
             }
             if (!(s.prop == *ctx.goal)) {
+                const uint32_t end_col = s.prop.end_loc ? s.prop.end_loc->col : 0;
                 diag.emit({diag::Severity::Error, step.loc,
                            "'show' mismatch: expected '"
                            + forall::pretty::to_string(*ctx.goal)
                            + "', got '"
-                           + forall::pretty::to_string(s.prop) + "'"});
+                           + forall::pretty::to_string(s.prop) + "'",
+                           end_col});
                 return false;
             }
             return true; // annotation only — no judgment produced
@@ -1718,10 +1720,13 @@ void check_proof(const ast::Decl& decl,
             // RL4: __qed__ sentinel substitutes current goal — skip prop check.
             const bool is_qed_sentinel = !ts.justification.empty()
                                          && ts.justification[0] == "__qed__";
-            if (!is_qed_sentinel && ts.prop != *current_goal)
+            if (!is_qed_sentinel && ts.prop != *current_goal) {
+                const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with `" + forall::pretty::to_string(ts.prop)
-                           + "`, expected `" + forall::pretty::to_string(*current_goal) + "`"});
+                           + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
+                           end_col});
+            }
             // MS2: If apply_stack is non-empty, verify the chain reaches decl.statement.
             // Each apply h:A→B requires the subproof to conclude A, then ImplElim gives B.
             // The final result must equal decl.statement.
