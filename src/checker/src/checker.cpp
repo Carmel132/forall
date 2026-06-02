@@ -125,6 +125,10 @@ static std::string fresh_name() {
 }
 
 // ── resolve_refs ───────────────────────────────────────────────────────────────
+//
+// NL16: "__hypothesis__" / "__assumption__" sentinels resolve to the unique
+// Assumption-kind entry in the current scope.  If there are multiple, a Warning
+// is emitted and the first one is used.  If there are none, an Error is emitted.
 
 std::optional<std::vector<const HypEntry*>>
 resolve_refs(const std::vector<std::string>& refs,
@@ -135,6 +139,25 @@ resolve_refs(const std::vector<std::string>& refs,
     std::vector<const HypEntry*> out;
     out.reserve(refs.size());
     for (const auto& name : refs) {
+        // NL16: "by hypothesis" / "by assumption" → resolve to the active assumption
+        if (name == "__hypothesis__" || name == "__assumption__") {
+            std::vector<const HypEntry*> assumptions;
+            env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                assumptions.push_back(&e);
+            });
+            if (assumptions.empty()) {
+                diag.emit({diag::Severity::Error, loc,
+                           "'by hypothesis'/'by assumption': no assumption in scope"});
+                return std::nullopt;
+            }
+            if (assumptions.size() > 1) {
+                diag.emit({diag::Severity::Warning, loc,
+                           "'by hypothesis'/'by assumption': multiple assumptions in scope; "
+                           "using the first one"});
+            }
+            out.push_back(assumptions.front());
+            continue;
+        }
         const auto* e = env.find(name);
         if (!e) {
             diag.emit({diag::Severity::Error, loc,
