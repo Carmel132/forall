@@ -823,6 +823,9 @@ ast::Prop Parser::parseAtomicProp() {
 // "by decide"   — evaluates closed arithmetic; sentinel "__decide__"
 // "by norm_num" — polynomial ring equality; sentinel "__norm_num__"
 // "by ring"     — polynomial identity over commutative ring; sentinel "__ring__"
+// NL6: "by definition of X" / "by axiom of X" / "by lemma X" / "by theorem X"
+//       — qualifier words discarded; only X matters
+// NL16: "by hypothesis" / "by assumption" → sentinels "__hypothesis__" / "__assumption__"
 std::vector<std::string> Parser::parseJustification() {
     std::vector<std::string> refs;
     if (check(lexer::TokenKind::KwDecide)) {
@@ -857,8 +860,48 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__contra__");
         return refs;
     }
-    if (!check(lexer::TokenKind::Identifier)) return refs;
+    // NL16: "by hypothesis" / "by assumption" — resolve to the unique active assumption
+    if (check(lexer::TokenKind::Identifier)
+            && (peek().lexeme == "hypothesis" || peek().lexeme == "assumption")) {
+        std::string sentinel = (peek().lexeme == "hypothesis")
+                               ? "__hypothesis__" : "__assumption__";
+        advance();
+        refs.push_back(std::move(sentinel));
+        return refs;
+    }
+    // NL6 qualifiers are keyword tokens (KwDefinition, KwAxiom, KwLemma, KwTheorem),
+    // so we cannot early-return if the token is not an Identifier — check below.
     {
+        // NL6: optional qualifier words before the ref name.
+        // "definition of" — 2 tokens to discard; "definition" is KwDefinition
+        // "axiom of"      — 2 tokens to discard; "axiom" is KwAxiom
+        // "lemma"         — 1 token to discard; "lemma" is KwLemma
+        // "theorem"       — 1 token to discard; "theorem" is KwTheorem
+        // These are keyword tokens (not Identifiers), so we check token kind.
+        auto skip_nl6_qualifier = [&]() {
+            using K2 = lexer::TokenKind;
+            // "definition of" or "axiom of" — 2 tokens
+            if ((check(K2::KwDefinition) || check(K2::KwAxiom))
+                    && pos_ + 1 < tokens_.size()
+                    && tokens_[pos_ + 1].kind == K2::Identifier
+                    && tokens_[pos_ + 1].lexeme == "of") {
+                advance(); // consume "definition"/"axiom"
+                advance(); // consume "of"
+            }
+            // "lemma" — 1 token, only if followed by an identifier (the ref name)
+            else if (check(K2::KwLemma)
+                    && pos_ + 1 < tokens_.size()
+                    && tokens_[pos_ + 1].kind == K2::Identifier) {
+                advance(); // consume "lemma"
+            }
+            // "theorem" — 1 token, only if followed by an identifier (the ref name)
+            else if (check(K2::KwTheorem)
+                    && pos_ + 1 < tokens_.size()
+                    && tokens_[pos_ + 1].kind == K2::Identifier) {
+                advance(); // consume "theorem"
+            }
+        };
+
         // Parse a single reference, which may be dotted: "M.my_axiom".
         auto parse_one_ref = [&]() -> std::string {
             std::string name{advance().lexeme}; // consume the identifier
@@ -872,9 +915,13 @@ std::vector<std::string> Parser::parseJustification() {
             }
             return name;
         };
+
+        skip_nl6_qualifier();
+        if (!check(lexer::TokenKind::Identifier)) return refs;
         refs.push_back(parse_one_ref());
         while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
             advance();
+            skip_nl6_qualifier();
             if (check(lexer::TokenKind::Identifier))
                 refs.push_back(parse_one_ref());
         }
@@ -1015,6 +1062,27 @@ ast::Step Parser::parseLetStep() {
                                   ast::make_expr(std::move(expr))}};
     }
 
+    // NL8: let x be arbitrary [in T]  → TakeStep{x, T}
+    // Detect: KwBe followed by Identifier "arbitrary"
+    if (check(lexer::TokenKind::KwBe)
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == lexer::TokenKind::Identifier
+            && tokens_[pos_ + 1].lexeme == "arbitrary") {
+        advance(); // consume "be"
+        advance(); // consume "arbitrary"
+        std::optional<ast::TypeNode> type;
+        // Optional "in <type>"
+        if (check(lexer::TokenKind::KwIn)) {
+            advance(); // consume "in"
+            if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
+                type = parseType();
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected type name after 'in' in 'let ... be arbitrary in'"});
+        }
+        return {loc, ast::TakeStep{std::move(var), std::move(type)}};
+    }
+
     // let x be [a] T  — type annotation (original form)
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::KwBe)) {
@@ -1141,7 +1209,80 @@ ast::Step Parser::parseSupposeStep() {
         advance(); // consume ':'
     }
 
-    auto prop = parseProp();
+    // NL19: "suppose h1 : P and h2 : Q" → two SupposeSteps.
+    // Problem: parseProp() is greedy — "P and hq" would be parsed as PropAnd{P, hq}.
+    // Solution: scan ahead to detect "and <Identifier> :" pattern at paren-depth 0.
+    // If found at position j, the "and" at j is the multi-suppose separator; parse
+    // only up to j (stop at the first top-level "and" that is part of the NL19 pattern).
+    //
+    // We implement this by parsing the prop normally, then checking if the result
+    // is a conjunction whose RHS is an Atomic{name2} where the next token is ':'.
+    // If so, undo: the conjunction was mis-parsed — the 'and' was the NL19 separator.
+    // We restore position to just before the 'and' by saving/restoring pos_.
+
+    auto parse_possibly_limited_prop = [&]() -> ast::Prop {
+        if (for_contradiction) return parseProp();
+        // Scan for top-level "and Identifier :" at depth 0, which would signal NL19.
+        // We only do this when the name is known (name.has_value()).
+        if (!name.has_value()) return parseProp();
+        // Look for the pattern: at depth 0, an And/KwAnd token followed by Identifier Colon.
+        int depth = 0;
+        bool has_nl19 = false;
+        for (std::size_t i = pos_; i < tokens_.size(); ++i) {
+            const auto k = tokens_[i].kind;
+            if (k == lexer::TokenKind::LParen || k == lexer::TokenKind::LBracket
+                    || k == lexer::TokenKind::LBrace) { ++depth; continue; }
+            if (k == lexer::TokenKind::RParen || k == lexer::TokenKind::RBracket
+                    || k == lexer::TokenKind::RBrace) { --depth; continue; }
+            if (depth == 0 && k == lexer::TokenKind::And
+                    && i + 2 < tokens_.size()
+                    && tokens_[i + 1].kind == lexer::TokenKind::Identifier
+                    && tokens_[i + 2].kind == lexer::TokenKind::Colon) {
+                has_nl19 = true;
+                break;
+            }
+            // Stop scanning at step-terminating tokens
+            if (depth == 0 && (k == lexer::TokenKind::KwBy
+                    || k == lexer::TokenKind::KwFrom
+                    || k == lexer::TokenKind::KwEnd
+                    || k == lexer::TokenKind::KwHave
+                    || k == lexer::TokenKind::KwThen
+                    || k == lexer::TokenKind::Eof))
+                break;
+        }
+        if (!has_nl19) return parseProp();
+        // Parse only up to the first top-level 'and' that precedes 'Identifier :'.
+        // Use parseDisjunction() instead of parseProp() so we stop before PropImpl/
+        // quantifiers and especially before the 'and' conjunction at the top level.
+        // Actually parseDisjunction() stops at 'or', but parseProp() via parseBiconditional
+        // → parseImplication → parseDisjunction → parseConjunction greedily eats 'and'.
+        // The cleanest way: parse only parseNegation() to get a single atomic/negated prop.
+        // For the common case, the prop between 'suppose h : ' and ' and h2 :' is atomic.
+        // Parse an implication but stop at the top-level 'and':
+        // We call parseBiconditional → parseImplication → parseDisjunction → parseConjunction.
+        // parseConjunction eats all top-level 'and' tokens. To stop before NL19 'and', we
+        // parse just one parseNegation() (no conjunction loop).
+        return parseNegation();
+    };
+
+    auto prop = parse_possibly_limited_prop();
+
+    // NL19: if we limited to parseNegation(), check if the next token is 'and <Identifier> :'
+    if (!for_contradiction && name.has_value()
+            && check(lexer::TokenKind::And)
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == lexer::TokenKind::Identifier
+            && pos_ + 2 < tokens_.size()
+            && tokens_[pos_ + 2].kind == lexer::TokenKind::Colon) {
+        advance(); // consume "and"
+        std::string name2{advance().lexeme};
+        advance(); // consume ':'
+        auto prop2 = parseProp(); // second prop can be a full prop
+        // Push the second step into the deferred queue.
+        deferred_steps_.emplace_back(
+            loc, ast::SupposeStep{false, std::move(name2), std::move(prop2)});
+    }
+
     return {loc, ast::SupposeStep{for_contradiction, std::move(name), std::move(prop)}};
 }
 
@@ -1382,16 +1523,82 @@ ast::Step Parser::parseInductionStep() {
 
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
+
+    // Drain deferred steps (produced by e.g. NL19 multi-suppose) before parsing new ones.
+    if (!deferred_steps_.empty()) {
+        auto s = std::move(deferred_steps_.front());
+        deferred_steps_.erase(deferred_steps_.begin());
+        return s;
+    }
+
     if (check(K::KwLet))          return parseLetStep();
     if (check(K::KwTake))         return parseTakeStep();
     if (check(K::KwObtain))       return parseObtainStep();
     if (check(K::KwSuppose))      return parseSupposeStep();
+
     // "we have" — two-token phrase aliasing "have"
-    if (check(K::Identifier) && peek().lexeme == "we"
-            && pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].kind == K::KwHave)
-        { advance(); return parseHaveStep(); }
+    // Also handle NL9 "we need to show P", NL13 "we know X", NL18 "we prove that P"
+    if (check(K::Identifier) && peek().lexeme == "we") {
+        if (pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].kind == K::KwHave) {
+            advance(); return parseHaveStep();
+        }
+        // NL9: "we need to show P"
+        if (pos_ + 1 < tokens_.size()
+                && tokens_[pos_ + 1].kind == K::Identifier
+                && tokens_[pos_ + 1].lexeme == "need"
+                && pos_ + 2 < tokens_.size()
+                && tokens_[pos_ + 2].kind == K::Identifier
+                && tokens_[pos_ + 2].lexeme == "to"
+                && pos_ + 3 < tokens_.size()
+                && (tokens_[pos_ + 3].kind == K::KwShow
+                    || (tokens_[pos_ + 3].kind == K::Identifier
+                        && tokens_[pos_ + 3].lexeme == "show"))) {
+            const auto loc = peek().loc;
+            advance(); advance(); advance(); advance(); // consume "we need to show"
+            auto prop = parseProp();
+            return {loc, ast::ShowStep{std::move(prop)}};
+        }
+        // NL13: "we know X"
+        if (pos_ + 1 < tokens_.size()
+                && tokens_[pos_ + 1].kind == K::Identifier
+                && tokens_[pos_ + 1].lexeme == "know"
+                && pos_ + 2 < tokens_.size()
+                && tokens_[pos_ + 2].kind == K::Identifier) {
+            const auto loc = peek().loc;
+            advance(); advance(); // consume "we know"
+            std::string ref{advance().lexeme}; // consume the ref name
+            // Produce: have _ : ref by ref
+            ast::Prop ref_prop{loc, ast::Atomic{ref}};
+            return {loc, ast::HaveStep{"_", std::move(ref_prop), {ref}, std::nullopt}};
+        }
+        // NL18: "we prove that P"
+        if (pos_ + 1 < tokens_.size()
+                && tokens_[pos_ + 1].kind == K::Identifier
+                && tokens_[pos_ + 1].lexeme == "prove"
+                && pos_ + 2 < tokens_.size()
+                && tokens_[pos_ + 2].kind == K::Identifier
+                && tokens_[pos_ + 2].lexeme == "that") {
+            const auto loc = peek().loc;
+            advance(); advance(); advance(); // consume "we prove that"
+            auto prop = parseProp();
+            return {loc, ast::ShowStep{std::move(prop)}};
+        }
+    }
+
     if (check(K::KwHave))         return parseHaveStep();
     if (check(K::KwThen))         return parseThenStep();
+    // NL10: "so P [by refs]" — maps KwSo to a ThenStep
+    if (check(K::KwSo)) {
+        const auto loc = peek().loc;
+        advance(); // consume "so"
+        auto prop = parseProp();
+        std::vector<std::string> refs;
+        if (check(K::KwBy) || check(K::KwFrom)) {
+            advance();
+            refs = parseJustification();
+        }
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
+    }
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
     if (check(K::KwInduction))    return parseInductionStep();
@@ -1471,6 +1678,105 @@ ast::Step Parser::parseStep() {
             diag_.emit({diag::Severity::Error, peek().loc,
                         "expected hypothesis name after 'exact'"});
         return {loc, ast::ExactStep{std::move(ref)}};
+    }
+
+    // NL4: "note that P by refs" / "observe that P by refs" → have _ : P by refs
+    if (check(K::Identifier)
+            && (peek().lexeme == "note" || peek().lexeme == "observe")
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme == "that") {
+        const auto loc = peek().loc;
+        advance(); advance(); // consume "note"/"observe" and "that"
+        auto prop = parseProp();
+        std::vector<std::string> refs;
+        if (check(K::KwBy) || check(K::KwFrom)) {
+            advance();
+            refs = parseJustification();
+        }
+        return {loc, ast::HaveStep{"_", std::move(prop), std::move(refs), std::nullopt}};
+    }
+
+    // NL5: "since h1 and h2, have name : P"
+    if (check(K::Identifier) && peek().lexeme == "since") {
+        const auto loc = peek().loc;
+        advance(); // consume "since"
+        // Parse refs until ','
+        std::vector<std::string> refs;
+        if (check(K::Identifier)) {
+            refs.push_back(std::string{advance().lexeme});
+            while ((check(K::And) || check(K::KwWith))
+                   && pos_ + 1 < tokens_.size()
+                   && tokens_[pos_ + 1].kind == K::Identifier) {
+                advance();
+                refs.push_back(std::string{advance().lexeme});
+            }
+        }
+        expect(K::Comma, "expected ',' after refs in 'since ... , have ...'");
+        expect(K::KwHave, "expected 'have' after 'since ... ,'");
+        std::string name;
+        if (check(K::Identifier))
+            name = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected hypothesis name after 'have'"});
+        expect(K::Colon, "expected ':' after hypothesis name");
+        auto prop = parseProp();
+        return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::nullopt}};
+    }
+
+    // NL9: "it suffices to show P"
+    if (check(K::Identifier) && peek().lexeme == "it"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme == "suffices"
+            && pos_ + 2 < tokens_.size()
+            && tokens_[pos_ + 2].kind == K::Identifier
+            && tokens_[pos_ + 2].lexeme == "to"
+            && pos_ + 3 < tokens_.size()
+            && (tokens_[pos_ + 3].kind == K::KwShow
+                || (tokens_[pos_ + 3].kind == K::Identifier
+                    && tokens_[pos_ + 3].lexeme == "show"))) {
+        const auto loc = peek().loc;
+        advance(); advance(); advance(); advance(); // consume "it suffices to show"
+        auto prop = parseProp();
+        return {loc, ast::ShowStep{std::move(prop)}};
+    }
+
+    // NL15: "it follows that P [by refs]"
+    if (check(K::Identifier) && peek().lexeme == "it"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme == "follows"
+            && pos_ + 2 < tokens_.size()
+            && tokens_[pos_ + 2].kind == K::Identifier
+            && tokens_[pos_ + 2].lexeme == "that") {
+        const auto loc = peek().loc;
+        advance(); advance(); advance(); // consume "it follows that"
+        auto prop = parseProp();
+        std::vector<std::string> refs;
+        if (check(K::KwBy) || check(K::KwFrom)) {
+            advance();
+            refs = parseJustification();
+        }
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
+    }
+
+    // NL10: "which gives P" / "which shows P" → ThenStep{P, []}
+    if (check(K::Identifier) && peek().lexeme == "which"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && (tokens_[pos_ + 1].lexeme == "gives"
+                || tokens_[pos_ + 1].lexeme == "shows")) {
+        const auto loc = peek().loc;
+        advance(); advance(); // consume "which" and "gives"/"shows"
+        auto prop = parseProp();
+        std::vector<std::string> refs;
+        if (check(K::KwBy) || check(K::KwFrom)) {
+            advance();
+            refs = parseJustification();
+        }
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
     }
 
     const auto loc = peek().loc;

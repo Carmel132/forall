@@ -108,6 +108,10 @@ private:
     std::span<const lexer::Token> tokens_;
     diag::DiagnosticEngine&       diag_;
     std::size_t                   pos_{0};
+
+    // Deferred steps: multi-step productions (e.g. NL19 "suppose h1 : P and h2 : Q")
+    // push the extra steps here; parseStep() drains this queue first.
+    std::vector<ast::Step>        deferred_steps_;
 };
 
 } // namespace forall::parser
