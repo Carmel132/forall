@@ -16,9 +16,11 @@ namespace fs = std::filesystem;
 
 // ── forall check <file> ──────────────────────────────────────────────────────
 
-static int cmd_check(const fs::path& path) {
+static int cmd_check(const fs::path& path, const fs::path& stdlib_root = {}) {
     forall::diag::DiagnosticEngine engine;
     forall::checker::Checker checker{engine};
+    if (!stdlib_root.empty())
+        checker.set_stdlib_path(stdlib_root);
     checker.check(path);
 
     for (const auto& d : engine.diagnostics()) {
@@ -97,22 +99,40 @@ static int cmd_fmt(bool write_mode, bool check_mode, const fs::path& path) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        std::println(stderr, "usage: forall <file.forall>");
+        std::println(stderr, "usage: forall [--stdlib <dir>] <file.forall>");
         std::println(stderr, "       forall fmt [--write|--check] <file.forall>");
         return EXIT_FAILURE;
     }
 
-    const std::string_view first{argv[1]};
+    // Parse global flags before subcommand/file.
+    fs::path stdlib_root;
+    int arg_idx = 1;
+    while (arg_idx < argc) {
+        const std::string_view a{argv[arg_idx]};
+        if (a == "--stdlib" && arg_idx + 1 < argc) {
+            stdlib_root = fs::path{argv[arg_idx + 1]};
+            arg_idx += 2;
+        } else {
+            break;
+        }
+    }
+
+    if (arg_idx >= argc) {
+        std::println(stderr, "usage: forall [--stdlib <dir>] <file.forall>");
+        return EXIT_FAILURE;
+    }
+
+    const std::string_view first{argv[arg_idx]};
 
     if (first == "fmt") {
         bool write_mode = false;
         bool check_mode = false;
-        int file_arg = 2;
+        int file_arg = arg_idx + 1;
 
-        if (argc >= 4) {
-            const std::string_view flag{argv[2]};
-            if (flag == "--write") { write_mode = true; file_arg = 3; }
-            else if (flag == "--check") { check_mode = true; file_arg = 3; }
+        if (file_arg + 1 < argc) {
+            const std::string_view flag{argv[file_arg]};
+            if (flag == "--write") { write_mode = true; ++file_arg; }
+            else if (flag == "--check") { check_mode = true; ++file_arg; }
         }
         if (file_arg >= argc) {
             std::println(stderr, "usage: forall fmt [--write|--check] <file.forall>");
@@ -122,5 +142,5 @@ int main(int argc, char* argv[]) {
     }
 
     // Default: check mode (backwards-compatible: forall <file>).
-    return cmd_check(fs::path{argv[1]});
+    return cmd_check(fs::path{argv[arg_idx]}, stdlib_root);
 }

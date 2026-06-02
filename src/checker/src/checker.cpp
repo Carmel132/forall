@@ -18,6 +18,10 @@ namespace forall::checker {
 
 Checker::Checker(diag::DiagnosticEngine& diag) : diag_{diag} {}
 
+void Checker::set_stdlib_path(const std::filesystem::path& stdlib_root) {
+    stdlib_root_ = stdlib_root;
+}
+
 namespace {
 
 // Whether a hypothesis entry was introduced by supposition (Assumption) or
@@ -2338,7 +2342,8 @@ struct ModuleResult {
 ModuleResult check_module(const std::filesystem::path& path,
                           kernel::Kernel& kernel,
                           diag::DiagnosticEngine& diag,
-                          std::set<std::filesystem::path>& visited)
+                          std::set<std::filesystem::path>& visited,
+                          const std::filesystem::path& stdlib_root = {})
 {
     visited.insert(std::filesystem::weakly_canonical(path));
 
@@ -2404,10 +2409,17 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Import: {
-            auto import_path = current_dir / decl->name;
+            // IX4: if import path starts with "stdlib/" and stdlib_root is set,
+            // resolve relative to stdlib_root rather than the current file's directory.
+            const std::string& import_name = decl->name;
+            std::filesystem::path import_path;
+            if (!stdlib_root.empty() && import_name.substr(0, 7) == "stdlib/")
+                import_path = stdlib_root / import_name.substr(7); // strip "stdlib/" prefix
+            else
+                import_path = current_dir / import_name;
             auto canonical   = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
-                auto imported = check_module(canonical, kernel, diag, visited);
+                auto imported = check_module(canonical, kernel, diag, visited, stdlib_root);
                 for (auto& [name, entry] : imported.env)
                     module_env.insert_or_assign(name, entry);
                 for (auto& [tname, classes] : imported.instances)
@@ -2456,7 +2468,7 @@ ModuleResult check_module(const std::filesystem::path& path,
 void Checker::check(const std::filesystem::path& path) {
     kernel::Kernel kernel;
     std::set<std::filesystem::path> visited;
-    check_module(path, kernel, diag_, visited);
+    check_module(path, kernel, diag_, visited, stdlib_root_);
 }
 
 } // namespace forall::checker

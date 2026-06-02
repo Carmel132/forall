@@ -13,10 +13,16 @@ namespace forall::checker {
 class Checker {
 public:
     explicit Checker(diag::DiagnosticEngine& diag);
+
+    // Optional: set the stdlib root directory so that "stdlib/..." imports
+    // resolve relative to this path rather than relative to the importing file.
+    void set_stdlib_path(const std::filesystem::path& stdlib_root);
+
     void check(const std::filesystem::path& path);
 
 private:
-    diag::DiagnosticEngine& diag_;
+    diag::DiagnosticEngine&  diag_;
+    std::filesystem::path    stdlib_root_; // empty = use file-relative resolution
 };
 
 } // namespace forall::checker
