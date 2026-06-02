@@ -2246,3 +2246,64 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+TEST(CheckerTest, ShowStep_Valid) {
+    // MS4: "show P" succeeds when P matches the theorem statement
+    auto diag = run_checker("show_valid", R"(
+axiom ax : P
+theorem t : P
+proof
+  show P
+  then P by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ShowStep_Mismatch_Error) {
+    // MS4: "show Q" fails when theorem statement is P
+    auto diag = run_checker("show_mismatch", R"(
+axiom ax : P
+theorem t : P
+proof
+  show Q
+  then P by ax
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExactStep_Valid) {
+    // MS3: "exact ax" closes the goal when ax : P and goal is P
+    auto diag = run_checker("exact_valid", R"(
+axiom ax : P
+theorem t : P
+proof
+  exact ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExactStep_WrongType_Error) {
+    // MS3: "exact ax" fails when ax : Q and goal is P
+    auto diag = run_checker("exact_wrong", R"(
+axiom ax : Q
+theorem t : P
+proof
+  exact ax
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ExactStep_UnknownHyp_Error) {
+    // MS3: "exact unknown" fails on missing hypothesis
+    auto diag = run_checker("exact_unknown", R"(
+theorem t : P
+proof
+  exact nonexistent
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

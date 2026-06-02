@@ -2380,3 +2380,34 @@ TEST(ParserTest, DoubleNegation_Parenthesized) {
     const auto* inner_not = std::get_if<ast::PropNot>(&outer_not->inner->node);
     ASSERT_NE(inner_not, nullptr);
 }
+
+TEST(ParserTest, ShowStep_Basic) {
+    // MS4: "show P" parses as ShowStep
+    auto r = parse_str(R"(
+axiom ax : P
+theorem t : P
+proof
+  show P
+  then P by ax
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ss = get_step<ast::ShowStep>(*r.mod.decls[1]->proof, 0);
+    ASSERT_NE(ss, nullptr);
+    const auto* atom = std::get_if<ast::Atomic>(&ss->prop.node);
+    ASSERT_NE(atom, nullptr);
+    EXPECT_EQ(atom->name, "P");
+}
+
+TEST(ParserTest, ExactStep_Basic) {
+    // MS3: "exact ax" parses as ExactStep with hyp_ref = "ax"
+    auto r = parse_str(R"(
+axiom ax : P
+theorem t : P
+proof
+  exact ax
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* es = get_step<ast::ExactStep>(*r.mod.decls[1]->proof, 0);
+    ASSERT_NE(es, nullptr);
+    EXPECT_EQ(es->hyp_ref, "ax");
+}
