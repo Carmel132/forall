@@ -11,6 +11,7 @@ struct Diagnostic {
     Severity       severity;
     SourceLocation loc;
     std::string    message;
+    std::uint32_t  end_col{0}; // 0 = unknown; >0 = column of last char + 1 (exclusive)
 };
 
 class DiagnosticEngine {
