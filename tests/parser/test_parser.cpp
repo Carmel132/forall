@@ -2691,3 +2691,243 @@ TEST(ParserTest, QuotientMalformed) {
     auto r = parse_str("quotient :=");
     EXPECT_TRUE(r.diag.hasErrors());
 }
+
+// ── NL natural-language step aliases ─────────────────────────────────────────
+
+// NL4: "note that P by refs" and "observe that P by refs" → HaveStep{"_", P, refs}
+TEST(ParserTest, NL4_NoteThatHaveStep) {
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h : P
+  note that P by h
+  observe that P by h
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    const auto& steps = r.mod.decls[0]->proof->steps;
+    ASSERT_GE(steps.size(), 3u);
+    // step[1] = note that P by h
+    const auto* have1 = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(have1, nullptr);
+    EXPECT_EQ(have1->name, "_");
+    ASSERT_EQ(have1->justification.size(), 1u);
+    EXPECT_EQ(have1->justification[0], "h");
+    // step[2] = observe that P by h
+    const auto* have2 = get_step<HaveStep>(*r.mod.decls[0]->proof, 2);
+    ASSERT_NE(have2, nullptr);
+    EXPECT_EQ(have2->name, "_");
+}
+
+// NL5: "since h1 and h2, have h : P"
+TEST(ParserTest, NL5_SinceHaveStep) {
+    auto r = parse_str(R"(theorem t : P and Q
+proof
+  suppose hp : P
+  suppose hq : Q
+  since hp and hq, have hpq : P and Q
+  then P and Q by hpq
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* have = get_step<HaveStep>(*r.mod.decls[0]->proof, 2);
+    ASSERT_NE(have, nullptr);
+    EXPECT_EQ(have->name, "hpq");
+    ASSERT_EQ(have->justification.size(), 2u);
+    EXPECT_EQ(have->justification[0], "hp");
+    EXPECT_EQ(have->justification[1], "hq");
+}
+
+// NL6: "by definition of X", "by axiom of X", "by lemma X", "by theorem X"
+TEST(ParserTest, NL6_QualifiedJustification) {
+    // All four forms: qualifiers discarded, only the ref name kept
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h1 : P
+  suppose h2 : P
+  suppose h3 : P
+  suppose h4 : P
+  have a1 : P by definition of h1
+  have a2 : P by axiom of h2
+  have a3 : P by lemma h3
+  have a4 : P by theorem h4
+  then P by h1
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    // step[4] = have a1 : P by definition of h1
+    const auto* s1 = get_step<HaveStep>(*r.mod.decls[0]->proof, 4);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->justification.size(), 1u);
+    EXPECT_EQ(s1->justification[0], "h1");
+    // step[5] = have a2 : P by axiom of h2
+    const auto* s2 = get_step<HaveStep>(*r.mod.decls[0]->proof, 5);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s2->justification[0], "h2");
+    // step[6] = have a3 : P by lemma h3
+    const auto* s3 = get_step<HaveStep>(*r.mod.decls[0]->proof, 6);
+    ASSERT_NE(s3, nullptr);
+    EXPECT_EQ(s3->justification[0], "h3");
+    // step[7] = have a4 : P by theorem h4
+    const auto* s4 = get_step<HaveStep>(*r.mod.decls[0]->proof, 7);
+    ASSERT_NE(s4, nullptr);
+    EXPECT_EQ(s4->justification[0], "h4");
+}
+
+// NL7: "fix x : T" same as "take x : T" (lexer alias, produces TakeStep)
+TEST(ParserTest, NL7_FixAliasTake) {
+    auto r1 = parse_str(R"(theorem t : P proof take x : Nat end)");
+    auto r2 = parse_str(R"(theorem t : P proof fix x : Nat end)");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    ASSERT_FALSE(r2.diag.hasErrors());
+    const auto* s1 = get_step<TakeStep>(*r1.mod.decls[0]->proof, 0);
+    const auto* s2 = get_step<TakeStep>(*r2.mod.decls[0]->proof, 0);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s1->var, s2->var);
+}
+
+// NL8: "let n be arbitrary [in T]" → TakeStep
+TEST(ParserTest, NL8_LetBeArbitrary) {
+    auto r1 = parse_str(R"(theorem t : P proof let n be arbitrary end)");
+    auto r2 = parse_str(R"(theorem t : P proof let n be arbitrary in Nat end)");
+    ASSERT_FALSE(r1.diag.hasErrors()) << "let n be arbitrary failed";
+    ASSERT_FALSE(r2.diag.hasErrors()) << "let n be arbitrary in Nat failed";
+    const auto* s1 = get_step<TakeStep>(*r1.mod.decls[0]->proof, 0);
+    const auto* s2 = get_step<TakeStep>(*r2.mod.decls[0]->proof, 0);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s1->var, "n");
+    EXPECT_FALSE(s1->type.has_value());
+    EXPECT_EQ(s2->var, "n");
+    ASSERT_TRUE(s2->type.has_value());
+    EXPECT_EQ(forall::pretty::to_string(*s2->type), "Nat");
+}
+
+// NL9: "we need to show P" and "it suffices to show P" → ShowStep
+TEST(ParserTest, NL9_WeNeedToShow) {
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h : P
+  we need to show P
+  it suffices to show P
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s1 = get_step<ShowStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(s1, nullptr);
+    EXPECT_NE(std::get_if<Atomic>(&s1->prop.node), nullptr);
+    const auto* s2 = get_step<ShowStep>(*r.mod.decls[0]->proof, 2);
+    ASSERT_NE(s2, nullptr);
+}
+
+// NL10: "so P [by refs]", "which gives P", "which shows P" → ThenStep
+TEST(ParserTest, NL10_SoWhichGives) {
+    auto r1 = parse_str(R"(theorem t : P proof suppose h : P so P by h end)");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    const auto* s1 = get_step<ThenStep>(*r1.mod.decls[0]->proof, 1);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->justification.size(), 1u);
+    EXPECT_EQ(s1->justification[0], "h");
+
+    auto r2 = parse_str(R"(theorem t : P proof suppose h : P which gives P by h end)");
+    ASSERT_FALSE(r2.diag.hasErrors());
+    const auto* s2 = get_step<ThenStep>(*r2.mod.decls[0]->proof, 1);
+    ASSERT_NE(s2, nullptr);
+
+    auto r3 = parse_str(R"(theorem t : P proof suppose h : P which shows P by h end)");
+    ASSERT_FALSE(r3.diag.hasErrors());
+    const auto* s3 = get_step<ThenStep>(*r3.mod.decls[0]->proof, 1);
+    ASSERT_NE(s3, nullptr);
+}
+
+// NL13: "we know X" → HaveStep{"_", Atomic{X}, [X]}
+TEST(ParserTest, NL13_WeKnow) {
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h : P
+  we know h
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->name, "_");
+    ASSERT_EQ(s->justification.size(), 1u);
+    EXPECT_EQ(s->justification[0], "h");
+    // prop should be Atomic{"h"}
+    const auto* a = std::get_if<Atomic>(&s->prop.node);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->name, "h");
+}
+
+// NL15: "hence P [by refs]" maps to ThenStep (lexer alias)
+//        "it follows that P [by refs]" → ThenStep
+TEST(ParserTest, NL15_HenceAndItFollowsThat) {
+    auto r1 = parse_str(R"(theorem t : P proof suppose h : P hence P by h end)");
+    ASSERT_FALSE(r1.diag.hasErrors());
+    const auto* s1 = get_step<ThenStep>(*r1.mod.decls[0]->proof, 1);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->justification.size(), 1u);
+    EXPECT_EQ(s1->justification[0], "h");
+
+    auto r2 = parse_str(R"(theorem t : P proof suppose h : P it follows that P by h end)");
+    ASSERT_FALSE(r2.diag.hasErrors());
+    const auto* s2 = get_step<ThenStep>(*r2.mod.decls[0]->proof, 1);
+    ASSERT_NE(s2, nullptr);
+    ASSERT_EQ(s2->justification.size(), 1u);
+    EXPECT_EQ(s2->justification[0], "h");
+}
+
+// NL16: "by hypothesis" / "by assumption" → __hypothesis__ / __assumption__ sentinels
+TEST(ParserTest, NL16_ByHypothesis) {
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h : P
+  have a : P by hypothesis
+  have b : P by assumption
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s1 = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_EQ(s1->justification.size(), 1u);
+    EXPECT_EQ(s1->justification[0], "__hypothesis__");
+    const auto* s2 = get_step<HaveStep>(*r.mod.decls[0]->proof, 2);
+    ASSERT_NE(s2, nullptr);
+    EXPECT_EQ(s2->justification[0], "__assumption__");
+}
+
+// NL18: "we prove that P" → ShowStep{P}
+TEST(ParserTest, NL18_WeProveThat) {
+    auto r = parse_str(R"(theorem t : P
+proof
+  suppose h : P
+  we prove that P
+  then P by h
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* s = get_step<ShowStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(s, nullptr);
+    EXPECT_NE(std::get_if<Atomic>(&s->prop.node), nullptr);
+}
+
+// NL19: "suppose h1 : P and h2 : Q" → two SupposeSteps
+TEST(ParserTest, NL19_SupposeMultiple) {
+    auto r = parse_str(R"(theorem t : P and Q
+proof
+  suppose hp : P and hq : Q
+  then P and Q by hp and hq
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& steps = r.mod.decls[0]->proof->steps;
+    ASSERT_GE(steps.size(), 3u);
+    // steps[0] = suppose hp : P
+    const auto* s1 = get_step<SupposeStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(s1, nullptr);
+    ASSERT_TRUE(s1->name.has_value());
+    EXPECT_EQ(*s1->name, "hp");
+    // steps[1] = suppose hq : Q (from deferred queue)
+    const auto* s2 = get_step<SupposeStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(s2, nullptr);
+    ASSERT_TRUE(s2->name.has_value());
+    EXPECT_EQ(*s2->name, "hq");
+}

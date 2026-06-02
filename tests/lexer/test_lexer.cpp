@@ -156,3 +156,46 @@ TEST(LexerTest, BottomUnicodeSymbol) {
     ASSERT_FALSE(diag.hasErrors());
     EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwFalse);
 }
+
+// ── NL aliases ─────────────────────────────────────────────────────────────────
+
+TEST(LexerTest, NL7_FixMapsToKwTake) {
+    // NL7: "fix" is an alias for "take"
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"fix take", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwTake);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::KwTake);
+}
+
+TEST(LexerTest, NL15_HenceMapsToKwThen) {
+    // NL15: "hence" is an alias for "then"
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"hence then therefore", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwThen);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::KwThen);
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::KwThen);
+}
+
+TEST(LexerTest, NL17_BecauseMapsToKwBy) {
+    // NL17: "because" is an alias for "by"
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"because by from", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwBy);
+    EXPECT_EQ(toks[1].kind, lexer::TokenKind::KwBy);
+    EXPECT_EQ(toks[2].kind, lexer::TokenKind::KwFrom);
+}
+
+TEST(LexerTest, NL10_SoToken) {
+    // NL10: "so" lexes as KwSo
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"so", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwSo);
+}

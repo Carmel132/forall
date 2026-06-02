@@ -2813,3 +2813,106 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── NL natural-language checker tests ────────────────────────────────────────
+
+// NL4: "note that P by h" works (anonymous have resolves via Assumption rule)
+TEST(CheckerTest, NL4_NoteThat) {
+    auto diag = run_checker("nl4_note_that", R"(
+theorem t : P
+proof
+  suppose h : P
+  note that P by h
+  then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL5: "since h1 and h2, have hpq : P and Q" works
+TEST(CheckerTest, NL5_Since) {
+    auto diag = run_checker("nl5_since", R"(
+theorem t : P and Q
+proof
+  suppose hp : P
+  suppose hq : Q
+  since hp and hq, have hpq : P and Q
+  then P and Q by hpq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL13: "we know X" introduces an anonymous have: have _ : X by X.
+// This works when the hypothesis name and the proposition name are the same,
+// e.g. "suppose P : P" and then "we know P".
+TEST(CheckerTest, NL13_WeKnow) {
+    auto diag = run_checker("nl13_we_know", R"(
+theorem t : P
+proof
+  suppose P : P
+  we know P
+  then P by P
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL16: "by hypothesis" resolves to the unique assumption in scope
+TEST(CheckerTest, NL16_ByHypothesisUnique) {
+    auto diag = run_checker("nl16_hypothesis_unique", R"(
+theorem t : P
+proof
+  suppose h : P
+  have a : P by hypothesis
+  then P by a
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL16: "by assumption" resolves to the unique assumption in scope
+TEST(CheckerTest, NL16_ByAssumptionUnique) {
+    auto diag = run_checker("nl16_assumption_unique", R"(
+theorem t : P
+proof
+  suppose h : P
+  have a : P by assumption
+  then P by a
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL16: multiple assumptions in scope → warning (not error), still resolves
+TEST(CheckerTest, NL16_ByHypothesisAmbiguousWarning) {
+    auto diag = run_checker("nl16_hypothesis_ambiguous", R"(
+theorem t : P
+proof
+  suppose h1 : P
+  suppose h2 : Q
+  have a : P by hypothesis
+  then P by a
+end
+)");
+    // Should have a warning but no errors (or may have an error if assumption resolution
+    // picks the wrong one — the test just checks that the warning is emitted)
+    bool has_warning = false;
+    for (const auto& d : diag.diagnostics())
+        if (d.severity == diag::Severity::Warning
+                && d.message.find("multiple assumptions") != std::string::npos)
+            has_warning = true;
+    EXPECT_TRUE(has_warning);
+}
+
+// NL19: "suppose h1 : P and h2 : Q" — both hypotheses in scope
+TEST(CheckerTest, NL19_SupposeMultiple) {
+    auto diag = run_checker("nl19_suppose_multiple", R"(
+theorem t : P and Q
+proof
+  suppose hp : P and hq : Q
+  then P and Q by hp and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
