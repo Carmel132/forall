@@ -349,9 +349,27 @@ struct ProofBlock {
     std::vector<Step> steps;
 };
 
+// ── Structure fields ───────────────────────────────────────────────────────────
+
+// A term field in a structure: e.g. "carrier : Type" or "mul : carrier -> carrier -> carrier"
+struct FieldTerm {
+    std::string name;
+    TypeNode    type;
+    bool operator==(const FieldTerm&) const = default;
+};
+
+// A bundled axiom field in a structure: e.g. "axiom mul_assoc : ∀ a b c : carrier, ..."
+struct FieldAxiom {
+    std::string name;
+    Prop        prop;
+    bool operator==(const FieldAxiom& o) const;
+};
+
+using StructField = std::variant<FieldTerm, FieldAxiom>;
+
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance };
+enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure };
 
 // A single named parameter of a definition, e.g. (x : Nat).
 struct Param {
@@ -364,10 +382,11 @@ struct Decl {
     DeclKind                  kind;
     std::string               name;           // for Import: file path; for Instance: type name
     diag::SourceLocation      loc;
-    Prop                      statement;      // for Import/Instance: dummy PropFalse{}
-    std::optional<ProofBlock> proof;          // absent for Axiom / Import / Instance
+    Prop                      statement;      // for Import/Instance/Structure: dummy PropFalse{}
+    std::optional<ProofBlock> proof;          // absent for Axiom / Import / Instance / Structure
     std::vector<Param>        params;         // definition parameters; empty for others
     std::string               instance_class; // for Instance: the class name (e.g. "Ring")
+    std::vector<StructField>  fields;         // for Structure: term fields and axiom fields
 };
 
 using DeclPtr = std::unique_ptr<Decl>;

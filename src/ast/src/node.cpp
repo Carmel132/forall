@@ -4,6 +4,12 @@
 
 namespace forall::ast {
 
+// ── FieldAxiom equality ────────────────────────────────────────────────────────
+
+bool FieldAxiom::operator==(const FieldAxiom& o) const {
+    return name == o.name && prop == o.prop;
+}
+
 // ── TypeNode equality (recursive, defined here where all types are complete) ──
 
 bool TypeFun::operator==(const TypeFun& o) const {
