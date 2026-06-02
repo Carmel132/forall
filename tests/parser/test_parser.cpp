@@ -2595,3 +2595,48 @@ TEST(ParserTest, StructureInstantiationWithLambda) {
     ASSERT_NE(it, d.struct_bindings.end());
     EXPECT_NE(std::get_if<ExprLambda>(&it->second->node), nullptr);
 }
+
+// ── DT5: Pi types ─────────────────────────────────────────────────────────────
+
+TEST(ParserTest, TypePiBasic) {
+    // DT5: "(G : Group) -> Prop" as a binder type parses to TypePi
+    auto r = parse_str("axiom a : for all f : (G : Group) -> Prop, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* pi = std::get_if<ast::TypePi>(&fa->type->node);
+    ASSERT_NE(pi, nullptr);
+    EXPECT_EQ(pi->var, "G");
+    ASSERT_NE(pi->domain, nullptr);
+    EXPECT_EQ(*pi->domain, ast::type_user("Group"));
+    ASSERT_NE(pi->codomain, nullptr);
+    EXPECT_EQ(*pi->codomain, ast::TypeNode{ast::TypeProp{}});
+}
+
+TEST(ParserTest, TypePiVsTypeFun) {
+    // DT5 regression: "Nat -> Real" still parses as TypeFun (no bound variable)
+    auto r = parse_str("axiom a : for all f : Nat -> Real, P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* fun = std::get_if<ast::TypeFun>(&fa->type->node);
+    ASSERT_NE(fun, nullptr);
+    EXPECT_EQ(*fun->domain, ast::type_nat());
+    EXPECT_EQ(*fun->codomain, ast::type_real());
+}
+
+TEST(ParserTest, TypePiVsTypeTuple) {
+    // DT5 regression: "(Nat, Real)" without "->" still parses as TypeTuple
+    auto r = parse_str("axiom a : for all p : (Nat, Real), P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* tt = std::get_if<ast::TypeTuple>(&fa->type->node);
+    ASSERT_NE(tt, nullptr);
+    ASSERT_EQ(tt->elements.size(), 2u);
+    EXPECT_EQ(*tt->elements[0], ast::type_nat());
+    EXPECT_EQ(*tt->elements[1], ast::type_real());
+}

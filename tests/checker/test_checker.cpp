@@ -2679,3 +2679,35 @@ definition Bad : NoSuchStruct :=
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── DT5: Parametric structure params and TakeStep injection ───────────────────
+
+TEST(CheckerTest, ValidParametricStructureParam) {
+    // DT5: theorem with (M : MyStruct) param injects M_my_axiom into the proof
+    // so it can be used directly as a hypothesis reference.
+    auto diag = run_checker("dt5_param", R"(
+structure MyStruct :=
+  axiom my_axiom : P and Q
+
+theorem use_param (M : MyStruct) : P and Q
+proof
+  then P and Q by M_my_axiom
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidTakeStructureInjectsAxioms) {
+    // DT5: "take G : MyStruct" inside a proof injects G_my_axiom into scope.
+    auto diag = run_checker("dt5_take", R"(
+structure MyStruct :=
+  axiom my_axiom : P and Q
+
+theorem take_struct : P and Q
+proof
+  take G : MyStruct
+  then P and Q by G_my_axiom
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
