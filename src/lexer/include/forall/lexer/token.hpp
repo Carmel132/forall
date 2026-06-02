@@ -45,6 +45,7 @@ enum class TokenKind {
     KwInduction,                // "induction"
     KwShow,                     // "show"   (goal annotation step)
     KwExact,                    // "exact"  (close goal by hypothesis)
+    KwRewrite,                  // "rewrite" (equality rewriting step)
     KwDecide,                   // "decide"    (tactic keyword)
     KwNormNum,                  // "norm_num"  (tactic keyword)
     KwRing,                     // "ring"      (tactic keyword)
