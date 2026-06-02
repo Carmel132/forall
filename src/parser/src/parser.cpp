@@ -449,11 +449,27 @@ ast::Prop Parser::parseQuantifier() {
         is_forall = false;
     }
 
-    std::string var;
+    // Collect one or more variable names (space-separated or "and"-separated).
+    // E.g. "∀ x y z : Nat, P"  or  "∀ x and y : Nat, P"
+    std::vector<std::string> vars;
     if (check(lexer::TokenKind::Identifier))
-        var = advance().lexeme;
+        vars.push_back(advance().lexeme);
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
+
+    // Additional variables: either a bare identifier (space-separated) or "and <id>".
+    while (true) {
+        if (check(lexer::TokenKind::And) &&
+            pos_ + 1 < tokens_.size() &&
+            tokens_[pos_ + 1].kind == lexer::TokenKind::Identifier) {
+            advance(); // consume "and"
+            vars.push_back(advance().lexeme);
+        } else if (check(lexer::TokenKind::Identifier)) {
+            vars.push_back(advance().lexeme);
+        } else {
+            break;
+        }
+    }
 
     std::optional<ast::TypeNode> type;
     if (check(lexer::TokenKind::Colon)) {
@@ -467,12 +483,15 @@ ast::Prop Parser::parseQuantifier() {
     expect(lexer::TokenKind::Comma, "expected ',' after quantifier binder");
     auto body = parseProp();
 
-    if (is_forall) {
-        ast::Prop p{loc, ast::PropForall{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
-        mark_end(p); return p;
+    // Build nested quantifiers from right to left:  ∀ x y : T, P  →  ∀ x : T, ∀ y : T, P
+    for (auto it = vars.rbegin(); it != vars.rend(); ++it) {
+        auto type_copy = type; // each binder gets a copy of the type
+        if (is_forall)
+            body = {loc, ast::PropForall{*it, std::move(type_copy), ast::make_prop(std::move(body))}};
+        else
+            body = {loc, ast::PropExists{*it, std::move(type_copy), ast::make_prop(std::move(body))}};
     }
-    ast::Prop p{loc, ast::PropExists{std::move(var), std::move(type), ast::make_prop(std::move(body))}};
-    mark_end(p); return p;
+    mark_end(body); return body;
 }
 
 // A ↔ B  →  (A→B) ∧ (B→A)   (right-associative, desugared at parse time)
