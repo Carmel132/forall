@@ -858,11 +858,26 @@ std::vector<std::string> Parser::parseJustification() {
         return refs;
     }
     if (!check(lexer::TokenKind::Identifier)) return refs;
-    refs.push_back(std::string{advance().lexeme});
-    while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
-        advance();
-        if (check(lexer::TokenKind::Identifier))
-            refs.push_back(std::string{advance().lexeme});
+    {
+        // Parse a single reference, which may be dotted: "M.my_axiom".
+        auto parse_one_ref = [&]() -> std::string {
+            std::string name{advance().lexeme}; // consume the identifier
+            // DT6: if followed by '.' and another identifier, join as "X.y".
+            if (check(lexer::TokenKind::Dot)
+                    && pos_ + 1 < tokens_.size()
+                    && tokens_[pos_ + 1].kind == lexer::TokenKind::Identifier) {
+                advance(); // consume '.'
+                name += '.';
+                name += std::string{advance().lexeme}; // consume field name
+            }
+            return name;
+        };
+        refs.push_back(parse_one_ref());
+        while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
+            advance();
+            if (check(lexer::TokenKind::Identifier))
+                refs.push_back(parse_one_ref());
+        }
     }
     return refs;
 }
