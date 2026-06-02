@@ -2307,3 +2307,44 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+TEST(CheckerTest, RewriteStep_Basic) {
+    // MS1: rewrite x_eq transforms goal P(x) -> P(y) when x_eq : x = y
+    auto diag = run_checker("rewrite_basic", R"(
+axiom ax_Py : P(y)
+axiom x_eq : x = y
+theorem t : P(x)
+proof
+  rewrite x_eq
+  then P(y) by ax_Py
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, RewriteStep_NoEffect_Warning) {
+    // MS1: rewrite where var doesn't appear in goal gives a warning
+    auto diag = run_checker("rewrite_no_effect", R"(
+axiom ax : P
+axiom eq : z = w
+theorem t : P
+proof
+  rewrite eq
+  then P by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()); // warning, not error
+}
+
+TEST(CheckerTest, RewriteStep_NonEq_Error) {
+    // MS1: rewrite with a non-equality hypothesis fails
+    auto diag = run_checker("rewrite_non_eq", R"(
+axiom ax : P
+theorem t : Q
+proof
+  rewrite ax
+  then Q
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

@@ -2411,3 +2411,19 @@ end)");
     ASSERT_NE(es, nullptr);
     EXPECT_EQ(es->hyp_ref, "ax");
 }
+
+TEST(ParserTest, RewriteStep_Forward) {
+    // MS1: "rewrite h" parses as RewriteStep with reverse=false
+    auto r = parse_str(R"(
+axiom eq : x = y
+theorem t : P(x)
+proof
+  rewrite eq
+  then P(y)
+end)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rw = get_step<ast::RewriteStep>(*r.mod.decls[1]->proof, 0);
+    ASSERT_NE(rw, nullptr);
+    EXPECT_EQ(rw->hyp_ref, "eq");
+    EXPECT_FALSE(rw->reverse);
+}
