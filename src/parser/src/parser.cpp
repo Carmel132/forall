@@ -1307,6 +1307,18 @@ ast::Step Parser::parseStep() {
         return {loc, ast::RewriteStep{std::move(ref), rev}};
     }
 
+    // apply h — backward implication application step (MS2)
+    // "apply" is context-sensitive: only a step keyword when it appears alone
+    // as an identifier (not as a function call "apply(...)").
+    if (check(K::Identifier) && peek().lexeme == "apply"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier) {
+        const auto loc = peek().loc;
+        advance(); // consume "apply"
+        std::string ref = advance().lexeme;
+        return {loc, ast::ApplyStep{std::move(ref)}};
+    }
+
     // show P — goal annotation step (MS4)
     if (check(K::KwShow)) {
         const auto loc = peek().loc;

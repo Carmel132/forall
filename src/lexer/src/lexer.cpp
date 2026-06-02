@@ -248,6 +248,7 @@ Token Lexer::nextToken() {
             {"show",         TokenKind::KwShow},
             {"exact",        TokenKind::KwExact},
             {"rewrite",      TokenKind::KwRewrite},
+            // "apply" is context-sensitive — kept as Identifier like "base"/"inductive"
             {"decide",       TokenKind::KwDecide},
             {"norm_num",     TokenKind::KwNormNum},
             {"ring",         TokenKind::KwRing},

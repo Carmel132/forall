@@ -1530,10 +1530,14 @@ void check_proof(const ast::Decl& decl,
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
 
-    // Current proof goal — starts as decl.statement, may be transformed by RewriteStep.
-    // Allocations live in this vector so pointers remain valid across loop iterations.
+    // Current proof goal — starts as decl.statement, may be transformed by RewriteStep
+    // or ApplyStep. Allocations live in this vector so pointers remain valid.
     std::vector<ast::Prop> goal_history;
     const ast::Prop* current_goal = &decl.statement;
+
+    // Stack of apply hypotheses — each ApplyStep pushes h:A→B so the conclusion
+    // validator can chain ImplElim(h, proof_of_A) → B after the subproof of A.
+    std::vector<const HypEntry*> apply_stack;
 
     for (const auto& step : decl.proof->steps) {
         // Populate type_env before processing the step so TakeStep vars are
@@ -1585,6 +1589,42 @@ void check_proof(const ast::Decl& decl,
             goal_history.push_back(std::move(new_goal));
             current_goal = &goal_history.back();
             continue; // not a proof step, just goal transformation
+        }
+
+        // MS2: ApplyStep — backward implication application.
+        // apply h where h : A → B and current_goal = B → transforms goal to A.
+        // Stores h's judgment for final ImplElim at conclusion validation.
+        if (const auto* ap = std::get_if<ast::ApplyStep>(&step.node)) {
+            const HypEntry* h = env.find(ap->hyp_ref);
+            if (!h) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "apply: unknown hypothesis '" + ap->hyp_ref + "'"});
+                had_step_errors = true;
+                continue;
+            }
+            const auto* impl = std::get_if<ast::PropImpl>(&h->judgment.prop().node);
+            if (!impl) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "apply: hypothesis '" + ap->hyp_ref
+                           + "' must be an implication A → B"});
+                had_step_errors = true;
+                continue;
+            }
+            if (!(*impl->rhs == *current_goal)) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "apply: consequent of '" + ap->hyp_ref + "' is '"
+                           + forall::pretty::to_string(*impl->rhs)
+                           + "', but goal is '"
+                           + forall::pretty::to_string(*current_goal) + "'"});
+                had_step_errors = true;
+                continue;
+            }
+            // Push hypothesis onto apply_stack for final ImplElim at conclusion.
+            apply_stack.push_back(h);
+            // Transform goal to the antecedent A.
+            goal_history.push_back(*impl->lhs);
+            current_goal = &goal_history.back();
+            continue; // goal transformation only
         }
 
         const CheckContext ctx{type_env, instances, module_env, sigs, current_goal};
@@ -1649,6 +1689,25 @@ void check_proof(const ast::Decl& decl,
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with `" + forall::pretty::to_string(ts.prop)
                            + "`, expected `" + forall::pretty::to_string(*current_goal) + "`"});
+            // MS2: If apply_stack is non-empty, verify the chain reaches decl.statement.
+            // Each apply h:A→B requires the subproof to conclude A, then ImplElim gives B.
+            // The final result must equal decl.statement.
+            if (!apply_stack.empty() && !is_qed_sentinel) {
+                // Walk the apply stack to verify the chain is consistent.
+                // current_goal is the innermost subgoal A (proved by last step).
+                // The stack is in order [h1:A1→B1, h2:A2→B2, ...] where each Bi = A_{i-1}.
+                // The final B_n must == decl.statement.
+                const ast::Prop* chain_goal = current_goal;
+                bool chain_ok = true;
+                for (auto it = apply_stack.rbegin(); it != apply_stack.rend(); ++it) {
+                    const auto* impl = std::get_if<ast::PropImpl>(&(*it)->judgment.prop().node);
+                    if (!impl || !(*impl->lhs == *chain_goal)) { chain_ok = false; break; }
+                    chain_goal = impl->rhs.get();
+                }
+                if (chain_ok && chain_goal && !(*chain_goal == decl.statement))
+                    diag.emit({diag::Severity::Error, last_concluding->loc,
+                               "apply chain does not prove the theorem statement"});
+            }
         } else if (last_kind == LastKind::Cases) {
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
             const auto* it = env.find(cs.name);

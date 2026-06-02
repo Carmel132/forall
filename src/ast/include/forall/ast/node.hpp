@@ -320,9 +320,13 @@ struct RewriteStep {
     bool        reverse;  // if true, rewrite rhs→lhs instead of lhs→rhs
 };
 
+struct ApplyStep {
+    std::string hyp_ref;  // hypothesis name; must be PropImpl{A, B} where B == current goal
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
-    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep
+    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep
 >;
 
 struct Step {
