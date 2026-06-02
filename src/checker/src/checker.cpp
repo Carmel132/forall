@@ -444,11 +444,12 @@ static std::optional<bool> decide_proprel(const ast::PropRel& rel) {
 // table (for type inference).  All fields are references into data owned by
 // check_proof / check_module — no copies.
 struct CheckContext {
-    const ast::TypeEnv&      type_env;     // var → type from 'take x : T' steps
-    const InstanceTable&     instances;    // type_name → {class_names}
-    const HypEnv&            module_env;   // axiom/lemma entries (for norm_num)
-    const ast::FuncSigTable& sigs;         // function signatures
-    const ast::Prop*         goal;         // theorem statement (for RL4 __qed__ sentinel)
+    const ast::TypeEnv&                          type_env;     // var → type from 'take x : T' steps
+    const InstanceTable&                         instances;    // type_name → {class_names}
+    const HypEnv&                                module_env;   // axiom/lemma entries (for norm_num)
+    const ast::FuncSigTable&                     sigs;         // function signatures
+    const ast::Prop*                             goal;         // theorem statement (for RL4 __qed__ sentinel)
+    const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // TR3: let x = expr bindings
 };
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
@@ -865,6 +866,15 @@ bool check_step(const ast::Step& step,
                 diag::DiagnosticEngine& diag,
                 const CheckContext& ctx)
 {
+    // TR3: helper to apply let-bound term definitions to a proposition.
+    auto apply_tdefs = [&](ast::Prop p) -> ast::Prop {
+        if (ctx.term_defs) {
+            for (const auto& [name, expr] : *ctx.term_defs)
+                p = ast::subst(p, name, *expr);
+        }
+        return p;
+    };
+
     return std::visit([&](const auto& s) -> bool {
         using T = std::decay_t<decltype(s)>;
 
@@ -894,7 +904,8 @@ bool check_step(const ast::Step& step,
 
         // suppose [name :] prop — introduces a local assumption
         else if constexpr (std::is_same_v<T, ast::SupposeStep>) {
-            auto r = kernel.introduce_axiom(s.prop);
+            const ast::Prop prop = apply_tdefs(s.prop);
+            auto r = kernel.introduce_axiom(prop);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "failed to introduce assumption: " + r.error().message});
@@ -909,10 +920,11 @@ bool check_step(const ast::Step& step,
         // have <name> : <prop> by <refs> [at <expr>]
         // RL2: name may be "_" for an anonymous step — assign a fresh internal name.
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
+            const ast::Prop prop = apply_tdefs(s.prop);
             const std::string step_name = (s.name == "_") ? fresh_name() : s.name;
             // "by decide" — evaluate numerically; no refs needed
             if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide' only applies to relational propositions (e.g. 2 + 3 = 5)"});
@@ -922,23 +934,23 @@ bool check_step(const ast::Step& step,
                 if (!verdict) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide' cannot evaluate `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` — both sides must be literal arithmetic"});
                     return false;
                 }
                 if (!*verdict) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide': `"
-                               + forall::pretty::to_string(s.prop) + "` is false"});
+                               + forall::pretty::to_string(prop) + "` is false"});
                     return false;
                 }
-                auto r = kernel.introduce_axiom(s.prop);
+                auto r = kernel.introduce_axiom(prop);
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             // "by norm_num" — polynomial ring equality with variable support
             if (s.justification.size() == 1 && s.justification[0] == "__norm_num__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel || rel->op != ast::RelOp::Eq) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by norm_num' only applies to equalities (e.g. x * (y + z) = x * y + x * z)"});
@@ -949,17 +961,17 @@ bool check_step(const ast::Step& step,
                 if (lp != rp) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by norm_num': `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` is not a polynomial identity"});
                     return false;
                 }
-                auto r = kernel.introduce_axiom(s.prop);
+                auto r = kernel.introduce_axiom(prop);
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             // "by ring" — polynomial identity over commutative ring (same normalization as norm_num)
             if (s.justification.size() == 1 && s.justification[0] == "__ring__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel || rel->op != ast::RelOp::Eq) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by ring' only applies to equalities (e.g. (a + b)^2 = a^2 + 2*a*b + b^2)"});
@@ -970,11 +982,11 @@ bool check_step(const ast::Step& step,
                 if (lp != rp) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by ring': `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` does not hold as a ring identity"});
                     return false;
                 }
-                auto r = kernel.introduce_axiom(s.prop);
+                auto r = kernel.introduce_axiom(prop);
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
@@ -982,7 +994,7 @@ bool check_step(const ast::Step& step,
             if (s.justification.size() == 1 && s.justification[0] == "__linarith__") {
                 auto hyps = collect_linear_hypotheses(env);
                 // Add the negated goal as a hypothesis.
-                const auto* goal_rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* goal_rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!goal_rel) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by linarith' only applies to relational propositions (e.g. x < y, a ≤ b)"});
@@ -1004,19 +1016,19 @@ bool check_step(const ast::Step& step,
                 if (!fourier_motzkin(hyps)) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by linarith' could not derive `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` from the linear hypotheses in scope"});
                     return false;
                 }
-                auto r = kernel.introduce_axiom(s.prop);
+                auto r = kernel.introduce_axiom(prop);
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
             // "by simp" — propositional simplification (MT2)
             if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
-                auto app = simp_tactic(s.prop, env, diag, step.loc);
+                auto app = simp_tactic(prop, env, diag, step.loc);
                 if (!app) return false;
-                auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+                auto r = kernel.apply(app->rule, std::span{app->premises}, prop);
                 if (!r) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by simp' internal error: " + r.error().message});
@@ -1030,14 +1042,14 @@ bool check_step(const ast::Step& step,
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
             std::optional<RuleApp> app;
             if (witness_ptr) {
-                app = infer_quantifier_rule(s.prop, *es, witness_ptr, diag, step.loc);
+                app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
             } else {
-                app = infer_rule(s.prop, *es, diag, step.loc);
+                app = infer_rule(prop, *es, diag, step.loc);
             }
             if (!app) return false;
             // ForallIntro requires the bound variable to have been introduced via TakeStep.
             if (app->rule == kernel::Rule::ForallIntro) {
-                const auto* fa = std::get_if<ast::PropForall>(&s.prop.node);
+                const auto* fa = std::get_if<ast::PropForall>(&prop.node);
                 if (!env.is_taken(fa->var)) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "∀-intro: variable '" + fa->var
@@ -1045,7 +1057,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
             }
-            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected '" + step_name + "': " + r.error().message});
@@ -1057,6 +1069,7 @@ bool check_step(const ast::Step& step,
 
         // then <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::ThenStep>) {
+            const ast::Prop prop = apply_tdefs(s.prop);
             // RL4: "__qed__" sentinel — bare "then" with no proposition.
             // Substitute the theorem's goal, then continue as a normal ThenStep.
             // The __qed__ sentinel is always first; extra refs follow it.
@@ -1077,7 +1090,7 @@ bool check_step(const ast::Step& step,
             // justification by finding the most-recent matching Assumption in scope.
             if (s.justification.empty()) {
                 // Try ImplIntro: conclusion is A → B — look for assume[A], derive[B]
-                if (const auto* im = std::get_if<ast::PropImpl>(&s.prop.node)) {
+                if (const auto* im = std::get_if<ast::PropImpl>(&prop.node)) {
                     const HypEntry* assump = nullptr;
                     env.for_each_assumption([&](const std::string&, const HypEntry& e) {
                         if (e.judgment.prop() == *im->lhs) assump = &e;
@@ -1099,7 +1112,7 @@ bool check_step(const ast::Step& step,
                     }
                     auto r = kernel.apply(kernel::Rule::ImplIntro,
                                           std::span<const kernel::Judgment>{&conseq->judgment, 1},
-                                          s.prop);
+                                          prop);
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "auto-discharge (ImplIntro) failed: " + r.error().message});
@@ -1108,7 +1121,7 @@ bool check_step(const ast::Step& step,
                     return true;
                 }
                 // Try NotIntro: conclusion is ¬A — look for assume[A], derive[⊥]
-                if (const auto* neg = std::get_if<ast::PropNot>(&s.prop.node)) {
+                if (const auto* neg = std::get_if<ast::PropNot>(&prop.node)) {
                     const HypEntry* assump = nullptr;
                     env.for_each_assumption([&](const std::string&, const HypEntry& e) {
                         if (e.judgment.prop() == *neg->inner) assump = &e;
@@ -1130,7 +1143,7 @@ bool check_step(const ast::Step& step,
                     }
                     auto r = kernel.apply(kernel::Rule::NotIntro,
                                           std::span<const kernel::Judgment>{&bot->judgment, 1},
-                                          s.prop);
+                                          prop);
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "auto-discharge (NotIntro) failed: " + r.error().message});
@@ -1139,9 +1152,9 @@ bool check_step(const ast::Step& step,
                     return true;
                 }
                 // TrueIntro: conclusion is ⊤ — no premises needed
-                if (std::get_if<ast::PropTrue>(&s.prop.node)) {
+                if (std::get_if<ast::PropTrue>(&prop.node)) {
                     std::vector<kernel::Judgment> no_prem;
-                    auto r = kernel.apply(kernel::Rule::TrueIntro, no_prem, s.prop);
+                    auto r = kernel.apply(kernel::Rule::TrueIntro, no_prem, prop);
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "TrueIntro failed: " + r.error().message});
@@ -1156,7 +1169,7 @@ bool check_step(const ast::Step& step,
             }
             // "by decide" — evaluate numerically; no refs needed
             if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide' only applies to relational propositions"});
@@ -1166,23 +1179,23 @@ bool check_step(const ast::Step& step,
                 if (!verdict) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide' cannot evaluate `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` — both sides must be literal arithmetic"});
                     return false;
                 }
                 if (!*verdict) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by decide': `"
-                               + forall::pretty::to_string(s.prop) + "` is false"});
+                               + forall::pretty::to_string(prop) + "` is false"});
                     return false;
                 }
                 // Certified: the proposition is arithmetically true.
-                kernel.introduce_axiom(s.prop);
+                kernel.introduce_axiom(prop);
                 return true;
             }
             // "by norm_num" — polynomial ring equality with variable support
             if (s.justification.size() == 1 && s.justification[0] == "__norm_num__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel || rel->op != ast::RelOp::Eq) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by norm_num' only applies to equalities"});
@@ -1193,16 +1206,16 @@ bool check_step(const ast::Step& step,
                 if (lp != rp) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by norm_num': `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` is not a polynomial identity"});
                     return false;
                 }
-                kernel.introduce_axiom(s.prop);
+                kernel.introduce_axiom(prop);
                 return true;
             }
             // "by ring" — polynomial identity over commutative ring
             if (s.justification.size() == 1 && s.justification[0] == "__ring__") {
-                const auto* rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!rel || rel->op != ast::RelOp::Eq) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by ring' only applies to equalities"});
@@ -1213,17 +1226,17 @@ bool check_step(const ast::Step& step,
                 if (lp != rp) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by ring': `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` does not hold as a ring identity"});
                     return false;
                 }
-                kernel.introduce_axiom(s.prop);
+                kernel.introduce_axiom(prop);
                 return true;
             }
             // "by linarith" — linear arithmetic (ThenStep variant)
             if (s.justification.size() == 1 && s.justification[0] == "__linarith__") {
                 auto hyps = collect_linear_hypotheses(env);
-                const auto* goal_rel = std::get_if<ast::PropRel>(&s.prop.node);
+                const auto* goal_rel = std::get_if<ast::PropRel>(&prop.node);
                 if (!goal_rel) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by linarith' only applies to relational propositions"});
@@ -1245,11 +1258,11 @@ bool check_step(const ast::Step& step,
                 if (!fourier_motzkin(hyps)) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by linarith' could not derive `"
-                               + forall::pretty::to_string(s.prop)
+                               + forall::pretty::to_string(prop)
                                + "` from the linear hypotheses in scope"});
                     return false;
                 }
-                kernel.introduce_axiom(s.prop);
+                kernel.introduce_axiom(prop);
                 return true;
             }
             // "by contra" — proof by contradiction (ML3)
@@ -1273,7 +1286,7 @@ bool check_step(const ast::Step& step,
                 }
                 auto r = kernel.apply(kernel::Rule::FalseElim,
                                       std::span<const kernel::Judgment>{&bot->judgment, 1},
-                                      s.prop);
+                                      prop);
                 if (!r) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by contra' FalseElim failed: " + r.error().message});
@@ -1283,9 +1296,9 @@ bool check_step(const ast::Step& step,
             }
             // "by simp" — propositional simplification (ThenStep variant)
             if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
-                auto app = simp_tactic(s.prop, env, diag, step.loc);
+                auto app = simp_tactic(prop, env, diag, step.loc);
                 if (!app) return false;
-                auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop);
+                auto r = kernel.apply(app->rule, std::span{app->premises}, prop);
                 if (!r) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by simp' internal error: " + r.error().message});
@@ -1298,14 +1311,14 @@ bool check_step(const ast::Step& step,
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
             std::optional<RuleApp> app;
             if (witness_ptr) {
-                app = infer_quantifier_rule(s.prop, *es, witness_ptr, diag, step.loc);
+                app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
             } else {
-                app = infer_rule(s.prop, *es, diag, step.loc);
+                app = infer_rule(prop, *es, diag, step.loc);
             }
             if (!app) return false;
             // ForallIntro requires the bound variable to have been introduced via TakeStep.
             if (app->rule == kernel::Rule::ForallIntro) {
-                const auto* fa = std::get_if<ast::PropForall>(&s.prop.node);
+                const auto* fa = std::get_if<ast::PropForall>(&prop.node);
                 if (!env.is_taken(fa->var)) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "∀-intro: variable '" + fa->var
@@ -1313,7 +1326,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
             }
-            auto r = kernel.apply(app->rule, std::span{app->premises}, s.prop, witness_ptr);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, witness_ptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected 'then' step: " + r.error().message});
@@ -1370,18 +1383,19 @@ bool check_step(const ast::Step& step,
 
         // show P — goal documentation; verifies P matches the theorem statement
         else if constexpr (std::is_same_v<T, ast::ShowStep>) {
+            const ast::Prop prop = apply_tdefs(s.prop);
             if (!ctx.goal) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "'show' step used outside a proof context"});
                 return false;
             }
-            if (!(s.prop == *ctx.goal)) {
-                const uint32_t end_col = s.prop.end_loc ? s.prop.end_loc->col : 0;
+            if (!(prop == *ctx.goal)) {
+                const uint32_t end_col = prop.end_loc ? prop.end_loc->col : 0;
                 diag.emit({diag::Severity::Error, step.loc,
                            "'show' mismatch: expected '"
                            + forall::pretty::to_string(*ctx.goal)
                            + "', got '"
-                           + forall::pretty::to_string(s.prop) + "'",
+                           + forall::pretty::to_string(prop) + "'",
                            end_col});
                 return false;
             }
@@ -1574,6 +1588,17 @@ void check_proof(const ast::Decl& decl,
     // validator can chain ImplElim(h, proof_of_A) → B after the subproof of A.
     std::vector<const HypEntry*> apply_stack;
 
+    // TR3: term-level local definitions from "let x = expr".
+    // Applied as substitution into propositions before each step is checked.
+    std::map<std::string, ast::ExprPtr> term_defs;
+
+    // Apply all current term definitions to a proposition by substitution.
+    auto apply_term_defs = [&](ast::Prop p) -> ast::Prop {
+        for (const auto& [name, expr] : term_defs)
+            p = ast::subst(p, name, *expr);
+        return p;
+    };
+
     for (const auto& step : decl.proof->steps) {
         // Populate type_env before processing the step so TakeStep vars are
         // available for the type-mismatch check on the same iteration.
@@ -1626,6 +1651,15 @@ void check_proof(const ast::Decl& decl,
             continue; // not a proof step, just goal transformation
         }
 
+        // TR3: LetStep with definition — record the term binding and skip check_step.
+        if (const auto* ls = std::get_if<ast::LetStep>(&step.node)) {
+            if (ls->definition) {
+                term_defs[ls->var] = *ls->definition;
+            }
+            // LetStep (both forms) is not a proof step — skip check_step.
+            continue;
+        }
+
         // MS2: ApplyStep — backward implication application.
         // apply h where h : A → B and current_goal = B → transforms goal to A.
         // Stores h's judgment for final ImplElim at conclusion validation.
@@ -1662,7 +1696,7 @@ void check_proof(const ast::Decl& decl,
             continue; // goal transformation only
         }
 
-        const CheckContext ctx{type_env, instances, module_env, sigs, current_goal};
+        const CheckContext ctx{type_env, instances, module_env, sigs, current_goal, &term_defs};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -1720,10 +1754,12 @@ void check_proof(const ast::Decl& decl,
             // RL4: __qed__ sentinel substitutes current goal — skip prop check.
             const bool is_qed_sentinel = !ts.justification.empty()
                                          && ts.justification[0] == "__qed__";
-            if (!is_qed_sentinel && ts.prop != *current_goal) {
+            // TR3: apply term definitions to the conclusion before comparing.
+            const ast::Prop ts_prop = apply_term_defs(ts.prop);
+            if (!is_qed_sentinel && ts_prop != *current_goal) {
                 const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
                 diag.emit({diag::Severity::Error, last_concluding->loc,
-                           "proof concludes with `" + forall::pretty::to_string(ts.prop)
+                           "proof concludes with `" + forall::pretty::to_string(ts_prop)
                            + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
                            end_col});
             }
