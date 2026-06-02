@@ -88,6 +88,8 @@ bool Expr::operator==(const Expr& other) const {
                 if (!(*x.args[i] == *y.args[i])) return false;
             return true;
         }
+        else if constexpr (std::is_same_v<T, ExprField>)
+            return x.field_name == y.field_name && *x.base == *y.base;
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
 }
@@ -174,6 +176,8 @@ static void collect_fv_expr(const Expr& expr, std::set<std::string>& out) {
         } else if constexpr (std::is_same_v<T, ExprApp>) {
             collect_fv_expr(*e.func, out);
             for (const auto& a : e.args) collect_fv_expr(*a, out);
+        } else if constexpr (std::is_same_v<T, ExprField>) {
+            collect_fv_expr(*e.base, out);
         }
     }, expr.node);
 }
@@ -301,6 +305,10 @@ static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r) 
             return Expr{loc, ExprApp{
                 make_expr(subst_expr(*e.func, var, r)),
                 std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ExprField>) {
+            return Expr{loc, ExprField{
+                make_expr(subst_expr(*e.base, var, r)),
+                e.field_name}};
         }
         return expr; // unreachable — all ExprNode alternatives listed above
     }, expr.node);
@@ -452,6 +460,10 @@ static Expr beta_reduce_expr(const Expr& e) {
             }
             // Function did not reduce to a lambda (or no args) — leave as ExprApp.
             return Expr{loc, ExprApp{make_expr(func_reduced), std::move(args_reduced)}};
+        } else if constexpr (std::is_same_v<T, ExprField>) {
+            return Expr{loc, ExprField{
+                make_expr(beta_reduce_expr(*n.base)),
+                n.field_name}};
         }
         return e; // unreachable
     }, e.node);
@@ -607,6 +619,10 @@ static Expr eta_reduce_expr(const Expr& e) {
             return Expr{loc, ExprApp{
                 make_expr(eta_reduce_expr(*n.func)),
                 std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ExprField>) {
+            return Expr{loc, ExprField{
+                make_expr(eta_reduce_expr(*n.base)),
+                n.field_name}};
         }
         return e; // unreachable
     }, e.node);
@@ -673,7 +689,8 @@ static std::string type_name(const TypeNode& t) {
 }
 
 std::expected<TypeNode, TypeError>
-infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
+infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
+           const StructEnv* struct_env) {
     using Ret = std::expected<TypeNode, TypeError>;
     auto err = [](std::string msg) -> Ret {
         return std::unexpected(TypeError{std::move(msg), TypeErrorKind::Unknown});
@@ -700,9 +717,9 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
 
         if constexpr (std::is_same_v<T, ExprBinary>) {
             if (n.op == BinOp::Union || n.op == BinOp::Inter || n.op == BinOp::SetMinus) {
-                auto lt = infer_type(*n.lhs, env, sigs);
+                auto lt = infer_type(*n.lhs, env, sigs, struct_env);
                 if (!lt) return lt;
-                auto rt = infer_type(*n.rhs, env, sigs);
+                auto rt = infer_type(*n.rhs, env, sigs, struct_env);
                 if (!rt) return rt;
                 const auto* ls = std::get_if<TypeSet>(&lt->node);
                 const auto* rs = std::get_if<TypeSet>(&rt->node);
@@ -716,9 +733,9 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
             }
             if (n.op == BinOp::Compose)
                 return err("function composition deferred to TypeFun integration");
-            auto lt = infer_type(*n.lhs, env, sigs);
+            auto lt = infer_type(*n.lhs, env, sigs, struct_env);
             if (!lt) return lt;
-            auto rt = infer_type(*n.rhs, env, sigs);
+            auto rt = infer_type(*n.rhs, env, sigs, struct_env);
             if (!rt) return rt;
             auto promoted = numeric_promote(*lt, *rt);
             if (!promoted) return mismatch("type mismatch: non-numeric operands in arithmetic");
@@ -726,11 +743,11 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
         }
 
         if constexpr (std::is_same_v<T, ExprUnary>) {
-            return infer_type(*n.operand, env, sigs);
+            return infer_type(*n.operand, env, sigs, struct_env);
         }
 
         if constexpr (std::is_same_v<T, ExprAbs>) {
-            auto inner_t = infer_type(*n.operand, env, sigs);
+            auto inner_t = infer_type(*n.operand, env, sigs, struct_env);
             if (!inner_t) return inner_t;
             // If the operand is a set, this is cardinality |S| → result is Nat.
             // Otherwise this is absolute value |x| → result has the same numeric type.
@@ -744,7 +761,7 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
                 return err("lambda parameter '" + n.var + "' requires a type annotation");
             TypeEnv inner_env = env;
             inner_env[n.var] = *n.type;
-            auto body_t = infer_type(*n.body, inner_env, sigs);
+            auto body_t = infer_type(*n.body, inner_env, sigs, struct_env);
             if (!body_t) return body_t;
             return type_fun(*n.type, *body_t);
         }
@@ -754,13 +771,13 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
                 return err("aggregate binder '" + n.var + "' requires a type annotation");
             TypeEnv inner_env = env;
             inner_env[n.var] = *n.type;
-            return infer_type(*n.body, inner_env, sigs);
+            return infer_type(*n.body, inner_env, sigs, struct_env);
         }
 
         if constexpr (std::is_same_v<T, ExprIf>) {
-            auto tt = infer_type(*n.then_, env, sigs);
+            auto tt = infer_type(*n.then_, env, sigs, struct_env);
             if (!tt) return tt;
-            auto et = infer_type(*n.else_, env, sigs);
+            auto et = infer_type(*n.else_, env, sigs, struct_env);
             if (!et) return et;
             auto promoted = numeric_promote(*tt, *et);
             if (!promoted) return mismatch("type mismatch: conditional branches have incompatible types");
@@ -774,7 +791,7 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
             // Walk the curried TypeFun, consuming one argument at a time.
             const TypeFun* cur = &it->second;
             for (std::size_t i = 0; i < n.args.size(); ++i) {
-                auto arg_t = infer_type(*n.args[i], env, sigs);
+                auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
                 if (!arg_t) return arg_t;
                 if (!(*arg_t == *cur->domain))
                     return mismatch("type mismatch: argument " + std::to_string(i + 1)
@@ -795,13 +812,13 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
 
         if constexpr (std::is_same_v<T, ExprApp>) {
             // Infer the type of the function expression; expect a TypeFun.
-            auto func_t = infer_type(*n.func, env, sigs);
+            auto func_t = infer_type(*n.func, env, sigs, struct_env);
             if (!func_t) return func_t;
             const TypeFun* cur = std::get_if<TypeFun>(&func_t->node);
             if (!cur)
                 return err("ExprApp: function expression does not have a function type");
             for (std::size_t i = 0; i < n.args.size(); ++i) {
-                auto arg_t = infer_type(*n.args[i], env, sigs);
+                auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
                 if (!arg_t) return arg_t;
                 if (!(*arg_t == *cur->domain))
                     return mismatch("ExprApp: argument type mismatch at position "
@@ -819,13 +836,35 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs) {
             return err("array index type inference not yet implemented");
         if constexpr (std::is_same_v<T, ExprTuple>)
             return err("tuple type inference not yet implemented");
+        if constexpr (std::is_same_v<T, ExprField>) {
+            // Infer the type of the base expression; if it is a TypeUser, look up
+            // the named field in the StructEnv to find its declared type.
+            auto base_t = infer_type(*n.base, env, sigs, struct_env);
+            if (!base_t) return err("cannot infer type of base expression in field access");
+            const auto* user_t = std::get_if<TypeUser>(&base_t->node);
+            if (!user_t)
+                return err("field projection '" + n.field_name + "' applied to non-struct type");
+            if (struct_env) {
+                auto sit = struct_env->find(user_t->name);
+                if (sit != struct_env->end()) {
+                    for (const auto& sf : sit->second) {
+                        if (const auto* ft = std::get_if<FieldTerm>(&sf)) {
+                            if (ft->name == n.field_name)
+                                return ft->type;
+                        }
+                    }
+                }
+            }
+            return err("unknown field '" + n.field_name + "' on type '" + user_t->name + "'");
+        }
+
         if constexpr (std::is_same_v<T, ExprSetLit>) {
             if (n.elements.empty())
                 return err("cannot infer element type of empty set literal");
-            auto elem_t = infer_type(*n.elements[0], env, sigs);
+            auto elem_t = infer_type(*n.elements[0], env, sigs, struct_env);
             if (!elem_t) return elem_t;
             for (std::size_t i = 1; i < n.elements.size(); ++i) {
-                auto t = infer_type(*n.elements[i], env, sigs);
+                auto t = infer_type(*n.elements[i], env, sigs, struct_env);
                 if (!t) continue; // skip if element type unknown
                 auto promoted = numeric_promote(*elem_t, *t);
                 if (promoted) { elem_t = *promoted; continue; }

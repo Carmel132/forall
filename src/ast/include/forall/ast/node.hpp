@@ -154,10 +154,16 @@ struct ExprApp {                                                     // e(arg1, 
     std::vector<ExprPtr> args;
 };
 
+// Field projection: base.field_name — e.g. g.mul, g.carrier
+struct ExprField {
+    ExprPtr     base;
+    std::string field_name;
+};
+
 using ExprNode = std::variant<
     ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
     ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg,
-    ExprSetLit, ExprSetCompr, ExprApp
+    ExprSetLit, ExprSetCompr, ExprApp, ExprField
 >;
 
 struct Expr {
@@ -382,12 +388,19 @@ struct Decl {
     DeclKind                  kind;
     std::string               name;           // for Import: file path; for Instance: type name
     diag::SourceLocation      loc;
-    Prop                      statement;      // for Import/Instance/Structure: dummy PropFalse{}
+    Prop                      statement;      // for Import/Instance/Structure/Instantiation: dummy PropFalse{}
     std::optional<ProofBlock> proof;          // absent for Axiom / Import / Instance / Structure
     std::vector<Param>        params;         // definition parameters; empty for others
     std::string               instance_class; // for Instance: the class name (e.g. "Ring")
     std::vector<StructField>  fields;         // for Structure: term fields and axiom fields
+    // For DeclKind::Definition used as a structure instantiation:
+    std::string                          struct_type;     // the structure being instantiated
+    std::map<std::string, ExprPtr>       struct_bindings; // field_name → value expression
 };
+
+// Maps structure name → its field list.  Used by the checker to process
+// structure instantiations (DT3).
+using StructEnv = std::map<std::string, std::vector<StructField>>;
 
 using DeclPtr = std::unique_ptr<Decl>;
 
@@ -424,7 +437,8 @@ struct TypeError {
 // determined: unknown variable, arithmetic mismatch, unsupported expression
 // form (sets, tuples — deferred), or ExprCall without a matching signature.
 [[nodiscard]] std::expected<TypeNode, TypeError>
-infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs = {});
+infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs = {},
+           const StructEnv* struct_env = nullptr);
 
 // ── Free-variable enumeration and syntactic substitution ─────────────────────
 
