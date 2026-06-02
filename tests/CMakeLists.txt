@@ -17,3 +17,8 @@ add_test(NAME e2e_keyword_proofs
 add_test(NAME e2e_stdlib_example
     COMMAND $<TARGET_FILE:forall> "${CMAKE_SOURCE_DIR}/examples/stdlib_example.forall"
 )
+add_test(NAME e2e_algebra_comm_ring
+    COMMAND $<TARGET_FILE:forall>
+        --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
+        "${CMAKE_SOURCE_DIR}/stdlib/algebra/comm_ring.forall"
+)
