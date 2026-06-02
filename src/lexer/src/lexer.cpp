@@ -251,6 +251,7 @@ Token Lexer::nextToken() {
             {"decide",       TokenKind::KwDecide},
             {"norm_num",     TokenKind::KwNormNum},
             {"ring",         TokenKind::KwRing},
+            {"linarith",     TokenKind::KwLinarith},
             // "base" and "inductive" are context-sensitive: parsed by the
             // parser as identifiers with specific lexeme values so they remain
             // usable as ordinary names outside induction blocks.
