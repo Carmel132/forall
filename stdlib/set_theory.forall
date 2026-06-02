@@ -1,0 +1,40 @@
+-- Basic set theory axioms.
+--
+-- Sets are parameterised by element type; operations ∪, ∩, ∖ operate on
+-- sets of the same type.  The empty set ∅ is written as a built-in constant.
+
+-- ── Extensionality ──────────────────────────────────────────────────────────
+-- Two sets are equal iff they have the same members.
+axiom set_ext : for all A : Set Nat, for all B : Set Nat, (for all x : Nat, x in A iff x in B) implies A = B
+
+-- ── Empty set ────────────────────────────────────────────────────────────────
+-- No element is a member of the empty set.
+axiom empty_set : for all x : Nat, not (x in {})
+
+-- ── Union ────────────────────────────────────────────────────────────────────
+axiom union_def    : for all A : Set Nat, for all B : Set Nat, for all x : Nat, x in A union B iff (x in A or x in B)
+axiom union_comm   : for all A : Set Nat, for all B : Set Nat, A union B = B union A
+axiom union_assoc  : for all A : Set Nat, for all B : Set Nat, for all C : Set Nat, (A union B) union C = A union (B union C)
+axiom union_empty  : for all A : Set Nat, A union {} = A
+
+-- ── Intersection ─────────────────────────────────────────────────────────────
+axiom inter_def    : for all A : Set Nat, for all B : Set Nat, for all x : Nat, x in A inter B iff (x in A and x in B)
+axiom inter_comm   : for all A : Set Nat, for all B : Set Nat, A inter B = B inter A
+axiom inter_assoc  : for all A : Set Nat, for all B : Set Nat, for all C : Set Nat, (A inter B) inter C = A inter (B inter C)
+
+-- ── Set difference ──────────────────────────────────────────────────────────
+axiom diff_def     : for all A : Set Nat, for all B : Set Nat, for all x : Nat, x in A setminus B iff (x in A and not (x in B))
+
+-- ── Subset ───────────────────────────────────────────────────────────────────
+axiom subset_def   : for all A : Set Nat, for all B : Set Nat, A subseteq B iff (for all x : Nat, x in A implies x in B)
+axiom subset_refl  : for all A : Set Nat, A subseteq A
+axiom subset_trans : for all A : Set Nat, for all B : Set Nat, for all C : Set Nat, A subseteq B implies B subseteq C implies A subseteq C
+axiom subset_antisym : for all A : Set Nat, for all B : Set Nat, A subseteq B implies B subseteq A implies A = B
+
+-- ── De Morgan laws ──────────────────────────────────────────────────────────
+axiom de_morgan_union : for all A : Set Nat, for all B : Set Nat, for all x : Nat, not (x in A union B) iff (not (x in A) and not (x in B))
+axiom de_morgan_inter : for all A : Set Nat, for all B : Set Nat, for all x : Nat, not (x in A inter B) iff (not (x in A) or not (x in B))
+
+-- ── Distributivity ──────────────────────────────────────────────────────────
+axiom distrib_union_inter : for all A : Set Nat, for all B : Set Nat, for all C : Set Nat, A union (B inter C) = (A union B) inter (A union C)
+axiom distrib_inter_union : for all A : Set Nat, for all B : Set Nat, for all C : Set Nat, A inter (B union C) = (A inter B) union (A inter C)
