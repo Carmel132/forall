@@ -2630,3 +2630,52 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── DT3: Structure instantiation ──────────────────────────────────────────────
+
+TEST(CheckerTest, ValidStructureInstantiation) {
+    // Define a structure with a term field and an axiom referencing it via
+    // an expression-level occurrence (PropRel).
+    // After instantiation the axiom `NatZero_zero_nonneg` (= 0 >= 0) is
+    // inserted into module_env — a subsequent theorem can use it directly.
+    auto diag = run_checker("struct_instantiation", R"(
+structure HasZero :=
+  zero : Nat
+  axiom zero_nonneg : zero >= 0
+
+definition NatZero : HasZero :=
+  zero := 0
+
+theorem use_inst : 0 >= 0
+proof
+  then 0 >= 0 by NatZero_zero_nonneg
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ValidInstantiationAxiomBetaReduced) {
+    // An instantiation with a lambda binding whose axiom is beta-reducible.
+    // The axiom `id_trivial : id(0) = 0` after substituting `id := fun a => a`
+    // becomes `(fun a => a)(0) = 0`, which beta-reduces to `0 = 0`.
+    // The instantiation itself should succeed (no errors).
+    auto diag = run_checker("struct_beta_reduce", R"(
+structure HasId :=
+  id   : Nat -> Nat
+  axiom id_trivial : id(0) = 0
+
+definition NatId : HasId :=
+  id := fun a => a
+)");
+    // NatId_id_trivial should be produced (beta-reduced to 0 = 0); no errors.
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, InvalidInstantiationUnknownStruct) {
+    // Instantiating an undefined structure should be an error.
+    auto diag = run_checker("struct_unknown", R"(
+definition Bad : NoSuchStruct :=
+  x := 0
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

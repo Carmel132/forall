@@ -2512,3 +2512,86 @@ TEST(ParserTest, StructureMalformed) {
     auto r = parse_str("structure :=");
     EXPECT_TRUE(r.diag.hasErrors());
 }
+
+// ── DT2: Field projection (ExprField) ─────────────────────────────────────────
+
+TEST(ParserTest, FieldProjectionBasic) {
+    // g.mul should parse to ExprField{ExprVar{"g"}, "mul"}
+    auto r = parse_str("axiom a : g.mul = g.mul");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* field = std::get_if<ExprField>(&rel->lhs->node);
+    ASSERT_NE(field, nullptr);
+    EXPECT_EQ(field->field_name, "mul");
+    const auto* base_var = std::get_if<ExprVar>(&field->base->node);
+    ASSERT_NE(base_var, nullptr);
+    EXPECT_EQ(base_var->name, "g");
+}
+
+TEST(ParserTest, FieldProjectionChained) {
+    // g.mul.name should parse as ExprField{ExprField{ExprVar{"g"}, "mul"}, "name"}
+    auto r = parse_str("axiom a : g.mul.name = g.mul.name");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    const auto* outer = std::get_if<ExprField>(&rel->lhs->node);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->field_name, "name");
+    const auto* inner = std::get_if<ExprField>(&outer->base->node);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->field_name, "mul");
+    const auto* base_var = std::get_if<ExprVar>(&inner->base->node);
+    ASSERT_NE(base_var, nullptr);
+    EXPECT_EQ(base_var->name, "g");
+}
+
+TEST(ParserTest, FieldProjectionInProp) {
+    // g.one = g.one parses as PropRel{ExprField{...}, ExprField{...}, Eq}
+    auto r = parse_str("axiom a : g.one = g.one");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rel = std::get_if<PropRel>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(rel, nullptr);
+    EXPECT_EQ(rel->op, RelOp::Eq);
+    EXPECT_NE(std::get_if<ExprField>(&rel->lhs->node), nullptr);
+    EXPECT_NE(std::get_if<ExprField>(&rel->rhs->node), nullptr);
+}
+
+// ── DT3: Structure instantiation ──────────────────────────────────────────────
+
+TEST(ParserTest, StructureInstantiation) {
+    // definition NatAdd : Monoid :=
+    //   carrier := Nat
+    //   mul := fun a => a
+    //   one := 0
+    auto r = parse_str(
+        "definition NatAdd : Monoid :=\n"
+        "  carrier := 0\n"
+        "  one := 1\n"
+    );
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Definition);
+    EXPECT_EQ(d.name, "NatAdd");
+    EXPECT_EQ(d.struct_type, "Monoid");
+    EXPECT_EQ(d.struct_bindings.size(), 2u);
+    EXPECT_NE(d.struct_bindings.find("carrier"), d.struct_bindings.end());
+    EXPECT_NE(d.struct_bindings.find("one"), d.struct_bindings.end());
+}
+
+TEST(ParserTest, StructureInstantiationWithLambda) {
+    // mul binding uses a lambda expression
+    auto r = parse_str(
+        "definition M : Monoid :=\n"
+        "  mul := fun a => a\n"
+        "  one := 0\n"
+    );
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.struct_type, "Monoid");
+    auto it = d.struct_bindings.find("mul");
+    ASSERT_NE(it, d.struct_bindings.end());
+    EXPECT_NE(std::get_if<ExprLambda>(&it->second->node), nullptr);
+}
