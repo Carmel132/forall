@@ -85,7 +85,8 @@ static bool is_expr_atom(const ast::ExprNode& n) {
         || std::holds_alternative<ast::ExprIndex>(n)
         || std::holds_alternative<ast::ExprTuple>(n)
         || std::holds_alternative<ast::ExprSetLit>(n)
-        || std::holds_alternative<ast::ExprSetCompr>(n);
+        || std::holds_alternative<ast::ExprSetCompr>(n)
+        || std::holds_alternative<ast::ExprApp>(n);
 }
 
 static int expr_prec(const ast::ExprNode& n) {
@@ -212,6 +213,17 @@ std::string ts_expr(const ast::Expr& e) {
                 s += rel_op_str(*n.rel) + ts_expr(**n.bound);
             }
             return s + ", " + ts_expr(*n.body);
+        }
+        else if constexpr (std::is_same_v<T, ast::ExprApp>) {
+            // Print as (func)(arg1, arg2, ...) — always parenthesise the
+            // function expression since it may be a lambda or complex term.
+            std::string s = "(" + ts_expr(*n.func) + ")";
+            s += "(";
+            for (std::size_t i = 0; i < n.args.size(); ++i) {
+                if (i > 0) s += ", ";
+                s += ts_expr(*n.args[i]);
+            }
+            return s + ")";
         }
         else if constexpr (std::is_same_v<T, ast::ExprBinary>) {
             const int lp = expr_prec(n.lhs->node);
