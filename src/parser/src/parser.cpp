@@ -875,7 +875,57 @@ ast::TypeNode Parser::parseType() {
     const auto loc = peek().loc;
 
     // PB4: Tuple type "(Nat, Int)"  — TypeTuple with two or more elements.
+    // DT5: Pi type "(x : A) -> B"  — TypePi, distinguished from tuple by ':' inside.
     if (check(K::LParen)) {
+        // Lookahead: if we see '(' identifier ':' ... ')' '->', this is a Pi type.
+        // Discriminant: the ':' at depth 1 immediately after an identifier.
+        bool is_pi = false;
+        if (pos_ + 2 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 2].kind == K::Colon)
+        {
+            // Scan forward to the matching ')' and check for '->' after it.
+            int depth = 0;
+            for (std::size_t i = pos_; i < tokens_.size(); ++i) {
+                if (tokens_[i].kind == K::LParen) { ++depth; continue; }
+                if (tokens_[i].kind == K::RParen) {
+                    --depth;
+                    if (depth == 0) {
+                        // Check if the token after ')' is '->'
+                        if (i + 1 < tokens_.size() && tokens_[i + 1].kind == K::Arrow)
+                            is_pi = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (is_pi) {
+            advance(); // consume '('
+            std::string var_name;
+            if (check(K::Identifier))
+                var_name = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected variable name in Pi type binder"});
+            expect(K::Colon, "expected ':' after variable name in Pi type binder");
+            ast::TypeNode domain{ast::TypeUser{"?"}};
+            if (check(K::Identifier) || check(K::LParen))
+                domain = parseType();
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected domain type in Pi type binder"});
+            expect(K::RParen, "expected ')' to close Pi type binder");
+            expect(K::Arrow, "expected '->' after Pi type binder");
+            ast::TypeNode codomain{ast::TypeUser{"?"}};
+            if (check(K::Identifier) || check(K::LParen))
+                codomain = parseType();
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected codomain type after '->' in Pi type"});
+            return ast::type_pi(std::move(var_name), std::move(domain), std::move(codomain));
+        }
+
         advance(); // consume '('
         std::vector<ast::TypeNode> elems;
         if (!check(K::Identifier)) {
@@ -1540,23 +1590,56 @@ std::optional<ast::DeclPtr> Parser::parseAxiom() {
 }
 
 std::optional<ast::DeclPtr> Parser::parseTheorem(ast::DeclKind kind) {
+    using K = lexer::TokenKind;
     const auto loc = peek().loc;
     advance(); // consume "theorem" or "lemma"
 
-    if (!check(lexer::TokenKind::Identifier)) {
+    if (!check(K::Identifier)) {
         diag_.emit({diag::Severity::Error, peek().loc, "expected theorem name"});
         return std::nullopt;
     }
     std::string name{advance().lexeme};
-    expect(lexer::TokenKind::Colon, "expected ':' after theorem name");
+
+    // DT5: parse optional parameter list: { "(" id ":" type ")" }
+    // Same syntax as definition params; the ':' separator between param and type is
+    // the discriminant.  This is a standard `(name : type)` binder list, NOT a Pi
+    // type — the Pi type only arises when `(x : A)` is followed by `->`.
+    std::vector<ast::Param> params;
+    while (check(K::LParen)
+           && pos_ + 1 < tokens_.size()
+           && tokens_[pos_ + 1].kind == K::Identifier
+           && pos_ + 2 < tokens_.size()
+           && tokens_[pos_ + 2].kind == K::Colon)
+    {
+        advance(); // consume '('
+        std::string pname;
+        if (check(K::Identifier))
+            pname = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected parameter name in theorem parameter"});
+        expect(K::Colon, "expected ':' in theorem parameter");
+        ast::TypeNode ptype{ast::TypeUser{"?"}};
+        if (check(K::Identifier) || check(K::LParen))
+            ptype = parseType();
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected type in theorem parameter"});
+        expect(K::RParen, "expected ')' to close theorem parameter");
+        params.push_back({std::move(pname), std::move(ptype)});
+    }
+
+    expect(K::Colon, "expected ':' after theorem name");
     auto prop = parseProp();
 
     std::optional<ast::ProofBlock> proof;
-    if (check(lexer::TokenKind::KwProof))
+    if (check(K::KwProof))
         proof = parseProofBlock();
 
-    return std::make_unique<ast::Decl>(kind, std::move(name), loc,
-                                       std::move(prop), std::move(proof));
+    auto decl = std::make_unique<ast::Decl>(kind, std::move(name), loc,
+                                            std::move(prop), std::move(proof));
+    decl->params = std::move(params);
+    return decl;
 }
 
 std::optional<ast::DeclPtr> Parser::parseImport() {
