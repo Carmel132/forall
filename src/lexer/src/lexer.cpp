@@ -149,6 +149,7 @@ Token Lexer::nextToken() {
         }
         case ':':
             if (!isAtEnd() && source_[pos_] == ':') { consume(1); return make(TokenKind::ColonColon); }
+            if (!isAtEnd() && source_[pos_] == '=') { consume(1); return make(TokenKind::ColonEquals); }
             return make(TokenKind::Colon);
         case '=':
             if (!isAtEnd() && source_[pos_] == '>') { consume(1); return make(TokenKind::FatArrow); }
@@ -190,6 +191,7 @@ Token Lexer::nextToken() {
             // Module-level
             {"import",       TokenKind::KwImport},
             {"instance",     TokenKind::KwInstance},
+            {"structure",    TokenKind::KwStructure},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},

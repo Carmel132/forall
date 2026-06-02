@@ -12,7 +12,7 @@ enum class TokenKind {
 
     // Declaration keywords
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
-    KwProof, KwEnd, KwImport, KwInstance,
+    KwProof, KwEnd, KwImport, KwInstance, KwStructure,
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,
@@ -57,6 +57,7 @@ enum class TokenKind {
 
     // Punctuation
     Colon, ColonColon,          // :  ::
+    ColonEquals,                // :=
     Comma,                      // ,
     Dot,                        // .
     FatArrow,                   // =>
