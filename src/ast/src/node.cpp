@@ -27,6 +27,10 @@ bool TypeSet::operator==(const TypeSet& o) const {
     return *element_type == *o.element_type;
 }
 
+bool TypePi::operator==(const TypePi& o) const {
+    return var == o.var && *domain == *o.domain && *codomain == *o.codomain;
+}
+
 bool TypeNode::operator==(const TypeNode& o) const {
     return node == o.node;
 }
@@ -684,6 +688,7 @@ static std::string type_name(const TypeNode& t) {
         if constexpr (std::is_same_v<T, TypeFun>)   return "function type";
         if constexpr (std::is_same_v<T, TypeTuple>) return "tuple type";
         if constexpr (std::is_same_v<T, TypeSet>)  return "Set " + type_name(*v.element_type);
+        if constexpr (std::is_same_v<T, TypePi>)   return "Pi type";
         return "?";
     }, t.node);
 }

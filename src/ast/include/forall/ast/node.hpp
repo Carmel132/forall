@@ -52,8 +52,19 @@ struct TypeSet {
     bool operator==(const TypeSet& o) const;
 };
 
+// Dependent function type  (x : A) → B(x).
+// When B does not mention x this is just A → B (ordinary function type).
+// Uses shared_ptr to handle the incomplete TypeNode at declaration time.
+// operator== defined in node.cpp.
+struct TypePi {
+    std::string               var;      // bound variable name
+    std::shared_ptr<TypeNode> domain;   // type of the variable
+    std::shared_ptr<TypeNode> codomain; // return type, may mention var
+    bool operator==(const TypePi& o) const;
+};
+
 using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser,
-                                 TypeFun, TypeTuple, TypeSet>;
+                                 TypeFun, TypeTuple, TypeSet, TypePi>;
 
 struct TypeNode {
     TypeVariant node;
@@ -79,6 +90,11 @@ inline TypeNode type_tuple(std::vector<TypeNode> elems) {
 }
 inline TypeNode type_set(TypeNode elem) {
     return TypeNode{TypeSet{std::make_shared<TypeNode>(std::move(elem))}};
+}
+inline TypeNode type_pi(std::string var, TypeNode domain, TypeNode codomain) {
+    return TypeNode{TypePi{std::move(var),
+                           std::make_shared<TypeNode>(std::move(domain)),
+                           std::make_shared<TypeNode>(std::move(codomain))}};
 }
 
 // ── Forward declarations ───────────────────────────────────────────────────────
