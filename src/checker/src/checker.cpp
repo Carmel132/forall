@@ -2264,12 +2264,15 @@ ModuleResult check_module(const std::filesystem::path& path,
 
     lexer::Lexer lex{buf.str(), path.string(), diag};
     auto tokens = lex.tokenize();
-    if (diag.hasErrors()) return ModuleResult{};
+    // IX2: Don't abort on lexer errors — continue to parse to collect more errors.
 
     parser::Parser parser{tokens, diag};
     ast::Module mod = parser.parse();
     mod.path = path.string();
-    if (diag.hasErrors()) return ModuleResult{};
+    // IX2: Don't abort on parse errors — run the checker on successfully-parsed
+    // declarations to report as many errors as possible in a single pass.
+    // The checker skips over any declaration whose statement contains parse
+    // sentinel nodes (they will have caused parse errors already).
 
     HypEnv module_env;
     ast::FuncSigTable sig_table; // built from definition declarations with params
