@@ -391,7 +391,7 @@ using StructField = std::variant<FieldTerm, FieldAxiom>;
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure };
+enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient };
 
 // A single named parameter of a definition, e.g. (x : Nat).
 struct Param {
@@ -412,6 +412,9 @@ struct Decl {
     // For DeclKind::Definition used as a structure instantiation:
     std::string                          struct_type;     // the structure being instantiated
     std::map<std::string, ExprPtr>       struct_bindings; // field_name → value expression
+    // For DeclKind::Quotient:
+    std::string                          quot_carrier;    // carrier type name (e.g. "Int")
+    std::string                          quot_rel;        // equivalence relation name (e.g. "int_eq")
 };
 
 // Maps structure name → its field list.  Used by the checker to process
