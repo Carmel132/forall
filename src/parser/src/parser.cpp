@@ -1071,7 +1071,7 @@ ast::Step Parser::parseThenStep() {
             case K::KwHave: case K::KwThen: case K::KwSuppose:
             case K::KwContradiction: case K::KwCases: case K::KwLet:
             case K::KwTake: case K::KwObtain: case K::KwInduction:
-            case K::KwShow: case K::KwExact:
+            case K::KwShow: case K::KwExact: case K::KwRewrite:
                 return true;
             default:
                 return false;
@@ -1274,6 +1274,28 @@ ast::Step Parser::parseStep() {
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
     if (check(K::KwInduction))    return parseInductionStep();
+
+    // rewrite [←/<-] h — equality rewriting step (MS1)
+    if (check(K::KwRewrite)) {
+        const auto loc = peek().loc;
+        advance(); // consume "rewrite"
+        // Optional reverse marker: ← (U+2190, lexed as some token) or literal "<-"
+        // We check for the Arrow token used in "<-" direction — but Arrow is "→"/"->".
+        // For simplicity, accept the identifier "←" or the lexeme "<-" as a reverse flag.
+        // Actually use: check for a bare '<' followed by '-' identifier, or accept
+        // the identifier token with lexeme "←".
+        bool rev = false;
+        if (check(K::Identifier) && peek().lexeme == "\xe2\x86\x90") {
+            rev = true; advance(); // ← U+2190
+        }
+        std::string ref;
+        if (check(K::Identifier))
+            ref = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected hypothesis name after 'rewrite'"});
+        return {loc, ast::RewriteStep{std::move(ref), rev}};
+    }
 
     // show P — goal annotation step (MS4)
     if (check(K::KwShow)) {
