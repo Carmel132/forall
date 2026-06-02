@@ -307,6 +307,18 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── ProofIrrel: two proofs of the same proposition are interchangeable ────
+    // Given two Judgments certifying the same Prop, certify that Prop.
+    // In our LCF design this is already implicit (Judgment carries no proof
+    // term), but the explicit rule documents the invariant and allows it to
+    // be invoked deliberately.
+    case Rule::ProofIrrel: {
+        if (premises.size() != 2) return wrong_arity(2);
+        if (!props_eq(premises[0].prop(), premises[1].prop()))
+            return mismatch("ProofIrrel: both premises must prove the same proposition");
+        return make(premises[0].prop());
+    }
+
     } // switch
     return std::unexpected(err(rule, "unhandled rule"));
 }

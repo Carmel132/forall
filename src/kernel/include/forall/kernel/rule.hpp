@@ -32,6 +32,16 @@ namespace forall::kernel {
 //   ExistsElim   : Γ ⊢ ∃x.P,  Γ,x,P(x) ⊢ Q,  x ∉ free(Q)  →  Γ ⊢ Q
 //   NatInduction : Γ ⊢ P(0),  Γ ⊢ ∀n:Nat, P(n)→P(succ(n))  →  Γ ⊢ ∀n:Nat, P(n)
 //   (The "n" in the conclusion must match the binder variable of the ∀.)
+//
+// Proof irrelevance:
+//   ProofIrrel : Γ ⊢ P,  Γ ⊢ P                             →  Γ ⊢ P
+//
+//   In our LCF design, Judgment values carry no proof terms — they certify only the
+//   proposition.  Proof irrelevance is therefore already implicit: any two Judgments
+//   for the same Prop are interchangeable in rule applications, because Kernel::apply
+//   inspects only premise.prop(), never the derivation history.  ProofIrrel makes
+//   this explicit as a kernel rule: given two certifications of the same proposition,
+//   yield a single certification of that proposition.
 enum class Rule {
     Axiom,
     Assumption,
@@ -45,6 +55,7 @@ enum class Rule {
     ForallIntro,
     ExistsElim,
     NatInduction,
+    ProofIrrel,
 };
 
 } // namespace forall::kernel

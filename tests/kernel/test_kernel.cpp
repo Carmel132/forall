@@ -551,3 +551,34 @@ TEST(KernelTest, ForallElim_LambdaWitness_WrongConclusion) {
     auto result = k.apply(kernel::Rule::ForallElim, prem, wrong_conclusion, &identity);
     EXPECT_FALSE(result.has_value());
 }
+
+// ── DT8: Proof irrelevance ────────────────────────────────────────────────────
+//
+// ProofIrrel documents the implicit invariant that Judgment values carry no
+// proof terms — two derivations of the same Prop are interchangeable.
+// The rule takes two premises certifying the same Prop and certifies that Prop.
+
+TEST(KernelTest, ProofIrrel_SameProof_Succeeds) {
+    kernel::Kernel k;
+    // Obtain two independent Judgments for atom("P") (both via introduce_axiom).
+    auto j1 = k.introduce_axiom(atom("P")); ASSERT_TRUE(j1);
+    auto j2 = k.introduce_axiom(atom("P")); ASSERT_TRUE(j2);
+
+    std::vector<kernel::Judgment> premises{*j1, *j2};
+    auto result = k.apply(kernel::Rule::ProofIrrel, premises, atom("P"));
+    ASSERT_TRUE(result.has_value());
+    const auto* a = std::get_if<Atomic>(&result->prop().node);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->name, "P");
+}
+
+TEST(KernelTest, ProofIrrel_DifferentProps_Fails) {
+    kernel::Kernel k;
+    auto j1 = k.introduce_axiom(atom("P")); ASSERT_TRUE(j1);
+    auto j2 = k.introduce_axiom(atom("Q")); ASSERT_TRUE(j2);
+
+    std::vector<kernel::Judgment> premises{*j1, *j2};
+    // P and Q are different: ProofIrrel must reject this.
+    auto result = k.apply(kernel::Rule::ProofIrrel, premises, atom("P"));
+    EXPECT_FALSE(result.has_value());
+}
