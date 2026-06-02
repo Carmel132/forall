@@ -213,6 +213,10 @@ TEST(PrettyProp, False) {
     EXPECT_EQ(ts(PropFalse{}), "\xe2\x8a\xa5");  // ⊥
 }
 
+TEST(PrettyProp, True) {
+    EXPECT_EQ(ts(PropTrue{}), "\xe2\x8a\xa4");   // ⊤
+}
+
 TEST(PrettyProp, Not) {
     EXPECT_EQ(ts(PropNot{PP(Atomic{"P"})}), "\xc2\xac" "P");  // ¬P
 }

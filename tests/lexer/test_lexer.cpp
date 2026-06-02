@@ -130,3 +130,29 @@ TEST(LexerTest, BackslashSlashIsOrNotBackslash) {
     EXPECT_EQ(toks[1].kind, lexer::TokenKind::Or);          // \/
     EXPECT_EQ(toks[2].kind, lexer::TokenKind::Identifier); // Q
 }
+
+TEST(LexerTest, TrueKeyword) {
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"true", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwTrue);
+}
+
+TEST(LexerTest, TopUnicodeSymbol) {
+    // ⊤ U+22A4 = E2 88 A4
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"\xe2\x88\xa4", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwTrue);
+}
+
+TEST(LexerTest, BottomUnicodeSymbol) {
+    // ⊥ U+22A5 = E2 88 A5
+    diag::DiagnosticEngine diag;
+    lexer::Lexer lex{"\xe2\x88\xa5", "test", diag};
+    auto toks = lex.tokenize();
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_EQ(toks[0].kind, lexer::TokenKind::KwFalse);
+}

@@ -458,3 +458,29 @@ TEST(KernelTest, NatInduction_WrongArity) {
     auto r = k.apply(kernel::Rule::NatInduction, prem, prop_forall_nat("n", body));
     EXPECT_FALSE(r.has_value());
 }
+
+static Prop prop_true() { return {diag::SourceLocation{}, PropTrue{}}; }
+
+TEST(KernelTest, TrueIntro_Valid) {
+    kernel::Kernel k;
+    std::vector<kernel::Judgment> no_prem;
+    auto r = k.apply(kernel::Rule::TrueIntro, no_prem, prop_true());
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(std::get_if<PropTrue>(&r->prop().node));
+}
+
+TEST(KernelTest, TrueIntro_WrongConclusion) {
+    kernel::Kernel k;
+    Prop p{diag::SourceLocation{}, Atomic{"P"}};
+    std::vector<kernel::Judgment> no_prem;
+    auto r = k.apply(kernel::Rule::TrueIntro, no_prem, p);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, TrueIntro_WrongArity) {
+    kernel::Kernel k;
+    auto j = k.introduce_axiom(prop_true()); ASSERT_TRUE(j);
+    std::vector<kernel::Judgment> prem{*j};
+    auto r = k.apply(kernel::Rule::TrueIntro, prem, prop_true());
+    EXPECT_FALSE(r.has_value());
+}

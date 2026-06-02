@@ -2212,3 +2212,37 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+TEST(CheckerTest, TrueIntro_HaveStep) {
+    // ML1: "have ht : true by" (empty refs) uses TrueIntro
+    auto diag = run_checker("true_intro_have", R"(
+theorem t : true
+proof
+  have ht : true by
+  then true by ht
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, TrueIntro_ThenStep) {
+    // ML1: "then true" directly closes a true goal
+    auto diag = run_checker("true_intro_then", R"(
+theorem t : true
+proof
+  then true
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, TrueIntro_BareThen) {
+    // ML1: bare "then" with true goal
+    auto diag = run_checker("true_intro_bare_then", R"(
+theorem t : true
+proof
+  then
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}

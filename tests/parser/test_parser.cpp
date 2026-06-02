@@ -2338,6 +2338,22 @@ TEST(ParserTest, TupleType_SingleParenIsNotTuple) {
     EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(fa->type->node));
 }
 
+TEST(ParserTest, TruePropKeyword) {
+    // ML1: "true" parses as PropTrue{}
+    auto r = parse_str("axiom a : true");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* pt = std::get_if<ast::PropTrue>(&r.mod.decls[0]->statement.node);
+    EXPECT_NE(pt, nullptr);
+}
+
+TEST(ParserTest, TruePropUnicode) {
+    // ML1: ⊤ (E2 88 A4) parses as PropTrue{}
+    auto r = parse_str("axiom a : \xe2\x88\xa4");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* pt = std::get_if<ast::PropTrue>(&r.mod.decls[0]->statement.node);
+    EXPECT_NE(pt, nullptr);
+}
+
 TEST(ParserTest, DoubleNegation_Axiom) {
     // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
     auto r = parse_str("axiom dne : not (not P) -> P");
