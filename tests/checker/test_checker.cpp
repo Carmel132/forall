@@ -2449,3 +2449,24 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+TEST(CheckerTest, MultipleErrors_BothDeclarationsChecked) {
+    // IX2: checker should report errors from both declarations even when the
+    // first has parse-level errors — don't abort after first error.
+    auto diag = run_checker("multi_error", R"(
+theorem t1 : P
+proof
+  then Q
+end
+theorem t2 : Q
+proof
+  then P
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    // Both theorems should have conclusion errors, not just the first.
+    int error_count = 0;
+    for (const auto& d : diag.diagnostics())
+        if (d.severity == diag::Severity::Error) ++error_count;
+    EXPECT_GE(error_count, 2);
+}
