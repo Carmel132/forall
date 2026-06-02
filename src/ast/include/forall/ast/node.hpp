@@ -315,9 +315,14 @@ struct ExactStep {
     std::string hyp_ref;  // hypothesis name whose prop must equal the current goal
 };
 
+struct RewriteStep {
+    std::string hyp_ref;  // hypothesis name; must be PropRel{Eq}
+    bool        reverse;  // if true, rewrite rhs→lhs instead of lhs→rhs
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
-    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep
+    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep
 >;
 
 struct Step {
