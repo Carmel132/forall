@@ -673,6 +673,26 @@ std::optional<TypeNode> numeric_promote(const TypeNode& a, const TypeNode& b) {
     }
 }
 
+// Returns the numeric rank of a type (0=Nat, 1=Int, 2=Rat, 3=Real), or -1 if non-numeric.
+// Used by DT7 coercion checks.
+static int numeric_rank(const TypeNode& t) {
+    return std::visit([](const auto& n) -> int {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, TypeNat>)  return 0;
+        if constexpr (std::is_same_v<T, TypeInt>)  return 1;
+        if constexpr (std::is_same_v<T, TypeRat>)  return 2;
+        if constexpr (std::is_same_v<T, TypeReal>) return 3;
+        return -1;
+    }, t.node);
+}
+
+// Returns true if `from` can be coerced to `to` via the numeric tower
+// (widening only: Nat → Int → Rat → Real).
+static bool numeric_coercible(const TypeNode& from, const TypeNode& to) {
+    int rf = numeric_rank(from), rt = numeric_rank(to);
+    return rf >= 0 && rt >= 0 && rf <= rt;
+}
+
 } // anonymous namespace
 
 // Simplified type name for error messages (avoids dependency on pretty::to_string).
@@ -798,7 +818,10 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
             for (std::size_t i = 0; i < n.args.size(); ++i) {
                 auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
                 if (!arg_t) return arg_t;
-                if (!(*arg_t == *cur->domain))
+                // DT7: allow implicit numeric tower coercions (Nat → Int → Rat → Real).
+                const bool types_match = (*arg_t == *cur->domain)
+                    || numeric_coercible(*arg_t, *cur->domain);
+                if (!types_match)
                     return mismatch("type mismatch: argument " + std::to_string(i + 1)
                                     + " to '" + n.name + "' — expected "
                                     + type_name(*cur->domain) + " but got "
