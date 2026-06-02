@@ -2411,6 +2411,7 @@ ModuleResult check_module(const std::filesystem::path& path,
     HypEnv module_env;
     ast::FuncSigTable sig_table; // built from definition declarations with params
     InstanceTable instance_table; // populated from instance declarations
+    ast::StructEnv struct_env;    // populated from structure declarations (DT3)
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
@@ -2471,6 +2472,62 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Definition: {
+            // DT3: structure instantiation sub-case
+            if (!decl->struct_type.empty()) {
+                // Look up the structure definition.
+                auto sit = struct_env.find(decl->struct_type);
+                if (sit == struct_env.end()) {
+                    diag.emit({diag::Severity::Error, decl->loc,
+                               "unknown structure type '" + decl->struct_type + "'"});
+                    break;
+                }
+                const auto& fields = sit->second;
+                const auto& inst_name = decl->name;
+
+                // For each FieldTerm binding, register <inst>_<field> in sig_table
+                // so that type inference and future proofs can reference the fields.
+                // (DT4: minimal operator registration)
+                for (const auto& sf : fields) {
+                    if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
+                        auto bit = decl->struct_bindings.find(ft->name);
+                        if (bit == decl->struct_bindings.end()) continue;
+                        // Register in sig_table if it has a function type.
+                        if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                            sig_table[inst_name + "_" + ft->name] = *tf;
+                    }
+                }
+
+                // For each FieldAxiom, substitute field bindings then β-reduce,
+                // and register as <inst>_<axiom_name>.
+                for (const auto& sf : fields) {
+                    if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
+                        // Start with the axiom's prop and substitute all bindings.
+                        ast::Prop instantiated = fa->prop;
+                        for (const auto& sf2 : fields) {
+                            if (const auto* ft = std::get_if<ast::FieldTerm>(&sf2)) {
+                                auto bit = decl->struct_bindings.find(ft->name);
+                                if (bit == decl->struct_bindings.end()) continue;
+                                instantiated = ast::subst(instantiated, ft->name, *bit->second);
+                            }
+                        }
+                        // β-reduce after substitution.
+                        instantiated = ast::beta_reduce(instantiated);
+
+                        const std::string axiom_name = inst_name + "_" + fa->name;
+                        auto r = kernel.introduce_axiom(instantiated);
+                        if (!r)
+                            diag.emit({diag::Severity::Error, decl->loc,
+                                       "invalid instantiation axiom '" + axiom_name + "': "
+                                       + r.error().message});
+                        else
+                            module_env.insert_or_assign(axiom_name,
+                                                        HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                }
+                break;
+            }
+
+            // Normal definition
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             auto r = kernel.introduce_axiom(decl->statement);
             if (!r)
@@ -2499,6 +2556,8 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Structure: {
+            // Record the structure in the StructEnv for use by instantiations.
+            struct_env[decl->name] = decl->fields;
             // Register each FieldAxiom as "<StructName>_<fieldName>" in module_env.
             // FieldTerm fields describe the structure's signature; they do not produce axioms.
             for (const auto& field : decl->fields) {
@@ -2512,6 +2571,15 @@ ModuleResult check_module(const std::filesystem::path& path,
                     else
                         module_env.insert_or_assign(axiom_name,
                                                     HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            }
+            // Register each FieldTerm in the FuncSigTable so type inference
+            // can resolve calls to structure method names (DT4).
+            for (const auto& field : decl->fields) {
+                if (const auto* ft = std::get_if<ast::FieldTerm>(&field)) {
+                    // Only register if the field type is a function type.
+                    if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                        sig_table[decl->name + "_" + ft->name] = *tf;
                 }
             }
             break;
@@ -2551,6 +2619,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
     HypEnv module_env;
     ast::FuncSigTable sig_table;
     InstanceTable instance_table;
+    ast::StructEnv struct_env;
     std::set<std::filesystem::path> visited;
     if (!filename.empty())
         visited.insert(std::filesystem::weakly_canonical(file_path));
@@ -2574,12 +2643,18 @@ void Checker::check_content(const std::string& source, const std::string& filena
             break;
         }
         case ast::DeclKind::Structure: {
+            // Track structure in struct_env for instantiations.
+            struct_env[decl->name] = decl->fields;
             for (const auto& field : decl->fields) {
                 if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
                     const std::string axiom_name = decl->name + "_" + fa->name;
                     auto r = kernel.introduce_axiom(fa->prop);
                     if (r) module_env.insert_or_assign(axiom_name,
                                                         HypEntry{std::move(*r), EntryKind::Derived});
+                }
+                if (const auto* ft = std::get_if<ast::FieldTerm>(&field)) {
+                    if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                        sig_table[decl->name + "_" + ft->name] = *tf;
                 }
             }
             break;
@@ -2590,14 +2665,53 @@ void Checker::check_content(const std::string& source, const std::string& filena
         case ast::DeclKind::Lemma:
         case ast::DeclKind::Instance:
         default: {
-            // Re-use the same logic via a temporary single-decl module.
-            // Simplest: delegate to a shared helper. For now, inline the key ops.
-            // Axiom/Definition: introduce_axiom
-            if (decl->kind == ast::DeclKind::Axiom || decl->kind == ast::DeclKind::Definition) {
+            if (decl->kind == ast::DeclKind::Axiom) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
                 auto r = kernel.introduce_axiom(decl->statement);
                 if (r) module_env.insert_or_assign(decl->name,
                                                     HypEntry{std::move(*r), EntryKind::Derived});
+            } else if (decl->kind == ast::DeclKind::Definition) {
+                if (!decl->struct_type.empty()) {
+                    // DT3: structure instantiation
+                    auto sit = struct_env.find(decl->struct_type);
+                    if (sit == struct_env.end()) {
+                        diag_.emit({diag::Severity::Error, decl->loc,
+                                    "unknown structure type '" + decl->struct_type + "'"});
+                        break;
+                    }
+                    const auto& fields = sit->second;
+                    const auto& inst_name = decl->name;
+                    for (const auto& sf : fields) {
+                        if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
+                            auto bit = decl->struct_bindings.find(ft->name);
+                            if (bit == decl->struct_bindings.end()) continue;
+                            if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                                sig_table[inst_name + "_" + ft->name] = *tf;
+                        }
+                    }
+                    for (const auto& sf : fields) {
+                        if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
+                            ast::Prop instantiated = fa->prop;
+                            for (const auto& sf2 : fields) {
+                                if (const auto* ft = std::get_if<ast::FieldTerm>(&sf2)) {
+                                    auto bit = decl->struct_bindings.find(ft->name);
+                                    if (bit == decl->struct_bindings.end()) continue;
+                                    instantiated = ast::subst(instantiated, ft->name, *bit->second);
+                                }
+                            }
+                            instantiated = ast::beta_reduce(instantiated);
+                            const std::string axiom_name = inst_name + "_" + fa->name;
+                            auto r = kernel.introduce_axiom(instantiated);
+                            if (r) module_env.insert_or_assign(axiom_name,
+                                                               HypEntry{std::move(*r), EntryKind::Derived});
+                        }
+                    }
+                } else {
+                    check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                    auto r = kernel.introduce_axiom(decl->statement);
+                    if (r) module_env.insert_or_assign(decl->name,
+                                                        HypEntry{std::move(*r), EntryKind::Derived});
+                }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
                 check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table);
