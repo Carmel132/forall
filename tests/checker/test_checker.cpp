@@ -2490,6 +2490,20 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+TEST(CheckerTest, SufficesStep_Basic) {
+    // MS5: "suffices h : P" where h : P → goal already in scope — desugars to apply h
+    auto diag = run_checker("suffices_basic", R"(
+axiom h_impl : P -> Q
+axiom h_p : P
+theorem t : Q
+proof
+  suffices h_impl : P
+  then P by h_p
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 TEST(CheckerTest, MultipleErrors_BothDeclarationsChecked) {
     // IX2: checker should report errors from both declarations even when the
     // first has parse-level errors — don't abort after first error.

@@ -1319,6 +1319,28 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ApplyStep{std::move(ref)}};
     }
 
+    // suffices h : P — MS5: reduce goal to proving P, auto-searching for P → goal.
+    // "suffices" is context-sensitive (not a reserved keyword).
+    // Syntax: suffices <name> : <prop>
+    // Semantics: look for <name> : P → current_goal already in scope and apply it.
+    // This is essentially `apply <name>` where the user has already proved P → goal.
+    if (check(K::Identifier) && peek().lexeme == "suffices"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier) {
+        const auto loc = peek().loc;
+        advance(); // consume "suffices"
+        std::string name;
+        if (check(K::Identifier))
+            name = advance().lexeme;
+        // Consume optional ": P" (the prop is informational, not used by checker)
+        if (check(K::Colon)) {
+            advance();
+            parseProp(); // parse and discard — checker uses h's type
+        }
+        // Desugar to ApplyStep: the checker will verify h : P → current_goal
+        return {loc, ast::ApplyStep{std::move(name)}};
+    }
+
     // show P — goal annotation step (MS4)
     if (check(K::KwShow)) {
         const auto loc = peek().loc;
