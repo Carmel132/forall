@@ -2400,3 +2400,52 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+TEST(CheckerTest, Simp_AndElim) {
+    // MT2: simp proves P from P and Q via AndElimL
+    auto diag = run_checker("simp_and_elim", R"(
+axiom pq : P and Q
+theorem t : P
+proof
+  then P by simp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Simp_Assumption) {
+    // MT2: simp closes goal when goal is directly in scope
+    auto diag = run_checker("simp_assumption", R"(
+axiom ax : P
+theorem t : P
+proof
+  then P by simp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Simp_ImplElim) {
+    // MT2: simp closes goal via ImplElim (modus ponens)
+    auto diag = run_checker("simp_impl_elim", R"(
+axiom h_impl : P -> Q
+axiom h_p : P
+theorem t : Q
+proof
+  then Q by simp
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Simp_NoProof_Error) {
+    // MT2: simp fails when no derivation exists
+    auto diag = run_checker("simp_fail", R"(
+axiom ax : Q
+theorem t : P
+proof
+  then P by simp
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
