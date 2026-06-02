@@ -1,0 +1,28 @@
+-- Basic function axioms.
+--
+-- Functions are treated as first-class terms.
+-- Injectivity, surjectivity, and bijectivity are defined as propositions.
+-- The identity function id and composition ∘ are axiomatised here.
+
+-- ── Identity function ────────────────────────────────────────────────────────
+axiom id_def : for all x : Nat, id(x) = x
+
+-- ── Composition associativity ────────────────────────────────────────────────
+axiom compose_assoc : (f compose g) compose h = f compose (g compose h)
+
+-- Identity is a left and right unit for composition
+axiom compose_id_left  : id compose f = f
+axiom compose_id_right : f compose id = f
+
+-- ── Injectivity ──────────────────────────────────────────────────────────────
+axiom injective_def : Injective(f) iff (for all x : Nat, for all y : Nat, f(x) = f(y) implies x = y)
+
+-- ── Surjectivity ─────────────────────────────────────────────────────────────
+axiom surjective_def : Surjective(f) iff (for all y : Nat, there exists x : Nat, f(x) = y)
+
+-- ── Bijectivity ──────────────────────────────────────────────────────────────
+axiom bijective_def : Bijective(f) iff (Injective(f) and Surjective(f))
+
+-- ── Inverse ──────────────────────────────────────────────────────────────────
+axiom inverse_left  : Bijective(f) implies (inv f) compose f = id
+axiom inverse_right : Bijective(f) implies f compose (inv f) = id
