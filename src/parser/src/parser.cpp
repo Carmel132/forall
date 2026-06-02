@@ -457,6 +457,29 @@ ast::Prop Parser::parseQuantifier() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
 
+    // PB3: bounded binder — "∀ i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)".
+    // Only valid for a single variable; checked before the multi-var loop.
+    if (vars.size() == 1) {
+        if (auto rel = as_rel_op(peek().kind); rel.has_value()) {
+            advance(); // consume relational operator
+            auto bound = parseExpr();
+            expect(lexer::TokenKind::Comma, "expected ',' after bounded binder");
+            auto body = parseProp();
+            // Desugar: wrap body as "var rel bound → body"
+            const std::string& var = vars[0];
+            auto var_expr = ast::make_expr({loc, ast::ExprVar{var}});
+            auto bound_expr = ast::make_expr(std::move(bound));
+            auto guard = ast::make_prop({loc, ast::PropRel{var_expr, bound_expr, *rel}});
+            auto impl_body = ast::make_prop(
+                {loc, ast::PropImpl{std::move(guard), ast::make_prop(std::move(body))}});
+            ast::TypeNode nat_type = ast::type_nat();
+            ast::Prop p{loc, is_forall
+                ? ast::PropNode{ast::PropForall{var, std::move(nat_type), std::move(impl_body)}}
+                : ast::PropNode{ast::PropExists{var, std::move(nat_type), std::move(impl_body)}}};
+            mark_end(p); return p;
+        }
+    }
+
     // Additional variables: either a bare identifier (space-separated) or "and <id>".
     while (true) {
         if (check(lexer::TokenKind::And) &&
