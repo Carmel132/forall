@@ -242,8 +242,9 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
     case ast::DeclKind::Lemma:
     case ast::DeclKind::Theorem: {
         const char* kw = (decl.kind == ast::DeclKind::Lemma) ? "lemma" : "theorem";
-        std::string r = std::string{kw} + " " + decl.name + " : "
-                        + to_string(decl.statement) + "\n";
+        std::string r = std::string{kw} + " " + decl.name
+                        + format_params(decl.params)
+                        + " : " + to_string(decl.statement) + "\n";
         r += "proof\n";
         if (decl.proof)
             r += format_steps(decl.proof->steps, "  ");
