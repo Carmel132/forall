@@ -462,3 +462,200 @@ TEST(InferType, ExprAbs_NumericOperand_Propagates) {
     auto e = Expr{diag::SourceLocation{}, ExprAbs{make_expr(evar("x"))}};
     EXPECT_EQ(*infer_type(e, env), type_real());
 }
+
+// ── beta_reduce tests ─────────────────────────────────────────────────────────
+
+// Helper: build ExprApp{func, args}
+static Expr eapp(Expr func, std::vector<Expr> args) {
+    std::vector<ExprPtr> ptrs;
+    ptrs.reserve(args.size());
+    for (auto& a : args) ptrs.push_back(make_expr(std::move(a)));
+    return {diag::SourceLocation{}, ExprApp{make_expr(std::move(func)), std::move(ptrs)}};
+}
+
+// Helper: build ExprCall{name, args}
+static Expr ecall(std::string name, std::vector<Expr> args) {
+    std::vector<ExprPtr> ptrs;
+    ptrs.reserve(args.size());
+    for (auto& a : args) ptrs.push_back(make_expr(std::move(a)));
+    return {diag::SourceLocation{}, ExprCall{std::move(name), std::move(ptrs)}};
+}
+
+TEST(BetaReduce, AlreadyNormal_Lit) {
+    // A literal has no redexes.
+    EXPECT_EQ(beta_reduce(elit("42")), elit("42"));
+}
+
+TEST(BetaReduce, AlreadyNormal_Var) {
+    EXPECT_EQ(beta_reduce(evar("x")), evar("x"));
+}
+
+TEST(BetaReduce, IdentityApp_ReducesToArg) {
+    // ExprApp{fun x => x, [42]}  →  42
+    Expr redex = eapp(elambda("x", evar("x")), {elit("42")});
+    EXPECT_EQ(beta_reduce(redex), elit("42"));
+}
+
+TEST(BetaReduce, ConstantApp_ReducesToConstant) {
+    // ExprApp{fun x => 1, [42]}  →  1
+    Expr redex = eapp(elambda("x", elit("1")), {elit("42")});
+    EXPECT_EQ(beta_reduce(redex), elit("1"));
+}
+
+TEST(BetaReduce, AddOneApp_SubstitutesArg) {
+    // ExprApp{fun x => x + 1, [5]}  →  5 + 1
+    Expr lam = elambda("x", ebin(BinOp::Add, evar("x"), elit("1")));
+    Expr redex = eapp(lam, {elit("5")});
+    Expr expected = ebin(BinOp::Add, elit("5"), elit("1"));
+    EXPECT_EQ(beta_reduce(redex), expected);
+}
+
+TEST(BetaReduce, CurriedApp_TwoArgs) {
+    // ExprApp{fun x => fun y => x + y, [3, 4]}
+    // After first reduction: ExprApp{fun y => 3 + y, [4]}
+    // After second reduction: 3 + 4
+    Expr inner_lam = elambda("y", ebin(BinOp::Add, evar("x"), evar("y")));
+    Expr outer_lam = elambda("x", inner_lam);
+    Expr redex = eapp(outer_lam, {elit("3"), elit("4")});
+    Expr expected = ebin(BinOp::Add, elit("3"), elit("4"));
+    EXPECT_EQ(beta_reduce(redex), expected);
+}
+
+TEST(BetaReduce, NoRedex_ExprApp_NonLambdaFunc) {
+    // ExprApp{x, [42]}  — x is not a lambda; leave as ExprApp
+    Expr app = eapp(evar("x"), {elit("42")});
+    Expr reduced = beta_reduce(app);
+    const auto* a = std::get_if<ExprApp>(&reduced.node);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(*a->func, evar("x"));
+}
+
+TEST(BetaReduce, NestedRedex_ReducesBoth) {
+    // ExprApp{fun x => ExprApp{fun y => y, [x]}, [5]}
+    // Step 1: substitute x=5: ExprApp{fun y => y, [5]}
+    // Step 2: substitute y=5: 5
+    Expr inner_redex = eapp(elambda("y", evar("y")), {evar("x")});
+    Expr outer_lam   = elambda("x", inner_redex);
+    Expr full_redex  = eapp(outer_lam, {elit("5")});
+    EXPECT_EQ(beta_reduce(full_redex), elit("5"));
+}
+
+// TR1 via subst: when subst replaces a function-position variable with a lambda,
+// the resulting ExprApp is a beta-redex that beta_reduce collapses.
+TEST(BetaReduce, SubstCreatesExprApp_ThenReduces) {
+    // Expr: f(3)  →  ExprCall{"f", [3]}
+    // Replacement for "f": fun x => x + 1
+    // subst_expr produces ExprApp{fun x => x + 1, [3]}
+    // beta_reduce collapses it to 3 + 1
+    Expr call_f3 = ecall("f", {elit("3")});
+    Expr lam = elambda("x", ebin(BinOp::Add, evar("x"), elit("1")));
+    Expr after_subst = subst(call_f3, "f", lam);
+    // After subst, the node should be ExprApp (lambda applied to [3])
+    ASSERT_TRUE(std::holds_alternative<ExprApp>(after_subst.node));
+    Expr reduced = beta_reduce(after_subst);
+    Expr expected = ebin(BinOp::Add, elit("3"), elit("1"));
+    EXPECT_EQ(reduced, expected);
+}
+
+// ── beta_reduce(Prop) tests ───────────────────────────────────────────────────
+
+TEST(BetaReduceProp, PropRelReducesExprs) {
+    // PropRel: ExprApp{fun x => x + 1, [3]} > 0
+    // After beta_reduce(Prop): (3 + 1) > 0
+    Expr lam = elambda("x", ebin(BinOp::Add, evar("x"), elit("1")));
+    Expr redex = eapp(lam, {elit("3")});
+    Prop p = prel(redex, RelOp::Gt, elit("0"));
+    Prop reduced = beta_reduce(p);
+    const auto* rel = std::get_if<PropRel>(&reduced.node);
+    ASSERT_NE(rel, nullptr);
+    Expr expected_lhs = ebin(BinOp::Add, elit("3"), elit("1"));
+    EXPECT_EQ(*rel->lhs, expected_lhs);
+}
+
+TEST(BetaReduceProp, AtomUnchanged) {
+    Prop p{{}, Atomic{"P"}};
+    EXPECT_EQ(beta_reduce(p), p);
+}
+
+// ── eta_reduce tests ──────────────────────────────────────────────────────────
+
+TEST(EtaReduce, AlreadyNormal_NoEta) {
+    // fun x => x + 1  — body is not a call ending in x; no eta
+    Expr e = elambda("x", ebin(BinOp::Add, evar("x"), elit("1")));
+    EXPECT_EQ(eta_reduce(e), e);
+}
+
+TEST(EtaReduce, SingleArgCall_Reduces) {
+    // fun x => f(x)  where f is a distinct name  →  ExprVar{"f"}
+    Expr e = elambda("x", ecall("f", {evar("x")}));
+    Expr reduced = eta_reduce(e);
+    const auto* v = std::get_if<ExprVar>(&reduced.node);
+    ASSERT_NE(v, nullptr);
+    EXPECT_EQ(v->name, "f");
+}
+
+TEST(EtaReduce, MultiArgCall_DropsLastArg) {
+    // fun x => g(a, x)  →  g(a)  (provided x not free in g(a))
+    Expr e = elambda("x", ecall("g", {evar("a"), evar("x")}));
+    Expr reduced = eta_reduce(e);
+    const auto* call = std::get_if<ExprCall>(&reduced.node);
+    ASSERT_NE(call, nullptr);
+    EXPECT_EQ(call->name, "g");
+    ASSERT_EQ(call->args.size(), 1u);
+    EXPECT_EQ(*call->args[0], evar("a"));
+}
+
+TEST(EtaReduce, NoEta_LastArgNotVar) {
+    // fun x => f(1)  — last arg is not ExprVar{x}; no eta
+    Expr e = elambda("x", ecall("f", {elit("1")}));
+    Expr reduced = eta_reduce(e);
+    // Should still be a lambda
+    EXPECT_TRUE(std::holds_alternative<ExprLambda>(reduced.node));
+}
+
+TEST(EtaReduce, NoEta_XFreeInRemainingArgs) {
+    // fun x => g(x, x)  — last arg is ExprVar{x} but x is also free in g(x)
+    Expr e = elambda("x", ecall("g", {evar("x"), evar("x")}));
+    Expr reduced = eta_reduce(e);
+    // Cannot eta-reduce because x is free in g(x)
+    EXPECT_TRUE(std::holds_alternative<ExprLambda>(reduced.node));
+}
+
+// ── defn_eq tests ─────────────────────────────────────────────────────────────
+
+TEST(DefnEq, StructurallyEqual_IsTrue) {
+    EXPECT_TRUE(defn_eq(evar("x"), evar("x")));
+    EXPECT_TRUE(defn_eq(elit("42"), elit("42")));
+}
+
+TEST(DefnEq, StructurallyUnequal_IsFalse) {
+    EXPECT_FALSE(defn_eq(evar("x"), evar("y")));
+}
+
+TEST(DefnEq, BetaRedexEqualsReducedForm) {
+    // ExprApp{fun x => x + 1, [3]}  defn_eq  3 + 1
+    Expr redex = eapp(elambda("x", ebin(BinOp::Add, evar("x"), elit("1"))), {elit("3")});
+    Expr normal = ebin(BinOp::Add, elit("3"), elit("1"));
+    EXPECT_TRUE(defn_eq(redex, normal));
+}
+
+TEST(DefnEq, EtaExpandedEqualsOriginal) {
+    // fun x => f(x)  defn_eq  ExprVar{"f"}
+    Expr eta_expanded = elambda("x", ecall("f", {evar("x")}));
+    Expr original = evar("f");
+    EXPECT_TRUE(defn_eq(eta_expanded, original));
+}
+
+TEST(DefnEq, PropDefnEq_Atomic) {
+    Prop p{{}, Atomic{"P"}};
+    EXPECT_TRUE(defn_eq(p, p));
+}
+
+TEST(DefnEq, PropDefnEq_BetaInRel) {
+    // PropRel with beta-redex on lhs vs. already-reduced form
+    Expr redex = eapp(elambda("x", ebin(BinOp::Add, evar("x"), elit("1"))), {elit("3")});
+    Expr normal = ebin(BinOp::Add, elit("3"), elit("1"));
+    Prop p_redex = prel(redex,  RelOp::Gt, elit("0"));
+    Prop p_normal = prel(normal, RelOp::Gt, elit("0"));
+    EXPECT_TRUE(defn_eq(p_redex, p_normal));
+}

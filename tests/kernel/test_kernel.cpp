@@ -484,3 +484,70 @@ TEST(KernelTest, TrueIntro_WrongArity) {
     auto r = k.apply(kernel::Rule::TrueIntro, prem, prop_true());
     EXPECT_FALSE(r.has_value());
 }
+
+// ── ForallElim with lambda witness (TR1/TR4 integration) ─────────────────────
+//
+// This test verifies that definitional equality (beta-reduction) allows
+// ForallElim to succeed when the witness is a lambda expression.
+//
+// Proof structure:
+//   axiom:       ∀ f : Nat→Nat, f(0) = 0
+//   witness:     fun x => x    (identity function)
+//   conclusion:  (fun x => x)(0) = 0
+//
+// After subst(f(0) = 0, f, fun x => x), the expected proposition is:
+//   ExprApp{fun x => x, [0]} = 0
+// which is definitionally equal (via beta) to:
+//   0 = 0
+//
+// The conclusion stated is 0 = 0, so defn_eq must accept it.
+
+TEST(KernelTest, ForallElim_LambdaWitness_BetaReduces) {
+    kernel::Kernel k;
+
+    // Axiom: ∀ f, f(0) = 0
+    // The body is: f(0) = 0, i.e. PropRel{ExprCall{"f",[0]}, Eq, ExprLit{"0"}}
+    Prop body = prop_rel(
+        Expr{{}, ExprCall{"f", {make_expr(elit("0"))}}},
+        RelOp::Eq,
+        elit("0"));
+    Prop forall_prop = prop_forall("f", body);
+    auto j_forall = k.introduce_axiom(forall_prop);
+    ASSERT_TRUE(j_forall.has_value());
+
+    // Witness: fun x => x  (identity lambda)
+    Expr identity = Expr{{}, ExprLambda{"x", std::nullopt, make_expr(evar("x"))}};
+
+    // Conclusion: 0 = 0
+    // This is beta_reduce(subst(f(0)=0, f, fun x => x))
+    //   = beta_reduce(ExprApp{fun x=>x,[0]} = 0)
+    //   = (0 = 0)
+    Prop conclusion = prop_rel(elit("0"), RelOp::Eq, elit("0"));
+
+    std::vector<kernel::Judgment> prem{*j_forall};
+    auto result = k.apply(kernel::Rule::ForallElim, prem, conclusion, &identity);
+    ASSERT_TRUE(result.has_value()) << (result.has_value() ? "" : result.error().message);
+    EXPECT_EQ(result->prop(), conclusion);
+}
+
+TEST(KernelTest, ForallElim_LambdaWitness_WrongConclusion) {
+    // Same axiom but stating wrong conclusion 1 = 0 — must fail.
+    kernel::Kernel k;
+
+    Prop body = prop_rel(
+        Expr{{}, ExprCall{"f", {make_expr(elit("0"))}}},
+        RelOp::Eq,
+        elit("0"));
+    Prop forall_prop = prop_forall("f", body);
+    auto j_forall = k.introduce_axiom(forall_prop);
+    ASSERT_TRUE(j_forall.has_value());
+
+    Expr identity = Expr{{}, ExprLambda{"x", std::nullopt, make_expr(evar("x"))}};
+
+    // Wrong conclusion: 1 = 0 instead of 0 = 0
+    Prop wrong_conclusion = prop_rel(elit("1"), RelOp::Eq, elit("0"));
+
+    std::vector<kernel::Judgment> prem{*j_forall};
+    auto result = k.apply(kernel::Rule::ForallElim, prem, wrong_conclusion, &identity);
+    EXPECT_FALSE(result.has_value());
+}
