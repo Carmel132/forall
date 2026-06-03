@@ -848,6 +848,11 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__linarith__");
         return refs;
     }
+    if (check(lexer::TokenKind::KwOmega)) {
+        advance();
+        refs.push_back("__omega__");
+        return refs;
+    }
     if (check(lexer::TokenKind::KwSimp)) {
         advance();
         refs.push_back("__simp__");
