@@ -379,10 +379,33 @@ struct CalcStep {
     std::vector<CalcLink>    links;  // at least 1 link
 };
 
+// ── split block (NL2) ─────────────────────────────────────────────────────────
+//
+// split [name :]
+//   case left  => <steps...> then P
+//   case right => <steps...> then Q
+//
+// Decomposes a conjunction goal P ∧ Q into two sub-proofs.
+// For biconditionals (desugared to (P→Q) ∧ (Q→P)):
+//   case (->) => ... then P → Q
+//   case (<-) => ... then Q → P
+// Combines the two judgments with AndIntro.
+// The result is stored under `name` (or a fresh label if name is empty).
+
+struct SplitArm {
+    std::string                        label; // "left", "right", "(->)", "(<-)", etc.
+    std::vector<std::unique_ptr<Step>> steps;
+};
+
+struct SplitStep {
+    std::string              name;  // optional result label (empty → fresh)
+    std::vector<SplitArm>    arms;
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
     CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep,
-    CalcStep
+    CalcStep, SplitStep
 >;
 
 struct Step {
