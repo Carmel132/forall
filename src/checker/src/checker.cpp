@@ -1859,8 +1859,64 @@ void check_proof(const ast::Decl& decl,
     // a broken proof are more noise than signal.
     if (!had_step_errors) {
         if (last_kind == LastKind::None) {
-            diag.emit({diag::Severity::Error, decl.loc,
-                       "proof of '" + decl.name + "' has no concluding 'then' step"});
+            // NL3: auto-close at end/qed when goal is A → B or ¬A and the required
+            // pieces (Assumption of the antecedent + Derived of the consequent) are
+            // already in scope.  This lets the user omit the explicit "then A → B".
+            if (const auto* im = std::get_if<ast::PropImpl>(&current_goal->node)) {
+                // Find Assumption of A
+                const HypEntry* assump = nullptr;
+                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                    if (e.judgment.prop() == *im->lhs) assump = &e;
+                });
+                const HypEntry* conseq = assump ? env.find_derived(*im->rhs) : nullptr;
+                if (assump && conseq) {
+                    // Synthesize ImplIntro
+                    auto r = kernel.apply(kernel::Rule::ImplIntro,
+                                          std::span<const kernel::Judgment>{&conseq->judgment, 1},
+                                          *current_goal);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, decl.loc,
+                                   "proof of '" + decl.name
+                                   + "': auto-close ImplIntro failed: " + r.error().message});
+                    }
+                    // auto-close succeeded — no error
+                } else {
+                    diag.emit({diag::Severity::Error, decl.loc,
+                               "proof of '" + decl.name
+                               + "' has no concluding step "
+                               "(auto-discharge of '\xe2\x86\x92' failed: "
+                               "missing assumption or consequent)"});
+                }
+            } else if (const auto* neg = std::get_if<ast::PropNot>(&current_goal->node)) {
+                // Find Assumption of A and Derived of ⊥
+                const HypEntry* assump = nullptr;
+                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                    if (e.judgment.prop() == *neg->inner) assump = &e;
+                });
+                ast::Prop false_prop{decl.loc, ast::PropFalse{}};
+                const HypEntry* bot = assump ? env.find_derived(false_prop) : nullptr;
+                if (assump && bot) {
+                    // Synthesize NotIntro
+                    auto r = kernel.apply(kernel::Rule::NotIntro,
+                                          std::span<const kernel::Judgment>{&bot->judgment, 1},
+                                          *current_goal);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, decl.loc,
+                                   "proof of '" + decl.name
+                                   + "': auto-close NotIntro failed: " + r.error().message});
+                    }
+                    // auto-close succeeded — no error
+                } else {
+                    diag.emit({diag::Severity::Error, decl.loc,
+                               "proof of '" + decl.name
+                               + "' has no concluding step "
+                               "(auto-discharge of '\xc2\xac' failed: "
+                               "missing assumption or proof of false)"});
+                }
+            } else {
+                diag.emit({diag::Severity::Error, decl.loc,
+                           "proof of '" + decl.name + "' has no concluding 'then' step"});
+            }
         } else if (last_kind == LastKind::Then) {
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
             // RL4: __qed__ sentinel substitutes current goal — skip prop check.
