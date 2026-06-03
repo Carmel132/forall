@@ -42,6 +42,7 @@ private:
     [[nodiscard]] ast::Step       parseContradictionStep();
     [[nodiscard]] ast::Step       parseCasesStep();
     [[nodiscard]] ast::Step       parseInductionStep();
+    [[nodiscard]] ast::Step       parseCalcStep();
 
     // Expressions (arithmetic, precedence climbing)
     // Grammar:  expr      = lambda | condExpr | aggregate | exprAdd

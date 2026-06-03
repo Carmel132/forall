@@ -1334,6 +1334,7 @@ ast::Step Parser::parseThenStep() {
             case K::KwContradiction: case K::KwCases: case K::KwLet:
             case K::KwTake: case K::KwObtain: case K::KwInduction:
             case K::KwShow: case K::KwExact: case K::KwRewrite:
+            case K::KwCalc:
                 return true;
             default:
                 return false;
@@ -1521,6 +1522,88 @@ ast::Step Parser::parseInductionStep() {
                                     std::move(base_steps), std::move(ind_steps)}};
 }
 
+// Helper: is the current token a relational operator that can start a calc link?
+static bool is_rel_op_token(lexer::TokenKind k) {
+    switch (k) {
+        case lexer::TokenKind::Less:
+        case lexer::TokenKind::Greater:
+        case lexer::TokenKind::LessEq:
+        case lexer::TokenKind::GreaterEq:
+        case lexer::TokenKind::Equals:
+        case lexer::TokenKind::NotEq:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// calc [<name> :] <lhs> <rel> <rhs> by <refs>
+//   { <rel> <rhs> by <refs> }
+//
+// The optional result label is detected by two-token lookahead:
+// if the next two tokens are Identifier Colon (and the token after Colon is NOT
+// a relational op, which would mean "name : rel" is unlikely), treat the
+// identifier as the result label.  To distinguish "calc result : a = b by h"
+// from "calc a = b by h", we look for the pattern:
+//   KwCalc  Identifier  Colon  <not a rel-op>   → labelled form
+//   KwCalc  Identifier  <rel-op>                → unlabelled form (lhs is identifier)
+ast::Step Parser::parseCalcStep() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "calc"
+
+    // Optional result label: "calc name :" if the token after "calc" is an
+    // Identifier, the token after that is Colon, and the token after Colon is
+    // NOT itself a relational operator (which would mean the identifier is the lhs).
+    std::string name;
+    if (check(K::Identifier)
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Colon
+            && pos_ + 2 < tokens_.size()
+            && !is_rel_op_token(tokens_[pos_ + 2].kind)) {
+        name = std::string{advance().lexeme}; // consume label name
+        advance();                            // consume ':'
+    }
+
+    // Parse the LHS of the first link.
+    auto lhs = parseExpr();
+
+    // Parse the first link: rel rhs by refs
+    if (!is_rel_op_token(peek().kind)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected relational operator after calc LHS"});
+        return {loc, ast::CalcStep{std::move(name),
+                                   ast::make_expr(std::move(lhs)), {}}};
+    }
+
+    std::vector<ast::CalcLink> links;
+
+    // Parse links in a loop
+    while (is_rel_op_token(peek().kind)) {
+        auto rel_opt = as_rel_op(peek().kind);
+        advance(); // consume the rel-op token
+        auto rhs = parseExpr();
+        std::vector<std::string> refs;
+        if (check(K::KwBy)) {
+            advance();
+            refs = parseJustification();
+        } else {
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected 'by' after calc link rhs"});
+        }
+        links.push_back(ast::CalcLink{*rel_opt, ast::make_expr(std::move(rhs)),
+                                      std::move(refs)});
+    }
+
+    if (links.empty()) {
+        diag_.emit({diag::Severity::Error, loc,
+                    "'calc' block requires at least one relational link"});
+    }
+
+    return {loc, ast::CalcStep{std::move(name),
+                               ast::make_expr(std::move(lhs)), std::move(links)}};
+}
+
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
 
@@ -1601,6 +1684,7 @@ ast::Step Parser::parseStep() {
     }
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
+    if (check(K::KwCalc))         return parseCalcStep();
     if (check(K::KwInduction))    return parseInductionStep();
 
     // rewrite [←/<-] h — equality rewriting step (MS1)
