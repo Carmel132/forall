@@ -473,6 +473,7 @@ struct CheckContext {
     const ast::FuncSigTable&                     sigs;         // function signatures
     const ast::Prop*                             goal;         // theorem statement (for RL4 __qed__ sentinel)
     const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // TR3: let x = expr bindings
+    const ast::StructEnv*                        struct_env{nullptr}; // NL11: for sub-proof injection
 };
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
@@ -1206,10 +1207,67 @@ bool check_step(const ast::Step& step,
         }
 
         // have <name> : <prop> by <refs> [at <expr>]
+        // have <name> : <prop> proof ... end  (NL11: inline sub-proof)
         // RL2: name may be "_" for an anonymous step — assign a fresh internal name.
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
             const ast::Prop prop = apply_tdefs(s.prop);
             const std::string step_name = (s.name == "_") ? fresh_name() : s.name;
+
+            // NL11: inline sub-proof block — check recursively with prop as goal.
+            if (s.sub_proof) {
+                // Run the sub-block in a child scope seeded from the current scope.
+                // All outer hypotheses are visible; sub-proof-local steps stay local.
+                ScopeStack sub_env{};
+                env.for_each([&](const std::string& n, const HypEntry& e) {
+                    sub_env.insert_or_assign(n, e);
+                });
+
+                const auto snap = diag.diagnostics().size();
+                bool sub_had_errors = false;
+                const ast::Step* sub_last_then = nullptr;
+                std::map<std::string, ast::ExprPtr> sub_term_defs;
+
+                for (const auto& sub_step : s.sub_proof->steps) {
+                    // Handle LetStep term definitions inline.
+                    if (const auto* ls = std::get_if<ast::LetStep>(&sub_step.node)) {
+                        if (ls->definition) sub_term_defs[ls->var] = *ls->definition;
+                        continue;
+                    }
+                    CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
+                                        ctx.sigs, &prop, &sub_term_defs, ctx.struct_env};
+                    const auto before = diag.diagnostics().size();
+                    check_step(sub_step, sub_env, kernel, diag, sub_ctx);
+                    const auto& all2 = diag.diagnostics();
+                    for (auto i = before; i < all2.size(); ++i)
+                        if (all2[i].severity == diag::Severity::Error)
+                            { sub_had_errors = true; break; }
+                    if (std::get_if<ast::ThenStep>(&sub_step.node))
+                        sub_last_then = &sub_step;
+                }
+
+                if (!sub_had_errors) {
+                    if (!sub_last_then) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "inline proof for '" + step_name
+                                   + "' has no concluding 'then' step"});
+                        return false;
+                    }
+                    const auto& ts = std::get<ast::ThenStep>(sub_last_then->node);
+                    if (!(ts.prop == prop)) {
+                        diag.emit({diag::Severity::Error, sub_last_then->loc,
+                                   "inline proof concludes '" + forall::pretty::to_string(ts.prop)
+                                   + "' but goal is '"
+                                   + forall::pretty::to_string(prop) + "'"});
+                        return false;
+                    }
+                    auto r = kernel.introduce_axiom(prop);
+                    if (r)
+                        env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                    return true;
+                }
+                return false;
+            }
+
             // "by decide" — evaluate numerically; no refs needed
             if (s.justification.size() == 1 && s.justification[0] == "__decide__") {
                 const auto* rel = std::get_if<ast::PropRel>(&prop.node);
@@ -2083,7 +2141,7 @@ void check_proof(const ast::Decl& decl,
             continue; // goal transformation only
         }
 
-        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs};
+        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
