@@ -3100,3 +3100,56 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── NL11: inline have sub-proofs ───────────────────────────────────────────────
+
+TEST(CheckerTest, NL11_HaveSubProofPasses) {
+    auto diag = run_checker("nl11_basic", R"(
+axiom ha : P
+axiom hb : Q
+theorem t : P and Q
+proof
+  have combined : P and Q
+  proof
+    suppose hp : P
+    suppose hq : Q
+    then P and Q by hp and hq
+  end
+  then P and Q by combined
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL11_HaveSubProofOuterScopeVisible) {
+    // Outer hypothesis ha should be visible inside the sub-proof.
+    auto diag = run_checker("nl11_scope", R"(
+axiom ha : P
+theorem t : P and Q
+proof
+  suppose hq : Q
+  have paq : P and Q
+  proof
+    then P and Q by ha and hq
+  end
+  then P and Q by paq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL11_HaveSubProofWrongConclusionErrors) {
+    auto diag = run_checker("nl11_wrong_conc", R"(
+axiom ha : P
+axiom hb : Q
+theorem t : P and Q
+proof
+  have combined : P and Q
+  proof
+    then Q by hb
+  end
+  then P and Q by combined
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

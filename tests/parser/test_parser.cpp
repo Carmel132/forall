@@ -3102,3 +3102,57 @@ end
     EXPECT_EQ(ss->name, "conj");
     ASSERT_EQ(ss->arms.size(), 2u);
 }
+
+// ── NL11: inline have sub-proofs ───────────────────────────────────────────────
+
+TEST(ParserTest, NL11_HaveSubProofBasic) {
+    auto r = parse_str(R"(
+theorem t : P and Q
+proof
+  have h : P
+  proof
+    suppose hp : P
+    then P by hp
+  end
+  suppose hq : Q
+  then P and Q by h and hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    const auto* hs = get_step<HaveStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(hs, nullptr);
+    EXPECT_EQ(hs->name, "h");
+    ASSERT_NE(hs->sub_proof, nullptr);
+    EXPECT_EQ(hs->sub_proof->steps.size(), 2u);
+    EXPECT_TRUE(hs->justification.empty());
+}
+
+TEST(ParserTest, NL11_HaveSubProofNested) {
+    // Inner sub-proof itself contains a have step with a sub-proof.
+    auto r = parse_str(R"(
+theorem t : P
+proof
+  have outer : P
+  proof
+    have inner : P
+    proof
+      suppose hp : P
+      then P by hp
+    end
+    then P by inner
+  end
+  then P by outer
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    const auto* hs_outer = get_step<HaveStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(hs_outer, nullptr);
+    ASSERT_NE(hs_outer->sub_proof, nullptr);
+    // First step of the outer sub-proof should be another HaveStep with its own sub-proof.
+    ASSERT_FALSE(hs_outer->sub_proof->steps.empty());
+    const auto* hs_inner = std::get_if<HaveStep>(&hs_outer->sub_proof->steps[0].node);
+    ASSERT_NE(hs_inner, nullptr);
+    ASSERT_NE(hs_inner->sub_proof, nullptr);
+}
