@@ -1843,6 +1843,29 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ApplyStep{std::move(ref)}};
     }
 
+    // push neg [at h] — push negations inward (DP5)
+    // "push" is context-sensitive; the two-word sequence "push neg" is the step.
+    // Syntax:  push neg           → apply to the current goal
+    //          push neg at h      → apply to hypothesis h in scope
+    if (check(K::Identifier) && peek().lexeme == "push"
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme == "neg") {
+        const auto loc = peek().loc;
+        advance(); // consume "push"
+        advance(); // consume "neg"
+        std::optional<std::string> hyp;
+        if (check(K::KwAt)) {
+            advance(); // consume "at"
+            if (check(K::Identifier))
+                hyp = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected hypothesis name after 'push neg at'"});
+        }
+        return {loc, ast::PushNegStep{std::move(hyp)}};
+    }
+
     // suffices h : P — MS5: reduce goal to proving P, auto-searching for P → goal.
     // "suffices" is context-sensitive (not a reserved keyword).
     // Syntax: suffices <name> : <prop>
