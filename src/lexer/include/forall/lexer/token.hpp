@@ -42,6 +42,7 @@ enum class TokenKind {
 
     // Proof-step tactic keywords
     KwCalc,                          // "calc"
+    KwSplit,                         // "split"
     KwCase, KwCases, KwOn,
     KwInduction,                // "induction"
     KwShow,                     // "show"   (goal annotation step)

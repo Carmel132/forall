@@ -249,6 +249,7 @@ Token Lexer::nextToken() {
             {"not",          TokenKind::Not},
             // Misc
             {"calc",         TokenKind::KwCalc},
+            {"split",        TokenKind::KwSplit},
             {"case",         TokenKind::KwCase},
             {"cases",        TokenKind::KwCases},
             {"on",           TokenKind::KwOn},
