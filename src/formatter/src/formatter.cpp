@@ -194,6 +194,10 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return r;
         }
 
+        if constexpr (std::is_same_v<T, ast::WlogStep>) {
+            return indent + "wlog " + s.name + " : " + to_string(s.prop);
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
