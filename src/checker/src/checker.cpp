@@ -1862,6 +1862,23 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
+        // wlog <name> : <prop>  (NL14)
+        // Introduces prop as an Assumption in scope with a warning that the
+        // side obligation (the general case follows from this case) is unverified.
+        else if constexpr (std::is_same_v<T, ast::WlogStep>) {
+            diag.emit({diag::Severity::Warning, step.loc,
+                       "wlog: side obligation (general case from '"
+                       + s.name + "' case) not verified"});
+            auto r = kernel.introduce_axiom(s.prop);
+            if (!r) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "wlog: internal error: " + r.error().message});
+                return false;
+            }
+            env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Assumption});
+            return true;
+        }
+
         return true;
     }, step.node);
 }
