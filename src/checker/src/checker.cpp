@@ -514,6 +514,9 @@ static bool gcongr_tactic(const ast::Prop& goal, const ScopeStack& env,
                            const diag::SourceLocation& loc);
 static bool omega_tactic(const ast::Prop& goal, const ScopeStack& env);
 
+// Forward declaration for push_neg (defined in the tactics section below).
+static ast::Prop push_neg(const ast::Prop& p);
+
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
 // Implements OrElim with named case arms.
@@ -1948,9 +1951,6 @@ bool check_step(const ast::Step& step,
             return true;
         }
 
-        // wlog <name> : <prop>  (NL14)
-        // Introduces prop as an Assumption in scope with a warning that the
-        // side obligation (the general case follows from this case) is unverified.
         else if constexpr (std::is_same_v<T, ast::WlogStep>) {
             diag.emit({diag::Severity::Warning, step.loc,
                        "wlog: side obligation (general case from '"
@@ -1962,6 +1962,34 @@ bool check_step(const ast::Step& step,
                 return false;
             }
             env.insert_or_assign(s.name, HypEntry{std::move(*r), EntryKind::Assumption});
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, ast::PushNegStep>) {
+            if (!s.hyp) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'push neg' (goal form) is only supported at the top level of a proof block"});
+                return false;
+            }
+            const HypEntry* h = env.find(*s.hyp);
+            if (!h) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'push neg at': unknown hypothesis '" + *s.hyp + "'"});
+                return false;
+            }
+            ast::Prop new_prop = push_neg(h->judgment.prop());
+            if (new_prop == h->judgment.prop()) {
+                diag.emit({diag::Severity::Warning, step.loc,
+                           "'push neg at " + *s.hyp
+                           + "': hypothesis unchanged — no negation to push"});
+                return true;
+            }
+            auto r = kernel.introduce_axiom(new_prop);
+            if (!r) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'push neg at': internal error: " + r.error().message});
+                return false;
+            }
+            env.insert_or_assign(*s.hyp, HypEntry{std::move(*r), EntryKind::Derived});
             return true;
         }
 
@@ -2318,6 +2346,44 @@ void check_proof(const ast::Decl& decl,
             goal_history.push_back(*impl->lhs);
             current_goal = &goal_history.back();
             continue; // goal transformation only
+        }
+
+        // PushNegStep — push negations inward on goal or hypothesis.
+        if (const auto* pn = std::get_if<ast::PushNegStep>(&step.node)) {
+            if (!pn->hyp) {
+                if (!current_goal) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'push neg' used outside a proof context"});
+                    had_step_errors = true;
+                } else {
+                    ast::Prop new_goal = push_neg(*current_goal);
+                    if (new_goal == *current_goal)
+                        diag.emit({diag::Severity::Warning, step.loc,
+                                   "'push neg': goal unchanged — no negation to push"});
+                    goal_history.push_back(std::move(new_goal));
+                    current_goal = &goal_history.back();
+                }
+            } else {
+                const HypEntry* h = env.find(*pn->hyp);
+                if (!h) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'push neg at': unknown hypothesis '" + *pn->hyp + "'"});
+                    had_step_errors = true;
+                } else {
+                    ast::Prop new_prop = push_neg(h->judgment.prop());
+                    if (new_prop == h->judgment.prop()) {
+                        diag.emit({diag::Severity::Warning, step.loc,
+                                   "'push neg at " + *pn->hyp
+                                   + "': hypothesis unchanged — no negation to push"});
+                    } else {
+                        auto r = kernel.introduce_axiom(new_prop);
+                        if (r)
+                            env.insert_or_assign(*pn->hyp,
+                                                 HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                }
+            }
+            continue;
         }
 
         const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env};
@@ -3619,6 +3685,132 @@ static bool omega_tactic(const ast::Prop& goal, const ScopeStack& env)
 
     hyps.push_back(std::move(*neg_goal));
     return fourier_motzkin(hyps);
+}
+
+// ── push_neg: push negations inward (DP5) ─────────────────────────────────────
+//
+// Applies De Morgan / classical equivalences to push a ¬ as deep as possible:
+//   ¬(A ∧ B)   →  ¬A ∨ ¬B
+//   ¬(A ∨ B)   →  ¬A ∧ ¬B
+//   ¬(A → B)   →  A ∧ ¬B
+//   ¬¬A        →  A
+//   ¬(∀x.P)    →  ∃x.¬P
+//   ¬(∃x.P)    →  ∀x.¬P
+//   ¬(a < b)   →  a ≥ b
+//   ¬(a ≤ b)   →  a > b
+//   ¬(a = b)   →  a ≠ b
+//   ¬(a ≠ b)   →  a = b
+//   ¬(a > b)   →  a ≤ b
+//   ¬(a ≥ b)   →  a < b
+//   ¬⊥         →  ⊤
+//   ¬⊤         →  ⊥
+//
+// Non-negation nodes are recursed into to handle nested structures.
+// Recursion stops at leaves (Atomic, PropPred, PropFalse, PropTrue).
+static ast::Prop push_neg(const ast::Prop& p)
+{
+    return std::visit([&](const auto& n) -> ast::Prop {
+        using T = std::decay_t<decltype(n)>;
+
+        // ── Negation node — apply the De Morgan / classical rule ──────────────
+        if constexpr (std::is_same_v<T, ast::PropNot>) {
+            const ast::Prop& inner = *n.inner;
+            return std::visit([&](const auto& ni) -> ast::Prop {
+                using Ti = std::decay_t<decltype(ni)>;
+
+                // ¬¬A → A
+                if constexpr (std::is_same_v<Ti, ast::PropNot>)
+                    return push_neg(*ni.inner);
+
+                // ¬(A ∧ B) → ¬A ∨ ¬B
+                if constexpr (std::is_same_v<Ti, ast::PropAnd>) {
+                    ast::Prop na{p.loc, ast::PropNot{ni.lhs}};
+                    ast::Prop nb{p.loc, ast::PropNot{ni.rhs}};
+                    return ast::Prop{p.loc, ast::PropOr{ast::make_prop(push_neg(na)),
+                                                        ast::make_prop(push_neg(nb))}};
+                }
+
+                // ¬(A ∨ B) → ¬A ∧ ¬B
+                if constexpr (std::is_same_v<Ti, ast::PropOr>) {
+                    ast::Prop na{p.loc, ast::PropNot{ni.lhs}};
+                    ast::Prop nb{p.loc, ast::PropNot{ni.rhs}};
+                    return ast::Prop{p.loc, ast::PropAnd{ast::make_prop(push_neg(na)),
+                                                         ast::make_prop(push_neg(nb))}};
+                }
+
+                // ¬(A → B) → A ∧ ¬B
+                if constexpr (std::is_same_v<Ti, ast::PropImpl>) {
+                    ast::Prop nb{p.loc, ast::PropNot{ni.rhs}};
+                    return ast::Prop{p.loc, ast::PropAnd{ast::make_prop(push_neg(*ni.lhs)),
+                                                         ast::make_prop(push_neg(nb))}};
+                }
+
+                // ¬(∀x.P) → ∃x.¬P
+                if constexpr (std::is_same_v<Ti, ast::PropForall>) {
+                    ast::Prop nbody{p.loc, ast::PropNot{ni.body}};
+                    return ast::Prop{p.loc, ast::PropExists{ni.var, ni.type,
+                                                            ast::make_prop(push_neg(nbody))}};
+                }
+
+                // ¬(∃x.P) → ∀x.¬P
+                if constexpr (std::is_same_v<Ti, ast::PropExists>) {
+                    ast::Prop nbody{p.loc, ast::PropNot{ni.body}};
+                    return ast::Prop{p.loc, ast::PropForall{ni.var, ni.type,
+                                                            ast::make_prop(push_neg(nbody))}};
+                }
+
+                // ¬(a rel b) → a (negated-rel) b
+                if constexpr (std::is_same_v<Ti, ast::PropRel>) {
+                    ast::RelOp neg_op;
+                    switch (ni.op) {
+                        case ast::RelOp::Lt:       neg_op = ast::RelOp::GtEq;  break;
+                        case ast::RelOp::LtEq:     neg_op = ast::RelOp::Gt;    break;
+                        case ast::RelOp::Eq:       neg_op = ast::RelOp::NotEq; break;
+                        case ast::RelOp::NotEq:    neg_op = ast::RelOp::Eq;    break;
+                        case ast::RelOp::Gt:       neg_op = ast::RelOp::LtEq;  break;
+                        case ast::RelOp::GtEq:     neg_op = ast::RelOp::Lt;    break;
+                        default:                   return p; // In/NotIn/subset — no classical negation
+                    }
+                    return ast::Prop{p.loc, ast::PropRel{ni.lhs, ni.rhs, neg_op}};
+                }
+
+                // ¬⊥ → ⊤
+                if constexpr (std::is_same_v<Ti, ast::PropFalse>)
+                    return ast::Prop{p.loc, ast::PropTrue{}};
+
+                // ¬⊤ → ⊥
+                if constexpr (std::is_same_v<Ti, ast::PropTrue>)
+                    return ast::Prop{p.loc, ast::PropFalse{}};
+
+                // ¬Atomic, ¬PropPred — cannot simplify; leave as-is
+                return p;
+            }, inner.node);
+        }
+
+        // ── Non-negation nodes: recurse into children ──────────────────────
+        if constexpr (std::is_same_v<T, ast::PropAnd>)
+            return ast::Prop{p.loc, ast::PropAnd{ast::make_prop(push_neg(*n.lhs)),
+                                                 ast::make_prop(push_neg(*n.rhs))}};
+
+        if constexpr (std::is_same_v<T, ast::PropOr>)
+            return ast::Prop{p.loc, ast::PropOr{ast::make_prop(push_neg(*n.lhs)),
+                                                ast::make_prop(push_neg(*n.rhs))}};
+
+        if constexpr (std::is_same_v<T, ast::PropImpl>)
+            return ast::Prop{p.loc, ast::PropImpl{ast::make_prop(push_neg(*n.lhs)),
+                                                  ast::make_prop(push_neg(*n.rhs))}};
+
+        if constexpr (std::is_same_v<T, ast::PropForall>)
+            return ast::Prop{p.loc, ast::PropForall{n.var, n.type,
+                                                    ast::make_prop(push_neg(*n.body))}};
+
+        if constexpr (std::is_same_v<T, ast::PropExists>)
+            return ast::Prop{p.loc, ast::PropExists{n.var, n.type,
+                                                    ast::make_prop(push_neg(*n.body))}};
+
+        // Leaves: Atomic, PropFalse, PropTrue, PropPred, PropRel — no change
+        return p;
+    }, p.node);
 }
 
 // ── check_module ───────────────────────────────────────────────────────────────
