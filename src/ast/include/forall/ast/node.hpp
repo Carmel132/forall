@@ -247,6 +247,8 @@ inline PropPtr make_prop(Prop p) {
 }
 
 // ── Proof steps ────────────────────────────────────────────────────────────────
+// Forward declaration so HaveStep can hold an optional sub-proof.
+struct ProofBlock;
 
 // A single arm of a 'cases' step.  Introduces arm.name : arm.prop as a local
 // assumption and sub-checks the arm.steps, which must end with a 'then' step.
@@ -291,7 +293,8 @@ struct HaveStep {
     std::string              name;
     Prop                     prop;
     std::vector<std::string> justification; // ref names after "by"
-    std::optional<ExprPtr>   witness;       // term after "at" — for ForallElim / ExistsIntro
+    std::optional<ExprPtr>      witness;    // term after "at" — for ForallElim / ExistsIntro
+    std::unique_ptr<ProofBlock> sub_proof;  // present when "proof ... end" follows
 };
 
 struct ThenStep {
