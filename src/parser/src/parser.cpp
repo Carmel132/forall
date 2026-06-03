@@ -1287,6 +1287,7 @@ ast::Step Parser::parseSupposeStep() {
 }
 
 // have <name> : <prop> by <justification> [at <expr>]
+// have <name> : <prop> proof ... end        (NL11: inline sub-proof)
 // <name> may be "_" for an anonymous step; the checker assigns a fresh internal name.
 ast::Step Parser::parseHaveStep() {
     const auto loc = peek().loc;
@@ -1301,18 +1302,28 @@ ast::Step Parser::parseHaveStep() {
 
     expect(lexer::TokenKind::Colon, "expected ':' after hypothesis name");
     auto prop = parseProp();
+
+    // NL11: "have h : P proof ... end" — inline sub-proof block
+    if (check(lexer::TokenKind::KwProof)) {
+        auto block = parseProofBlock();
+        auto sub = std::make_unique<ast::ProofBlock>(std::move(block));
+        return {loc, ast::HaveStep{std::move(name), std::move(prop), {}, std::nullopt,
+                                   std::move(sub)}};
+    }
+
     // Accept "from" as a natural alias for "by": "have h : P from premise"
     if (check(lexer::TokenKind::KwFrom))
         advance();
     else
-        expect(lexer::TokenKind::KwBy, "expected 'by' or 'from' after proposition");
+        expect(lexer::TokenKind::KwBy, "expected 'by', 'from', or 'proof' after proposition");
     auto refs = parseJustification();
     std::optional<ast::ExprPtr> witness;
     if (check(lexer::TokenKind::KwAt)) {
         advance();
         witness = ast::make_expr(parseExpr());
     }
-    return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::move(witness)}};
+    return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs),
+                               std::move(witness), nullptr}};
 }
 
 // then [<prop>] [(by | from) <justification> [at <expr>]]
