@@ -202,6 +202,12 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return indent + "wlog " + s.name + " : " + to_string(s.prop);
         }
 
+        if constexpr (std::is_same_v<T, ast::PushNegStep>) {
+            std::string r = indent + "push neg";
+            if (s.hyp) r += " at " + *s.hyp;
+            return r;
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
