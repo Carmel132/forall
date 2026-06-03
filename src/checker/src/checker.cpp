@@ -3536,6 +3536,7 @@ static bool gcongr_tactic(const ast::Prop& goal, const ScopeStack& env,
                + forall::pretty::to_string(goal)
                + "` — no congruence lemma applies and linarith failed"});
     return false;
+}
 
 // ── omega: integer/Presburger arithmetic decision procedure ───────────────────
 //
