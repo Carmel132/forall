@@ -3029,3 +3029,76 @@ end
     const auto* ts = std::get_if<ThenStep>(&steps[3].node);
     ASSERT_NE(ts, nullptr);
 }
+
+// ── split step tests (NL2) ─────────────────────────────────────────────────────
+
+// NL2-P1: conjunction split — left/right arms parse correctly
+TEST(ParserTest, SplitStep_ConjunctionLeftRight) {
+    auto r = parse_str(R"(
+theorem t : P and Q
+proof
+  split
+    case left =>
+      then P by hp
+    case right =>
+      then Q by hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 1u);
+    const auto* ss = std::get_if<SplitStep>(&r.mod.decls[0]->proof->steps[0].node);
+    ASSERT_NE(ss, nullptr);
+    EXPECT_TRUE(ss->name.empty());
+    ASSERT_EQ(ss->arms.size(), 2u);
+    EXPECT_EQ(ss->arms[0].label, "left");
+    EXPECT_EQ(ss->arms[1].label, "right");
+    ASSERT_EQ(ss->arms[0].steps.size(), 1u);
+    ASSERT_EQ(ss->arms[1].steps.size(), 1u);
+}
+
+// NL2-P2: biconditional split — (->) and (<-) labels
+TEST(ParserTest, SplitStep_BiconditionalArrows) {
+    auto r = parse_str(R"(
+theorem t : P iff Q
+proof
+  split
+    case (->) =>
+      suppose hp : P
+      then Q by hpq and hp
+    case (<-) =>
+      suppose hq : Q
+      then P by hqp and hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ss = std::get_if<SplitStep>(&r.mod.decls[0]->proof->steps[0].node);
+    ASSERT_NE(ss, nullptr);
+    ASSERT_EQ(ss->arms.size(), 2u);
+    // Labels include both enclosing parens: (->) and (<-)
+    EXPECT_EQ(ss->arms[0].label[0], '(');
+    EXPECT_NE(ss->arms[0].label.find('>'), std::string::npos);
+    EXPECT_EQ(ss->arms[1].label[0], '(');
+    EXPECT_NE(ss->arms[1].label.find('-'), std::string::npos);
+    // Both arms have steps
+    ASSERT_GE(ss->arms[0].steps.size(), 2u);
+    ASSERT_GE(ss->arms[1].steps.size(), 2u);
+}
+
+// NL2-P3: named split result
+TEST(ParserTest, SplitStep_NamedResult) {
+    auto r = parse_str(R"(
+theorem t : P and Q
+proof
+  split conj :
+    case left =>
+      then P by hp
+    case right =>
+      then Q by hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ss = std::get_if<SplitStep>(&r.mod.decls[0]->proof->steps[0].node);
+    ASSERT_NE(ss, nullptr);
+    EXPECT_EQ(ss->name, "conj");
+    ASSERT_EQ(ss->arms.size(), 2u);
+}

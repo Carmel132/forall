@@ -3033,3 +3033,70 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── split step tests (NL2) ─────────────────────────────────────────────────────
+
+// NL2-C1: conjunction split — both arms proved, result in scope
+TEST(CheckerTest, SplitStep_ConjunctionPasses) {
+    auto diag = run_checker("split_conj_ok", R"(
+axiom hp : P
+axiom hq : Q
+theorem t : P and Q
+proof
+  split result :
+    case left =>
+      then P by hp
+    case right =>
+      then Q by hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL2-C2: biconditional (P iff Q desugars to (P->Q) and (Q->P)) — split works
+TEST(CheckerTest, SplitStep_BiconditionalPasses) {
+    auto diag = run_checker("split_iff_ok", R"(
+axiom hpq : P -> Q
+axiom hqp : Q -> P
+theorem t : P iff Q
+proof
+  split result :
+    case left =>
+      suppose hp : P
+      then Q by hpq and hp
+    case right =>
+      suppose hq : Q
+      then P by hqp and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL2-C3: wrong label — split with a goal that is not a conjunction should error
+TEST(CheckerTest, SplitStep_NonConjunctionGoalErrors) {
+    auto diag = run_checker("split_non_conj", R"(
+theorem t : P or Q
+proof
+  split
+    case left =>
+      then P or Q
+    case right =>
+      then P or Q
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+// NL2-C4: missing arm — split with only one arm should error
+TEST(CheckerTest, SplitStep_MissingArmErrors) {
+    auto diag = run_checker("split_one_arm", R"(
+axiom hp : P
+theorem t : P and Q
+proof
+  split
+    case left =>
+      then P by hp
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
