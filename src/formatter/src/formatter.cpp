@@ -65,6 +65,14 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
         }
 
         if constexpr (std::is_same_v<T, ast::HaveStep>) {
+            if (s.sub_proof) {
+                std::string r = indent + "have " + s.name + " : " + to_string(s.prop) + "\n";
+                r += indent + "proof\n";
+                r += format_steps(s.sub_proof->steps, indent + "  ");
+                if (!r.empty() && r.back() != '\n') r += "\n";
+                r += indent + "end";
+                return r;
+            }
             return indent + "have " + s.name + " : "
                    + to_string(s.prop)
                    + format_justification(s.justification, s.witness);
