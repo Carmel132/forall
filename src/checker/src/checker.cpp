@@ -633,6 +633,165 @@ bool check_cases_step(const ast::CasesStep& s,
     return true;
 }
 
+// ── check_split_step ──────────────────────────────────────────────────────────
+//
+// Implements AndIntro from two sub-proofs.
+// Syntax:
+//   split [name :]
+//     case left  => <steps...>   -- must conclude lhs of goal conjunction
+//     case right => <steps...>   -- must conclude rhs of goal conjunction
+//
+// The current goal must be a PropAnd{P, Q}.
+// For biconditionals (desugared to (P→Q) ∧ (Q→P)) the goal is still PropAnd.
+// The checker:
+//   1. Verifies the goal is a PropAnd.
+//   2. Requires exactly two arms (order determines which conjunct they prove).
+//   3. For each arm: copies the ScopeStack, pushes a frame, checks the arm
+//      steps, requires the last step to be a ThenStep.
+//   4. Verifies arm 0 concludes goal.lhs and arm 1 concludes goal.rhs.
+//   5. Applies AndIntro → stores result under s.name (or fresh name).
+bool check_split_step(const ast::SplitStep& s,
+                      const diag::SourceLocation& loc,
+                      ScopeStack& env,
+                      kernel::Kernel& kernel,
+                      diag::DiagnosticEngine& diag,
+                      const CheckContext& ctx)
+{
+    // The current goal must exist and be a PropAnd.
+    if (!ctx.goal) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'split' used outside a proof context"});
+        return false;
+    }
+    const auto* conj = std::get_if<ast::PropAnd>(&ctx.goal->node);
+    if (!conj) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'split' requires a conjunction (P and Q) as the current goal, but goal is '"
+                   + forall::pretty::to_string(*ctx.goal) + "'"});
+        return false;
+    }
+    if (s.arms.size() != 2) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'split' requires exactly two arms"});
+        return false;
+    }
+
+    // Expected conclusion for each arm.
+    const ast::Prop* expected[2] = {conj->lhs.get(), conj->rhs.get()};
+
+    std::vector<kernel::Judgment> arm_js;
+    bool had_arm_error = false;
+
+    for (std::size_t i = 0; i < 2; ++i) {
+        const auto& arm = s.arms[i];
+
+        // Sub-environment for this arm: copy all frames, push a fresh frame.
+        ScopeStack arm_env = env;
+        arm_env.push();
+
+        // Set the arm's sub-goal in the context.
+        CheckContext arm_ctx = ctx;
+        arm_ctx.goal = expected[i];
+
+        bool arm_step_error = false;
+        const ast::Step* arm_last_then = nullptr;
+
+        for (const auto& uptr : arm.steps) {
+            const auto snap = diag.diagnostics().size();
+            check_step(*uptr, arm_env, kernel, diag, arm_ctx);
+            const auto& all = diag.diagnostics();
+            for (auto j = snap; j < all.size(); ++j) {
+                if (all[j].severity == diag::Severity::Error) {
+                    arm_step_error = true;
+                    break;
+                }
+            }
+            if (std::get_if<ast::ThenStep>(&uptr->node))
+                arm_last_then = uptr.get();
+        }
+
+        if (arm_step_error || !arm_last_then) {
+            if (!arm_step_error)
+                diag.emit({diag::Severity::Error, loc,
+                           "split arm '" + arm.label + "' must end with a 'then' step"});
+            had_arm_error = true;
+            continue;
+        }
+
+        const auto& arm_then = std::get<ast::ThenStep>(arm_last_then->node);
+
+        // Case 1: arm's then matches the expected conjunct exactly.
+        // Case 2: the expected conjunct is P → Q, the arm concluded Q,
+        //         and there is a SupposeStep assumption of P in arm_env.
+        //         Synthesise ImplIntro (same as auto-close in check_proof).
+
+        std::optional<kernel::Judgment> arm_cert;
+
+        if (arm_then.prop == *expected[i]) {
+            // Direct match — certify via introduce_axiom.
+            auto j = kernel.introduce_axiom(arm_then.prop);
+            if (!j) {
+                diag.emit({diag::Severity::Error, loc,
+                           "split arm '" + arm.label + "' judgment failed: "
+                           + j.error().message});
+                had_arm_error = true;
+                continue;
+            }
+            arm_cert = std::move(*j);
+        } else if (const auto* impl = std::get_if<ast::PropImpl>(&expected[i]->node);
+                   impl && arm_then.prop == *impl->rhs) {
+            // The arm proved the consequent B; the expected conjunct is A → B.
+            // Try to find a SupposeStep assumption of A in arm_env.
+            const HypEntry* assump = nullptr;
+            arm_env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                if (e.judgment.prop() == *impl->lhs) assump = &e;
+            });
+            if (assump) {
+                const kernel::Judgment conc_j = *kernel.introduce_axiom(arm_then.prop);
+                auto impl_j = kernel.apply(kernel::Rule::ImplIntro,
+                                           std::span<const kernel::Judgment>{&conc_j, 1},
+                                           *expected[i]);
+                if (!impl_j) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "split arm '" + arm.label + "' ImplIntro failed: "
+                               + impl_j.error().message});
+                    had_arm_error = true;
+                    continue;
+                }
+                arm_cert = std::move(*impl_j);
+            }
+        }
+
+        if (!arm_cert) {
+            diag.emit({diag::Severity::Error, loc,
+                       "split arm '" + arm.label + "' concluded '"
+                       + forall::pretty::to_string(arm_then.prop)
+                       + "' but expected '"
+                       + forall::pretty::to_string(*expected[i]) + "'"});
+            had_arm_error = true;
+            continue;
+        }
+        arm_js.push_back(std::move(*arm_cert));
+    }
+
+    if (had_arm_error || arm_js.size() != 2) return false;
+
+    // Apply AndIntro: lhs, rhs ⊢ lhs ∧ rhs
+    const std::array<kernel::Judgment, 2> prem = {arm_js[0], arm_js[1]};
+    auto result = kernel.apply(kernel::Rule::AndIntro,
+                               std::span{prem},
+                               *ctx.goal);
+    if (!result) {
+        diag.emit({diag::Severity::Error, loc,
+                   "AndIntro failed: " + result.error().message});
+        return false;
+    }
+
+    const std::string result_name = s.name.empty() ? fresh_name() : s.name;
+    env.insert_or_assign(result_name, HypEntry{std::move(*result), EntryKind::Derived});
+    return true;
+}
+
 // ── check_obtain_step ──────────────────────────────────────────────────────────
 //
 // Implements ExistsElim with an explicit obtain block.
@@ -1490,6 +1649,11 @@ bool check_step(const ast::Step& step,
             return check_cases_step(s, step.loc, env, kernel, diag, ctx);
         }
 
+        // split [name :]  case left => ...  case right => ...
+        else if constexpr (std::is_same_v<T, ast::SplitStep>) {
+            return check_split_step(s, step.loc, env, kernel, diag, ctx);
+        }
+
         // obtain <name> from <ref>  case <var> [: T] , <hyp> : P => <steps...>
         else if constexpr (std::is_same_v<T, ast::ObtainStep>) {
             return check_obtain_step(s, step.loc, env, kernel, diag, ctx);
@@ -1761,8 +1925,8 @@ void check_proof(const ast::Decl& decl,
         }
     }
 
-    // Track the last concluding step — ThenStep, CasesStep, ObtainStep, InductionStep, or ExactStep.
-    enum class LastKind { None, Then, Cases, Obtain, Induction, Exact };
+    // Track the last concluding step — ThenStep, CasesStep, ObtainStep, InductionStep, ExactStep, or SplitStep.
+    enum class LastKind { None, Then, Cases, Obtain, Induction, Exact, Split };
     const ast::Step* last_concluding = nullptr;
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
@@ -1964,6 +2128,10 @@ void check_proof(const ast::Decl& decl,
             last_concluding = &step;
             last_kind       = LastKind::Exact;
         }
+        if (std::get_if<ast::SplitStep>(&step.node)) {
+            last_concluding = &step;
+            last_kind       = LastKind::Split;
+        }
     }
 
     // Only validate the conclusion when all steps passed; cascading errors on
@@ -2079,6 +2247,17 @@ void check_proof(const ast::Decl& decl,
             if (it && !(it->judgment.prop() == decl.statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
+        } else if (last_kind == LastKind::Split) {
+            const auto& ss = std::get<ast::SplitStep>(last_concluding->node);
+            const std::string result_name = ss.name.empty() ? "" : ss.name;
+            // If the split stored a result under a known name, verify it.
+            // Anonymous splits are verified inside check_split_step directly.
+            if (!result_name.empty()) {
+                const auto* it = env.find(result_name);
+                if (it && !(it->judgment.prop() == decl.statement))
+                    diag.emit({diag::Severity::Error, last_concluding->loc,
+                               "proof concludes with wrong proposition"});
+            }
         } else { // Exact — goal check already performed in check_step
         }
     }
