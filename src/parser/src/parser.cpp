@@ -1787,6 +1787,7 @@ ast::Step Parser::parseStep() {
     if (check(K::KwSplit))        return parseSplitStep();
     if (check(K::KwCalc))         return parseCalcStep();
     if (check(K::KwInduction))    return parseInductionStep();
+    if (check(K::KwWlog))         return parseWlogStep();
 
     // rewrite [←/<-] h — equality rewriting step (MS1)
     if (check(K::KwRewrite)) {
@@ -1969,6 +1970,24 @@ ast::Step Parser::parseStep() {
                 "expected proof step; got '" + peek().lexeme + "'"});
     advance();
     return {loc, ast::LetStep{}}; // silently skipped by the checker
+}
+
+// wlog <name> : <prop>
+// NL14: introduces prop as an assumption with a side-obligation warning.
+ast::Step Parser::parseWlogStep() {
+    const auto loc = peek().loc;
+    advance(); // consume "wlog"
+    std::string name;
+    if (check(lexer::TokenKind::Identifier)) {
+        name = advance().lexeme;
+    } else {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected hypothesis name after 'wlog'"});
+        name = "_";
+    }
+    expect(lexer::TokenKind::Colon, "expected ':' after 'wlog' name");
+    auto prop = parseProp();
+    return {loc, ast::WlogStep{std::move(name), std::move(prop)}};
 }
 
 ast::ProofBlock Parser::parseProofBlock() {
