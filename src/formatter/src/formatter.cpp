@@ -171,6 +171,20 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return r;
         }
 
+        if constexpr (std::is_same_v<T, ast::SplitStep>) {
+            std::string r = indent + "split";
+            if (!s.name.empty()) r += " " + s.name + " :";
+            r += "\n";
+            const std::string arm_indent = indent + "  ";
+            for (const auto& arm : s.arms) {
+                r += arm_indent + "case " + arm.label + " =>\n";
+                r += format_steps(arm.steps, arm_indent + "  ");
+                if (!r.empty() && r.back() != '\n') r += "\n";
+                r += arm_indent + "  done\n";
+            }
+            return r;
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
