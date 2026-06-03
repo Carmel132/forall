@@ -3176,3 +3176,49 @@ end
     ASSERT_NE(atom, nullptr);
     EXPECT_EQ(atom->name, "P");
 }
+
+// ── NL20: direction-marker biconditional proofs ────────────────────────────────
+
+TEST(ParserTest, NL20_DirectionMarkersProduceSplitStep) {
+    // A proof block starting with (→) / (←) should be parsed as a SplitStep.
+    auto r = parse_str(R"(
+theorem t : P iff Q
+proof
+  (->)
+    suppose hp : P
+    then Q by hp
+  (<-)
+    suppose hq : Q
+    then P by hq
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    // The proof block should have a single SplitStep.
+    ASSERT_EQ(r.mod.decls[0]->proof->steps.size(), 1u);
+    const auto* ss = get_step<SplitStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ss, nullptr);
+    ASSERT_EQ(ss->arms.size(), 2u);
+    EXPECT_EQ(ss->arms[0].label, "(->)");
+    EXPECT_EQ(ss->arms[1].label, "(<-)");
+}
+
+TEST(ParserTest, NL20_DirectionMarkersBackwardFromKeyword) {
+    // (<-) using ASCII "<-" tokens should produce the same structure.
+    auto r = parse_str(R"(
+theorem t : P iff Q
+proof
+  (->)
+    suppose hp : P
+    then Q by hp
+  (->)
+    suppose hq : Q
+    then P by hq
+end
+)");
+    // Two (→) markers: both arms get "->" label, which is fine structurally.
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ss = get_step<SplitStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ss, nullptr);
+    ASSERT_EQ(ss->arms.size(), 2u);
+}

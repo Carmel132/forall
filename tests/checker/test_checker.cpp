@@ -3206,3 +3206,42 @@ end
             has_warning = true;
     EXPECT_TRUE(has_warning);
 }
+
+// ── NL20: direction-marker biconditional proofs ────────────────────────────────
+
+TEST(CheckerTest, NL20_DirectionMarkersBiconditionalPasses) {
+    // Biconditional proof using (→)/(←) direction markers.
+    // Use axioms to make each direction trivially provable.
+    auto diag = run_checker("nl20_iff", R"(
+axiom pq : P -> Q
+axiom qp : Q -> P
+theorem t : P iff Q
+proof
+  (->)
+    suppose hp : P
+    then Q by pq and hp
+  (<-)
+    suppose hq : Q
+    then P by qp and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL20_DirectionMarkersWrongDirectionErrors) {
+    // The forward arm concludes P instead of Q — should error.
+    auto diag = run_checker("nl20_wrong_dir", R"(
+axiom pq : P -> Q
+axiom qp : Q -> P
+theorem t : P iff Q
+proof
+  (->)
+    suppose hp : P
+    then P by hp
+  (<-)
+    suppose hq : Q
+    then P by qp and hq
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
