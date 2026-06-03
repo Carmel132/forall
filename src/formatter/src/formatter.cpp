@@ -136,6 +136,41 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             return indent + "apply " + s.hyp_ref;
         }
 
+        if constexpr (std::is_same_v<T, ast::CalcStep>) {
+            // Render the relational operator as its Unicode / ASCII symbol.
+            auto rel_sym = [](ast::RelOp op) -> std::string {
+                switch (op) {
+                    case ast::RelOp::Lt:     return "<";
+                    case ast::RelOp::Gt:     return ">";
+                    case ast::RelOp::LtEq:   return "\xe2\x89\xa4"; // ≤
+                    case ast::RelOp::GtEq:   return "\xe2\x89\xa5"; // ≥
+                    case ast::RelOp::Eq:     return "=";
+                    case ast::RelOp::NotEq:  return "\xe2\x89\xa0"; // ≠
+                    default:                 return "?";
+                }
+            };
+
+            std::string r = indent + "calc";
+            if (!s.name.empty()) r += " " + s.name + " :";
+            r += "\n";
+
+            // First link — must print lhs op1 rhs1 by refs
+            if (!s.links.empty()) {
+                const auto& first = s.links[0];
+                r += indent + "  " + to_string(*s.lhs)
+                     + " " + rel_sym(first.op) + " " + to_string(*first.rhs)
+                     + format_justification(first.justification);
+                // Subsequent links — only op rhs by refs (lhs implied)
+                for (std::size_t i = 1; i < s.links.size(); ++i) {
+                    const auto& lk = s.links[i];
+                    r += "\n" + indent + "    "
+                         + rel_sym(lk.op) + " " + to_string(*lk.rhs)
+                         + format_justification(lk.justification);
+                }
+            }
+            return r;
+        }
+
         return indent + "-- (unknown step)";
     }, step.node);
 }
