@@ -54,6 +54,7 @@ enum class TokenKind {
     KwNormNum,                  // "norm_num"    (tactic keyword)
     KwRing,                     // "ring"        (tactic keyword)
     KwLinarith,                 // "linarith"    (linear arithmetic tactic)
+    KwOmega,                    // "omega"       (integer/Presburger arithmetic tactic)
     KwSimp,                     // "simp"        (propositional simplification tactic)
     KwFieldSimp,                // "field_simp"  (field simplification tactic — clear denominators)
     KwPositivity,               // "positivity"  (prove expr ≥ 0 or expr > 0 automatically)

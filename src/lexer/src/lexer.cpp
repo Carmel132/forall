@@ -263,6 +263,7 @@ Token Lexer::nextToken() {
             {"norm_num",     TokenKind::KwNormNum},
             {"ring",         TokenKind::KwRing},
             {"linarith",     TokenKind::KwLinarith},
+            {"omega",        TokenKind::KwOmega},
             {"simp",         TokenKind::KwSimp},
             {"field_simp",   TokenKind::KwFieldSimp},
             {"positivity",   TokenKind::KwPositivity},
