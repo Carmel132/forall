@@ -1450,6 +1450,89 @@ ast::Step Parser::parseCasesStep() {
     return {loc, ast::CasesStep{std::move(name), std::move(disjunct_ref), std::move(arms)}};
 }
 
+// split [<name> :]
+//   case left  => <steps...>
+//   case right => <steps...>
+//
+// Decomposes a conjunction goal P ∧ Q into two sub-proofs.
+// Arm labels may also be written as parenthesised forms: (->) and (<-).
+// The split keyword must be followed by case arms; it may appear anywhere in a proof.
+ast::Step Parser::parseSplitStep() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "split"
+
+    // Optional result label: if next is Identifier and after is Colon, consume both.
+    std::string name;
+    if (check(K::Identifier)) {
+        if (pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Colon)
+        {
+            name = advance().lexeme; // consume label
+            advance();               // consume ':'
+        }
+    }
+
+    // Parse arms.
+    // Each arm begins with 'case', then a label (identifier or parenthesised form),
+    // then '=>', then step list until next 'case' / 'end' / 'qed' / EOF.
+    std::vector<ast::SplitArm> arms;
+    while (check(K::KwCase)) {
+        advance(); // consume "case"
+
+        // Parse the arm label.  Accept:
+        //   - plain Identifier ("left", "right", "forward", "backward", etc.)
+        //   - parenthesised form: "(" Arrow ")"  → "(->)"
+        //                         "(" KwFrom ")" → "(<-)"  (or "(" "<-" ")")
+        std::string label;
+        if (check(K::LParen)) {
+            advance(); // consume '('
+            if (check(K::Arrow)) {
+                advance();
+                label = "(->) ";
+            } else if (check(K::KwFrom)) {
+                // "from" is the KwFrom token; use it for the backward direction
+                advance();
+                label = "(<-) ";
+            } else if (check(K::Less)) {
+                // raw '<' followed by '-' (lexed separately)
+                advance();
+                if (check(K::Minus)) { advance(); label = "(<-) "; }
+                else                 { label = "(<) "; }
+            } else if (check(K::Identifier)) {
+                label = "(" + std::string{advance().lexeme} + ") ";
+            } else {
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected arm label inside parentheses in 'split' step"});
+            }
+            // trim the trailing space we added above
+            if (!label.empty() && label.back() == ' ')
+                label.pop_back();
+            expect(K::RParen, "expected ')' to close split arm label");
+        } else if (check(K::Identifier)) {
+            label = advance().lexeme;
+        } else {
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected arm label after 'case' in 'split' step"});
+        }
+
+        expect(K::FatArrow, "expected '=>' after split arm label");
+
+        std::vector<std::unique_ptr<ast::Step>> arm_steps;
+        while (!isAtEnd()
+               && !check(K::KwCase)
+               && !check(K::KwEnd)
+               && !check(K::KwDone))
+            arm_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+        if (check(K::KwDone))
+            advance(); // consume optional per-arm "done" terminator
+
+        arms.push_back(ast::SplitArm{std::move(label), std::move(arm_steps)});
+    }
+
+    return {loc, ast::SplitStep{std::move(name), std::move(arms)}};
+}
+
 // induction <result_name> on <var>
 //   base:
 //     <base_steps...>
@@ -1684,6 +1767,7 @@ ast::Step Parser::parseStep() {
     }
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
+    if (check(K::KwSplit))        return parseSplitStep();
     if (check(K::KwCalc))         return parseCalcStep();
     if (check(K::KwInduction))    return parseInductionStep();
 
