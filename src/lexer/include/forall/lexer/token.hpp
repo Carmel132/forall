@@ -41,6 +41,7 @@ enum class TokenKind {
     KwInv,                      // "inv" (prefix function inverse)
 
     // Proof-step tactic keywords
+    KwCalc,                          // "calc"
     KwCase, KwCases, KwOn,
     KwInduction,                // "induction"
     KwShow,                     // "show"   (goal annotation step)
