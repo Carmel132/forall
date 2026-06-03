@@ -498,6 +498,25 @@ static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStac
                                            diag::DiagnosticEngine& diag,
                                            const diag::SourceLocation& loc);
 
+// Forward declarations for DP2-DP4 tactics (defined after simp_tactic below).
+// field_simp: clear denominators in an equality goal, reduce to ring identity.
+// Inserts the certified judgment under step_name into env on success.
+static bool field_simp_tactic(const ast::Prop& goal, ScopeStack& env,
+                               kernel::Kernel& kernel,
+                               diag::DiagnosticEngine& diag,
+                               const diag::SourceLocation& loc,
+                               const std::string& step_name);
+// positivity: prove expr ≥ 0 or expr > 0 by structural recursion.
+static bool positivity_tactic(const ast::Prop& goal, const ScopeStack& env,
+                               kernel::Kernel& kernel,
+                               diag::DiagnosticEngine& diag,
+                               const diag::SourceLocation& loc);
+// gcongr: prove f(a) ≤ f(b) from a ≤ b by congruence / monotonicity.
+static bool gcongr_tactic(const ast::Prop& goal, const ScopeStack& env,
+                           kernel::Kernel& kernel,
+                           diag::DiagnosticEngine& diag,
+                           const diag::SourceLocation& loc);
+
 // ── check_cases_step ───────────────────────────────────────────────────────────
 //
 // Implements OrElim with named case arms.
@@ -1383,9 +1402,7 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
-            // NL12: "by contrapositive" — prove A → B by ¬B assumption + derived ¬A
-            // Soundness: A → B is logically equivalent to ¬B → ¬A.
-            // We verify the two pieces are present in scope, then certify via introduce_axiom.
+            // "by contrapositive" — prove A → B by ¬B assumption + derived ¬A
             if (s.justification.size() == 1 && s.justification[0] == "__contrapositive__") {
                 const auto* impl = std::get_if<ast::PropImpl>(&prop.node);
                 if (!impl) {
@@ -1393,10 +1410,8 @@ bool check_step(const ast::Step& step,
                                "'by contrapositive' requires an implication conclusion A → B"});
                     return false;
                 }
-                // Build ¬B and ¬A to look for in scope.
                 ast::Prop not_B{prop.loc, ast::PropNot{impl->rhs}};
                 ast::Prop not_A{prop.loc, ast::PropNot{impl->lhs}};
-                // Search for an Assumption of ¬B.
                 const HypEntry* neg_B_entry = nullptr;
                 env.for_each_assumption([&](const std::string&, const HypEntry& e) {
                     if (e.judgment.prop() == not_B) neg_B_entry = &e;
@@ -1407,7 +1422,6 @@ bool check_step(const ast::Step& step,
                                + forall::pretty::to_string(not_B) + "' found in scope"});
                     return false;
                 }
-                // Search for a Derived entry of ¬A.
                 const HypEntry* neg_A_entry = env.find_derived(not_A);
                 if (!neg_A_entry) {
                     diag.emit({diag::Severity::Error, step.loc,
@@ -1421,6 +1435,24 @@ bool check_step(const ast::Step& step,
                                "'by contrapositive' internal error: " + r.error().message});
                     return false;
                 }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // "by field_simp" — clear denominators and verify via ring normalization
+            if (s.justification.size() == 1 && s.justification[0] == "__field_simp__") {
+                return field_simp_tactic(prop, env, kernel, diag, step.loc, step_name);
+            }
+            // "by positivity" — prove expr ≥ 0 or expr > 0 by structural recursion
+            if (s.justification.size() == 1 && s.justification[0] == "__positivity__") {
+                if (!positivity_tactic(prop, env, kernel, diag, step.loc)) return false;
+                auto r = kernel.introduce_axiom(prop);
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // "by gcongr" — congruence for monotone functions
+            if (s.justification.size() == 1 && s.justification[0] == "__gcongr__") {
+                if (!gcongr_tactic(prop, env, kernel, diag, step.loc)) return false;
+                auto r = kernel.introduce_axiom(prop);
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
@@ -1577,7 +1609,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 // Certified: the proposition is arithmetically true.
-                kernel.introduce_axiom(prop);
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             // "by norm_num" — polynomial ring equality with variable support
@@ -1597,7 +1629,7 @@ bool check_step(const ast::Step& step,
                                + "` is not a polynomial identity"});
                     return false;
                 }
-                kernel.introduce_axiom(prop);
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             // "by ring" — polynomial identity over commutative ring
@@ -1617,7 +1649,7 @@ bool check_step(const ast::Step& step,
                                + "` does not hold as a ring identity"});
                     return false;
                 }
-                kernel.introduce_axiom(prop);
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             // "by linarith" — linear arithmetic (ThenStep variant)
@@ -1649,7 +1681,7 @@ bool check_step(const ast::Step& step,
                                + "` from the linear hypotheses in scope"});
                     return false;
                 }
-                kernel.introduce_axiom(prop);
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             // "by contra" — proof by contradiction (ML3)
@@ -1693,7 +1725,7 @@ bool check_step(const ast::Step& step,
                 }
                 return true;
             }
-            // NL12: "by contrapositive" (ThenStep variant)
+            // "by contrapositive" — ThenStep variant
             if (s.justification.size() == 1 && s.justification[0] == "__contrapositive__") {
                 const auto* impl = std::get_if<ast::PropImpl>(&prop.node);
                 if (!impl) {
@@ -1726,6 +1758,24 @@ bool check_step(const ast::Step& step,
                                "'by contrapositive' internal error: " + r.error().message});
                     return false;
                 }
+                (void)kernel.introduce_axiom(prop);
+                return true;
+            }
+            // "by field_simp" — ThenStep variant
+            if (s.justification.size() == 1 && s.justification[0] == "__field_simp__") {
+                const std::string anon = fresh_name();
+                return field_simp_tactic(prop, env, kernel, diag, step.loc, anon);
+            }
+            // "by positivity" — ThenStep variant
+            if (s.justification.size() == 1 && s.justification[0] == "__positivity__") {
+                if (!positivity_tactic(prop, env, kernel, diag, step.loc)) return false;
+                (void)kernel.introduce_axiom(prop);
+                return true;
+            }
+            // "by gcongr" — ThenStep variant
+            if (s.justification.size() == 1 && s.justification[0] == "__gcongr__") {
+                if (!gcongr_tactic(prop, env, kernel, diag, step.loc)) return false;
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
@@ -2976,6 +3026,413 @@ static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStac
                "'by simp' could not close goal `" + forall::pretty::to_string(goal)
                + "` — add explicit justification"});
     return std::nullopt;
+}
+
+// ── field_simp tactic (DP2) ────────────────────────────────────────────────────
+//
+// Normalizes a goal of the form  lhs = rhs  where both sides may contain
+// division, by reducing both sides to a canonical rational form and comparing.
+//
+// Each expression is represented as a pair (numerator, denominator) of
+// polynomials, i.e. a rational expression P(x)/Q(x) in lowest terms.
+// The equality  A/B = C/D  holds iff  A*D = B*C  (cross-multiplication).
+//
+// For each unique denominator d, a Warning "field_simp: side condition `d ≠ 0`
+// assumed" is emitted (the user is responsible for nonzero side conditions).
+
+// Rational expression: numerator polynomial / denominator polynomial.
+using RatExpr = std::pair<Poly, Poly>; // {num, denom}
+
+// Normalize an expression to a rational form {num, denom}.
+// Returns nullopt if the expression is not normalizable to a ratio of polynomials.
+static RatExpr normalize_rational(const ast::Expr& e) {
+    return std::visit([](const auto& n) -> RatExpr {
+        using T = std::decay_t<decltype(n)>;
+
+        // Literal or variable: num = normalize_expr(e), denom = 1.
+        if constexpr (std::is_same_v<T, ast::ExprLit>
+                   || std::is_same_v<T, ast::ExprVar>) {
+            ast::Expr tmp{{}, ast::ExprNode{n}};
+            Poly p = normalize_expr(tmp);
+            Poly one{{{}, {1, 1}}};
+            return {p, one};
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            // Negation: -(a/b) = (-a)/b
+            if (n.op == ast::UnaryOp::Neg) {
+                // Recursively normalize the operand.
+                auto [num, denom] = normalize_rational(*n.operand);
+                return {poly_neg(num), denom};
+            }
+            // Other unary ops: fall back to scalar normalizer for the whole expr.
+            ast::Expr tmp{{}, ast::ExprNode{n}};
+            return {normalize_expr(tmp), {{{}, {1, 1}}}};
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            // Division: (a/b) / (c/d) = (a*d) / (b*c)
+            if (n.op == ast::BinOp::Div) {
+                auto [lnum, ldenom] = normalize_rational(*n.lhs);
+                auto [rnum, rdenom] = normalize_rational(*n.rhs);
+                // result = (lnum * rdenom) / (ldenom * rnum)
+                return {poly_mul(lnum, rdenom), poly_mul(ldenom, rnum)};
+            }
+            // Addition/subtraction: a/b + c/d = (a*d + b*c) / (b*d)
+            if (n.op == ast::BinOp::Add || n.op == ast::BinOp::Sub) {
+                auto [lnum, ldenom] = normalize_rational(*n.lhs);
+                auto [rnum, rdenom] = normalize_rational(*n.rhs);
+                Poly new_num;
+                if (n.op == ast::BinOp::Add)
+                    new_num = poly_add(poly_mul(lnum, rdenom), poly_mul(rnum, ldenom));
+                else
+                    new_num = poly_add(poly_mul(lnum, rdenom), poly_neg(poly_mul(rnum, ldenom)));
+                Poly new_denom = poly_mul(ldenom, rdenom);
+                return {new_num, new_denom};
+            }
+            // Multiplication: (a/b) * (c/d) = (a*c) / (b*d)
+            if (n.op == ast::BinOp::Mul) {
+                auto [lnum, ldenom] = normalize_rational(*n.lhs);
+                auto [rnum, rdenom] = normalize_rational(*n.rhs);
+                return {poly_mul(lnum, rnum), poly_mul(ldenom, rdenom)};
+            }
+            // Power: (a/b)^k = a^k / b^k  (k must be non-negative integer literal)
+            if (n.op == ast::BinOp::Pow) {
+                const auto* lit = std::get_if<ast::ExprLit>(&n.rhs->node);
+                if (lit) {
+                    int exp = 0;
+                    try { exp = std::stoi(lit->value); } catch (...) {}
+                    if (exp >= 0) {
+                        auto [base_num, base_denom] = normalize_rational(*n.lhs);
+                        return {poly_pow(base_num, exp), poly_pow(base_denom, exp)};
+                    }
+                }
+            }
+            // Fallback: treat as opaque polynomial (returns non-trivial denom = 1).
+            ast::Expr tmp{{}, ast::ExprNode{n}};
+            return {normalize_expr(tmp), {{{}, {1, 1}}}};
+        }
+
+        if constexpr (std::is_same_v<T, ast::ExprTuple>) {
+            if (n.elements.size() == 1)
+                return normalize_rational(*n.elements[0]);
+        }
+
+        // All other forms (calls, abs, etc.): treat as atomic polynomial.
+        ast::Expr tmp{{}, ast::ExprNode{n}};
+        return {normalize_expr(tmp), {{{}, {1, 1}}}};
+    }, e.node);
+}
+
+// Collect all denominator sub-expressions recursively (for warning messages only).
+static void collect_denominators(const ast::Expr& e, std::vector<ast::ExprPtr>& denoms) {
+    std::visit([&](const auto& n) {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            if (n.op == ast::BinOp::Div) {
+                denoms.push_back(n.rhs);
+            }
+            collect_denominators(*n.lhs, denoms);
+            collect_denominators(*n.rhs, denoms);
+        } else if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            collect_denominators(*n.operand, denoms);
+        }
+    }, e.node);
+}
+
+static bool field_simp_tactic(const ast::Prop& goal, ScopeStack& env,
+                               kernel::Kernel& kernel,
+                               diag::DiagnosticEngine& diag,
+                               const diag::SourceLocation& loc,
+                               const std::string& step_name)
+{
+    const auto* rel = std::get_if<ast::PropRel>(&goal.node);
+    if (!rel || rel->op != ast::RelOp::Eq) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by field_simp' only applies to equality goals (lhs = rhs)"});
+        return false;
+    }
+
+    // Collect denominators (for warnings) — includes denominators in denominators.
+    std::vector<ast::ExprPtr> raw_denoms;
+    collect_denominators(*rel->lhs, raw_denoms);
+    collect_denominators(*rel->rhs, raw_denoms);
+
+    // Emit side-condition warnings for unique denominators.
+    // Uniqueness by polynomial normal form.
+    std::vector<Poly> seen_denom_polys;
+    for (const auto& d : raw_denoms) {
+        Poly dp = normalize_expr(*d);
+        bool found = false;
+        for (const auto& up : seen_denom_polys) {
+            if (dp == up) { found = true; break; }
+        }
+        if (!found) {
+            seen_denom_polys.push_back(dp);
+            diag.emit({diag::Severity::Warning, loc,
+                       "field_simp: side condition `"
+                       + forall::pretty::to_string(*d) + " \xe2\x89\xa0 0` assumed"});
+        }
+    }
+
+    // Normalize both sides to rational form: P/Q.
+    auto [lnum, ldenom] = normalize_rational(*rel->lhs);
+    auto [rnum, rdenom] = normalize_rational(*rel->rhs);
+
+    // lnum/ldenom == rnum/rdenom  iff  lnum * rdenom == rnum * ldenom
+    Poly cross_lhs = poly_mul(lnum, rdenom);
+    Poly cross_rhs = poly_mul(rnum, ldenom);
+
+    if (cross_lhs != cross_rhs) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by field_simp': `"
+                   + forall::pretty::to_string(goal)
+                   + "` does not reduce to a ring identity after clearing denominators"});
+        return false;
+    }
+
+    auto r = kernel.introduce_axiom(goal);
+    if (!r) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by field_simp' internal error: " + r.error().message});
+        return false;
+    }
+    env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+    return true;
+}
+
+// ── positivity tactic (DP3) ────────────────────────────────────────────────────
+//
+// Proves goals of the form  expr ≥ 0  or  expr > 0  by structural recursion
+// on the expression.  Returns the inferred RelOp (GtEq or Gt) for the
+// expression, or nullopt if positivity cannot be determined.
+
+// Forward declaration for mutual recursion.
+static std::optional<ast::RelOp> positivity_expr(const ast::Expr& e,
+                                                   const ScopeStack& env);
+
+static std::optional<ast::RelOp> positivity_expr(const ast::Expr& e,
+                                                   const ScopeStack& env)
+{
+    return std::visit([&](const auto& n) -> std::optional<ast::RelOp> {
+        using T = std::decay_t<decltype(n)>;
+
+        // Numeric literals.
+        if constexpr (std::is_same_v<T, ast::ExprLit>) {
+            // Try to parse as integer.
+            try {
+                long long v = std::stoll(n.value);
+                if (v > 0) return ast::RelOp::Gt;
+                if (v == 0) return ast::RelOp::GtEq;
+            } catch (...) {}
+            // Try rational literal (p/q form not normally in source, skip).
+            return std::nullopt;
+        }
+
+        // Power with exponent 2: a^2 ≥ 0 for any a.
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            if (n.op == ast::BinOp::Pow) {
+                const auto* lit = std::get_if<ast::ExprLit>(&n.rhs->node);
+                if (lit && lit->value == "2")
+                    return ast::RelOp::GtEq; // squares are nonneg
+            }
+
+            // Addition / multiplication: combine results.
+            if (n.op == ast::BinOp::Add || n.op == ast::BinOp::Mul) {
+                auto la = positivity_expr(*n.lhs, env);
+                auto ra = positivity_expr(*n.rhs, env);
+                if (!la || !ra) return std::nullopt;
+                // If both ≥ 0: result ≥ 0
+                // If either > 0: result > 0 (for both add and mul)
+                if (*la == ast::RelOp::Gt || *ra == ast::RelOp::Gt)
+                    return ast::RelOp::Gt;
+                return ast::RelOp::GtEq;
+            }
+        }
+
+        // Absolute value: |x| ≥ 0 always.
+        if constexpr (std::is_same_v<T, ast::ExprAbs>) {
+            return ast::RelOp::GtEq;
+        }
+
+        // Variable: look it up in scope.
+        if constexpr (std::is_same_v<T, ast::ExprVar>) {
+            // Check scope for a hypothesis directly asserting e ≥ 0 or e > 0.
+            std::optional<ast::RelOp> found;
+            ast::Expr zero{{}, ast::ExprLit{"0"}};
+            env.for_each([&](const std::string&, const HypEntry& hy) {
+                const auto* rel = std::get_if<ast::PropRel>(&hy.judgment.prop().node);
+                if (!rel) return;
+                // Match: ExprVar{name} ≥ 0  or  ExprVar{name} > 0
+                if (*rel->rhs == zero) {
+                    if (*rel->lhs == e) {
+                        if (rel->op == ast::RelOp::GtEq || rel->op == ast::RelOp::Gt) {
+                            // prefer the stronger (Gt over GtEq)
+                            if (!found || (rel->op == ast::RelOp::Gt && *found == ast::RelOp::GtEq))
+                                found = rel->op;
+                        }
+                    }
+                }
+                // Also accept hypothesis of the form  0 ≤ name  or  0 < name
+                if (*rel->lhs == zero) {
+                    if (*rel->rhs == e) {
+                        if (rel->op == ast::RelOp::LtEq) {
+                            if (!found) found = ast::RelOp::GtEq;
+                        } else if (rel->op == ast::RelOp::Lt) {
+                            if (!found || *found == ast::RelOp::GtEq) found = ast::RelOp::Gt;
+                        }
+                    }
+                }
+            });
+            if (found) return found;
+            return std::nullopt;
+        }
+
+        return std::nullopt;
+    }, e.node);
+}
+
+static bool positivity_tactic(const ast::Prop& goal, const ScopeStack& env,
+                               kernel::Kernel& /*kernel*/,
+                               diag::DiagnosticEngine& diag,
+                               const diag::SourceLocation& loc)
+{
+    const auto* rel = std::get_if<ast::PropRel>(&goal.node);
+    if (!rel || (rel->op != ast::RelOp::GtEq && rel->op != ast::RelOp::Gt)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by positivity' only applies to goals of the form `expr ≥ 0` or `expr > 0`"});
+        return false;
+    }
+    // rhs must be 0 (ExprLit "0") or a variable with a 0 binding — for now require literal 0.
+    const auto* rhs_lit = std::get_if<ast::ExprLit>(&rel->rhs->node);
+    if (!rhs_lit || rhs_lit->value != "0") {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by positivity' requires the right-hand side to be the literal `0`"});
+        return false;
+    }
+
+    auto inferred = positivity_expr(*rel->lhs, env);
+    if (!inferred) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by positivity' cannot determine nonnegativity of `"
+                   + forall::pretty::to_string(*rel->lhs) + "`"});
+        return false;
+    }
+
+    // Check that inferred result satisfies goal:
+    // goal GtEq satisfied by GtEq or Gt; goal Gt satisfied only by Gt.
+    bool satisfied = (rel->op == ast::RelOp::GtEq)
+                     || (*inferred == ast::RelOp::Gt);
+    if (!satisfied) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by positivity': can only show `"
+                   + forall::pretty::to_string(*rel->lhs)
+                   + " \xe2\x89\xa5 0` (not strictly > 0)"});
+        return false;
+    }
+    return true;
+}
+
+// ── gcongr tactic (DP4) ────────────────────────────────────────────────────────
+//
+// Proves goals of the form  f(a) ≤ f(b)  (or <, ≥, >) by finding a monotonicity
+// argument.  Tries the following strategies:
+//   1. Structural: lhs = ExprBinary{op, a, c}, rhs = ExprBinary{op, b, c}
+//      (same c, same op) — look for h : a ≤ b in scope, then certify via
+//      add-monotonicity or mul-monotonicity.
+//   2. Same-op-left: lhs = ExprBinary{op, c, a}, rhs = ExprBinary{op, c, b}.
+//   3. Fallback: call linarith.
+
+static bool gcongr_tactic(const ast::Prop& goal, const ScopeStack& env,
+                           kernel::Kernel& kernel,
+                           diag::DiagnosticEngine& diag,
+                           const diag::SourceLocation& loc)
+{
+    const auto* rel = std::get_if<ast::PropRel>(&goal.node);
+    if (!rel || (rel->op != ast::RelOp::LtEq && rel->op != ast::RelOp::Lt
+                 && rel->op != ast::RelOp::GtEq && rel->op != ast::RelOp::Gt)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'by gcongr' only applies to inequality goals (≤, <, ≥, >)"});
+        return false;
+    }
+
+    // Normalise: convert ≥/>  to ≤/< by swapping sides.
+    const ast::Expr* lhs_ptr = rel->lhs.get();
+    const ast::Expr* rhs_ptr = rel->rhs.get();
+    ast::RelOp op = rel->op;
+    bool swapped = false;
+    if (op == ast::RelOp::GtEq || op == ast::RelOp::Gt) {
+        std::swap(lhs_ptr, rhs_ptr);
+        op = (op == ast::RelOp::GtEq) ? ast::RelOp::LtEq : ast::RelOp::Lt;
+        swapped = true;
+    }
+    (void)swapped;
+
+    const auto* lbin = std::get_if<ast::ExprBinary>(&lhs_ptr->node);
+    const auto* rbin = std::get_if<ast::ExprBinary>(&rhs_ptr->node);
+
+    auto try_congr = [&](const ast::Expr& a, const ast::Expr& b,
+                         ast::BinOp bin_op, const ast::Expr& c,
+                         bool c_is_right) -> bool
+    {
+        // Look for h : a op b  (or  b op a for ≥) in scope.
+        // We need h : a ≤ b  for LtEq goal, or h : a < b for Lt goal.
+        const HypEntry* h = nullptr;
+        env.for_each([&](const std::string&, const HypEntry& hy) {
+            const auto* hr = std::get_if<ast::PropRel>(&hy.judgment.prop().node);
+            if (!hr) return;
+            if (*hr->lhs == a && *hr->rhs == b
+                    && (hr->op == op || (op == ast::RelOp::LtEq && hr->op == ast::RelOp::Lt)))
+                h = &hy;
+        });
+        if (!h) return false;
+
+        // For Add: a + c ≤ b + c  from a ≤ b — always valid.
+        if (bin_op == ast::BinOp::Add) return true;
+
+        // For Mul: a*c ≤ b*c  from a ≤ b, requires c ≥ 0.
+        if (bin_op == ast::BinOp::Mul) {
+            // c_is_right means lhs = a*c, rhs = b*c.
+            // Check c is a positive literal or c has h : c ≥ 0 in scope.
+            auto pos = positivity_expr(c, env);
+            if (pos) return true; // c ≥ 0 structurally
+            return false;
+        }
+        return false;
+    };
+
+    // Strategy 1: same op, same right operand.
+    if (lbin && rbin && lbin->op == rbin->op) {
+        // a op c  ≤  b op c
+        if (*lbin->rhs == *rbin->rhs) {
+            if (try_congr(*lbin->lhs, *rbin->lhs, lbin->op, *lbin->rhs, true))
+                return true;
+        }
+        // c op a  ≤  c op b
+        if (*lbin->lhs == *rbin->lhs) {
+            if (try_congr(*lbin->rhs, *rbin->rhs, lbin->op, *lbin->lhs, false))
+                return true;
+        }
+    }
+
+    // Strategy 2: fall back to linarith.
+    {
+        auto hyps = collect_linear_hypotheses(env);
+        auto goal_lc = extract_linear(*rel);
+        if (goal_lc) {
+            auto neg_goal = negate_linear(*goal_lc);
+            if (neg_goal) {
+                hyps.push_back(std::move(*neg_goal));
+                if (fourier_motzkin(hyps)) return true;
+            }
+        }
+    }
+
+    diag.emit({diag::Severity::Error, loc,
+               "'by gcongr' could not prove `"
+               + forall::pretty::to_string(goal)
+               + "` — no congruence lemma applies and linarith failed"});
+    return false;
 }
 
 // ── check_module ───────────────────────────────────────────────────────────────
