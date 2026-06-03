@@ -3245,3 +3245,188 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+// ── omega tactic tests (DP1) ───────────────────────────────────────────────────
+
+// DP1-1: trivial non-negativity from hypothesis
+TEST(CheckerTest, Omega_TrivialNonneg) {
+    auto diag = run_checker("omega_nonneg", R"(
+theorem t : n >= 0
+proof
+  suppose h : n >= 0
+  then n >= 0 by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-2: linear sum lower bound  a >= 1, b >= 1 => a + b >= 2
+TEST(CheckerTest, Omega_SumLowerBound) {
+    auto diag = run_checker("omega_sum_lower", R"(
+theorem t : a + b >= 2
+proof
+  suppose ha : a >= 1
+  suppose hb : b >= 1
+  then a + b >= 2 by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-3: squeeze  n >= 0, n <= 0 => n = 0
+TEST(CheckerTest, Omega_Squeeze) {
+    auto diag = run_checker("omega_squeeze", R"(
+theorem t : n = 0
+proof
+  suppose h1 : n >= 0
+  suppose h2 : n <= 0
+  then n = 0 by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-4: strict inconsistency  a > b, b > a => false
+TEST(CheckerTest, Omega_StrictInconsistency) {
+    auto diag = run_checker("omega_strict_incons", R"(
+theorem t : false
+proof
+  suppose h1 : a > b
+  suppose h2 : b > a
+  then false by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-5: simple additive  n >= 0 => n + 1 >= 1
+TEST(CheckerTest, Omega_Additive) {
+    auto diag = run_checker("omega_additive", R"(
+theorem t : n + 1 >= 1
+proof
+  suppose h : n >= 0
+  then n + 1 >= 1 by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-6: omega in a have step
+TEST(CheckerTest, Omega_HaveStep) {
+    auto diag = run_checker("omega_have", R"(
+theorem t : x + y >= 0
+proof
+  suppose hx : x >= 0
+  suppose hy : y >= 0
+  have r : x + y >= 0 by omega
+  exact r
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP1-7: rejection of a false claim
+TEST(CheckerTest, Omega_FalseClaim_Error) {
+    auto diag = run_checker("omega_false_claim", R"(
+theorem t : n >= 5
+proof
+  suppose h : n >= 0
+  then n >= 5 by omega
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "omega"));
+}
+
+// DP1-8: equality from two-sided inequalities via omega
+TEST(CheckerTest, Omega_TwoSidedEquality) {
+    auto diag = run_checker("omega_two_sided_eq", R"(
+theorem t : a = b
+proof
+  suppose h1 : a >= b
+  suppose h2 : b >= a
+  then a = b by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── push neg tactic tests (DP5) ────────────────────────────────────────────────
+
+// DP5-1: push neg on goal ¬(A ∧ B) → ¬A ∨ ¬B
+TEST(CheckerTest, PushNeg_AndGoal) {
+    auto diag = run_checker("push_neg_and_goal", R"(
+theorem t : not (A and B)
+proof
+  suppose hna : not A
+  push neg
+  then not A or not B by hna
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP5-2: double negation elimination ¬¬A → A
+TEST(CheckerTest, PushNeg_DoubleNeg) {
+    auto diag = run_checker("push_neg_double_neg", R"(
+theorem t : not (not A)
+proof
+  suppose ha : A
+  push neg
+  then A by ha
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP5-3: relational negation ¬(a < b) → a ≥ b
+TEST(CheckerTest, PushNeg_RelationalLt) {
+    auto diag = run_checker("push_neg_rel_lt", R"(
+theorem t : not (a < b)
+proof
+  suppose h : a >= b
+  push neg
+  then a >= b by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP5-4: push neg at h — hypothesis ¬(A ∨ B) → ¬A ∧ ¬B
+TEST(CheckerTest, PushNeg_AtHypOrGoal) {
+    auto diag = run_checker("push_neg_at_or", R"(
+theorem t : not A and not B
+proof
+  suppose h : not (A or B)
+  push neg at h
+  then not A and not B by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP5-5: push neg on ¬(A → B) → A ∧ ¬B
+TEST(CheckerTest, PushNeg_Implication) {
+    auto diag = run_checker("push_neg_impl", R"(
+theorem t : not (A -> B)
+proof
+  suppose ha : A
+  suppose hnb : not B
+  push neg
+  then A and not B by ha and hnb
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// DP5-6: relational negation ¬(a = b) → a ≠ b
+TEST(CheckerTest, PushNeg_RelationalEq) {
+    auto diag = run_checker("push_neg_rel_eq", R"(
+theorem t : not (a = b)
+proof
+  suppose h : a /= b
+  push neg
+  then a /= b by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
