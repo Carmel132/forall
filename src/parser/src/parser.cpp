@@ -853,6 +853,21 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__simp__");
         return refs;
     }
+    if (check(lexer::TokenKind::KwFieldSimp)) {
+        advance();
+        refs.push_back("__field_simp__");
+        return refs;
+    }
+    if (check(lexer::TokenKind::KwPositivity)) {
+        advance();
+        refs.push_back("__positivity__");
+        return refs;
+    }
+    if (check(lexer::TokenKind::KwGcongr)) {
+        advance();
+        refs.push_back("__gcongr__");
+        return refs;
+    }
     // "contra" is context-sensitive — only a tactic when it appears as an identifier
     // in a justification context (not as a theorem/hypothesis name).
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contra") {
