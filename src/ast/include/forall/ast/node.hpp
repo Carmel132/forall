@@ -361,62 +361,42 @@ struct ApplyStep {
 };
 
 // wlog <name> : <prop>
-// Introduces prop as a local assumption with a warning that the general case
-// (showing the full result follows from the WLOG case) is not verified.
 struct WlogStep {
     std::string name;
     Prop        prop;
 };
 
-// ── calc block (NL1) ───────────────────────────────────────────────────────────
-//
-// calc
-//   a ≤ b   by h1
-//     = c   by h2
-//     < d   by h3
-//
-// Each link is one relation step.  The checker verifies each step individually,
-// then assembles the transitive conclusion (a ≤ d here) and stores it.
-
 struct CalcLink {
-    RelOp                      op;            // the relational operator for this link
-    ExprPtr                    rhs;           // right-hand side of this link
-    std::vector<std::string>   justification; // refs after "by"
+    RelOp                      op;
+    ExprPtr                    rhs;
+    std::vector<std::string>   justification;
 };
 
 struct CalcStep {
-    std::string              name;   // result label (empty → fresh name)
-    ExprPtr                  lhs;    // LHS of the first link
-    std::vector<CalcLink>    links;  // at least 1 link
+    std::string              name;
+    ExprPtr                  lhs;
+    std::vector<CalcLink>    links;
 };
 
-// ── split block (NL2) ─────────────────────────────────────────────────────────
-//
-// split [name :]
-//   case left  => <steps...> then P
-//   case right => <steps...> then Q
-//
-// Decomposes a conjunction goal P ∧ Q into two sub-proofs.
-// For biconditionals (desugared to (P→Q) ∧ (Q→P)):
-//   case (->) => ... then P → Q
-//   case (<-) => ... then Q → P
-// Combines the two judgments with AndIntro.
-// The result is stored under `name` (or a fresh label if name is empty).
-
 struct SplitArm {
-    std::string                        label; // "left", "right", "(->)", "(<-)", etc.
+    std::string                        label;
     std::vector<std::unique_ptr<Step>> steps;
 };
 
 struct SplitStep {
-    std::string              name;  // optional result label (empty → fresh)
+    std::string              name;
     std::vector<SplitArm>    arms;
+};
+
+// push neg [at h] — push negations inward via De Morgan + classical equivalences.
+struct PushNegStep {
+    std::optional<std::string> hyp;  // nullopt → apply to goal; string → apply to named hyp
 };
 
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
     CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep,
-    CalcStep, SplitStep, WlogStep
+    CalcStep, SplitStep, WlogStep, PushNegStep
 >;
 
 struct Step {
