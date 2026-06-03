@@ -2960,3 +2960,76 @@ end
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_TRUE(has_error(diag, "auto-discharge"));
 }
+
+// ── calc block tests (NL1) ─────────────────────────────────────────────────────
+
+// NL1-C1: pure equality chain — passes and result available for later use
+TEST(CheckerTest, CalcStep_PureEqualityChain) {
+    auto diag = run_checker("calc_eq_chain", R"(
+axiom h1 : a = b
+axiom h2 : b = c
+lemma chain : a = c
+proof
+  calc res : a = b by h1 = c by h2
+  then a = c by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL1-C2: mixed ≤/=/< chain — op_final is <, result usable downstream
+TEST(CheckerTest, CalcStep_MixedChainOpFinal) {
+    auto diag = run_checker("calc_mixed_chain", R"(
+axiom h1 : a <= b
+axiom h2 : b = c
+axiom h3 : c < d
+lemma chain : a < d
+proof
+  calc res : a <= b by h1 = c by h2 < d by h3
+  then a < d by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL1-C3: named result used in subsequent then — passes
+TEST(CheckerTest, CalcStep_NamedResultUsedInThen) {
+    auto diag = run_checker("calc_named_result", R"(
+axiom h1 : x = y
+axiom h2 : y = z
+theorem trans_eq : x = z
+proof
+  calc eq_xz : x = y by h1 = z by h2
+  then x = z by eq_xz
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// NL1-C4: incorrect individual step — error reported
+TEST(CheckerTest, CalcStep_WrongJustification) {
+    auto diag = run_checker("calc_bad_step", R"(
+axiom h1 : a = b
+axiom h2 : b = c
+lemma bad : a = c
+proof
+  calc a = b by h2 = c by h1
+  then a = c
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+// NL1-C5: inconsistent direction (< mixed with >) — error reported
+TEST(CheckerTest, CalcStep_InconsistentDirection) {
+    auto diag = run_checker("calc_inconsistent_dir", R"(
+axiom h1 : a < b
+axiom h2 : c > b
+lemma bad : a < a
+proof
+  calc a < b by h1 > c by h2
+  then a < a
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

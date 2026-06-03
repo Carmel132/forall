@@ -2931,3 +2931,101 @@ end)");
     ASSERT_TRUE(s2->name.has_value());
     EXPECT_EQ(*s2->name, "hq");
 }
+
+// ── calc step tests (NL1) ──────────────────────────────────────────────────────
+
+// NL1-P1: basic equality chain  a = b by h1  = c by h2
+TEST(ParserTest, CalcStep_BasicEqualityChain) {
+    auto r = parse_str(R"(
+theorem t : a = a
+proof
+  calc a = b by h1 = c by h2
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* cs = get_step<CalcStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(cs, nullptr);
+    EXPECT_TRUE(cs->name.empty());
+    // lhs is ExprVar "a"
+    const auto* lhs_var = std::get_if<ExprVar>(&cs->lhs->node);
+    ASSERT_NE(lhs_var, nullptr);
+    EXPECT_EQ(lhs_var->name, "a");
+    // Two links
+    ASSERT_EQ(cs->links.size(), 2u);
+    EXPECT_EQ(cs->links[0].op, RelOp::Eq);
+    EXPECT_EQ(cs->links[0].justification.size(), 1u);
+    EXPECT_EQ(cs->links[0].justification[0], "h1");
+    EXPECT_EQ(cs->links[1].op, RelOp::Eq);
+    EXPECT_EQ(cs->links[1].justification[0], "h2");
+}
+
+// NL1-P2: mixed ≤ = < chain
+TEST(ParserTest, CalcStep_MixedOps) {
+    auto r = parse_str(R"(
+theorem t : a < a
+proof
+  calc a <= b by h1 = c by h2 < d by h3
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* cs = get_step<CalcStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(cs, nullptr);
+    ASSERT_EQ(cs->links.size(), 3u);
+    EXPECT_EQ(cs->links[0].op, RelOp::LtEq);
+    EXPECT_EQ(cs->links[1].op, RelOp::Eq);
+    EXPECT_EQ(cs->links[2].op, RelOp::Lt);
+}
+
+// NL1-P3: named calc result
+TEST(ParserTest, CalcStep_NamedResult) {
+    auto r = parse_str(R"(
+theorem t : a <= a
+proof
+  calc result : a <= b by h1 = c by h2
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* cs = get_step<CalcStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(cs, nullptr);
+    EXPECT_EQ(cs->name, "result");
+    ASSERT_EQ(cs->links.size(), 2u);
+}
+
+// NL1-P4: single-link calc (trivial)
+TEST(ParserTest, CalcStep_SingleLink) {
+    auto r = parse_str(R"(
+theorem t : a = a
+proof
+  calc a = b by h1
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* cs = get_step<CalcStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(cs, nullptr);
+    ASSERT_EQ(cs->links.size(), 1u);
+    EXPECT_EQ(cs->links[0].op, RelOp::Eq);
+}
+
+// NL1-P5: calc inside a full theorem with other steps
+TEST(ParserTest, CalcStep_InFullTheorem) {
+    auto r = parse_str(R"(
+theorem t : x < z
+proof
+  suppose h1 : x < y
+  suppose h2 : y = z
+  calc res : x < y by h1 = z by h2
+  then x < z by res
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto& steps = r.mod.decls[0]->proof->steps;
+    ASSERT_EQ(steps.size(), 4u);
+    // Step 2 (index 2) is the calc
+    const auto* cs = std::get_if<CalcStep>(&steps[2].node);
+    ASSERT_NE(cs, nullptr);
+    EXPECT_EQ(cs->name, "res");
+    ASSERT_EQ(cs->links.size(), 2u);
+    // Step 3 is the then
+    const auto* ts = std::get_if<ThenStep>(&steps[3].node);
+    ASSERT_NE(ts, nullptr);
+}
