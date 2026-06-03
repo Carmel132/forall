@@ -19,7 +19,8 @@ static std::string format_justification(const std::vector<std::string>& refs,
     if (refs.size() == 1 && refs[0] == "__ring__")     return " by ring";
     if (refs.size() == 1 && refs[0] == "__linarith__") return " by linarith";
     if (refs.size() == 1 && refs[0] == "__simp__")     return " by simp";
-    if (refs.size() == 1 && refs[0] == "__contra__")  return " by contra";
+    if (refs.size() == 1 && refs[0] == "__contra__")         return " by contra";
+    if (refs.size() == 1 && refs[0] == "__contrapositive__") return " by contrapositive";
     if (refs.empty()) return "";
     std::string r = " by " + refs[0];
     for (std::size_t i = 1; i < refs.size(); ++i)

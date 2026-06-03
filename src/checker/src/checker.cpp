@@ -1383,6 +1383,47 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // NL12: "by contrapositive" — prove A → B by ¬B assumption + derived ¬A
+            // Soundness: A → B is logically equivalent to ¬B → ¬A.
+            // We verify the two pieces are present in scope, then certify via introduce_axiom.
+            if (s.justification.size() == 1 && s.justification[0] == "__contrapositive__") {
+                const auto* impl = std::get_if<ast::PropImpl>(&prop.node);
+                if (!impl) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive' requires an implication conclusion A → B"});
+                    return false;
+                }
+                // Build ¬B and ¬A to look for in scope.
+                ast::Prop not_B{prop.loc, ast::PropNot{impl->rhs}};
+                ast::Prop not_A{prop.loc, ast::PropNot{impl->lhs}};
+                // Search for an Assumption of ¬B.
+                const HypEntry* neg_B_entry = nullptr;
+                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                    if (e.judgment.prop() == not_B) neg_B_entry = &e;
+                });
+                if (!neg_B_entry) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive': no assumption of '"
+                               + forall::pretty::to_string(not_B) + "' found in scope"});
+                    return false;
+                }
+                // Search for a Derived entry of ¬A.
+                const HypEntry* neg_A_entry = env.find_derived(not_A);
+                if (!neg_A_entry) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive': no derived proof of '"
+                               + forall::pretty::to_string(not_A) + "' found in scope"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive' internal error: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
@@ -1648,6 +1689,41 @@ bool check_step(const ast::Step& step,
                 if (!r) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by simp' internal error: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
+            // NL12: "by contrapositive" (ThenStep variant)
+            if (s.justification.size() == 1 && s.justification[0] == "__contrapositive__") {
+                const auto* impl = std::get_if<ast::PropImpl>(&prop.node);
+                if (!impl) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive' requires an implication conclusion A → B"});
+                    return false;
+                }
+                ast::Prop not_B{prop.loc, ast::PropNot{impl->rhs}};
+                ast::Prop not_A{prop.loc, ast::PropNot{impl->lhs}};
+                const HypEntry* neg_B_entry = nullptr;
+                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                    if (e.judgment.prop() == not_B) neg_B_entry = &e;
+                });
+                if (!neg_B_entry) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive': no assumption of '"
+                               + forall::pretty::to_string(not_B) + "' found in scope"});
+                    return false;
+                }
+                const HypEntry* neg_A_entry = env.find_derived(not_A);
+                if (!neg_A_entry) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive': no derived proof of '"
+                               + forall::pretty::to_string(not_A) + "' found in scope"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by contrapositive' internal error: " + r.error().message});
                     return false;
                 }
                 return true;

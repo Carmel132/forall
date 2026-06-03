@@ -3153,3 +3153,32 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── NL12: by contrapositive ────────────────────────────────────────────────────
+
+TEST(CheckerTest, NL12_ContrapositivePasses) {
+    // Prove P → Q by: suppose ¬Q, derive ¬P, then P → Q by contrapositive.
+    auto diag = run_checker("nl12_basic", R"(
+axiom notQ_imp_notP : not Q -> not P
+theorem t : P -> Q
+proof
+  suppose hnq : not Q
+  have hnp : not P by notQ_imp_notP and hnq
+  then P -> Q by contrapositive
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL12_ContrapositiveNegBMissingErrors) {
+    // Missing the ¬B assumption — should error.
+    auto diag = run_checker("nl12_missing_neg_b", R"(
+axiom hnp : not P
+theorem t : P -> Q
+proof
+  have hnp2 : not P by hnp
+  then P -> Q by contrapositive
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

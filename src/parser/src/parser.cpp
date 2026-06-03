@@ -860,6 +860,12 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__contra__");
         return refs;
     }
+    // NL12: "contrapositive" — prove A → B by showing ¬B → ¬A
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contrapositive") {
+        advance();
+        refs.push_back("__contrapositive__");
+        return refs;
+    }
     // NL16: "by hypothesis" / "by assumption" — resolve to the unique active assumption
     if (check(lexer::TokenKind::Identifier)
             && (peek().lexeme == "hypothesis" || peek().lexeme == "assumption")) {
