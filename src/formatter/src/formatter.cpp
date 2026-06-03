@@ -18,7 +18,10 @@ static std::string format_justification(const std::vector<std::string>& refs,
     if (refs.size() == 1 && refs[0] == "__norm_num__") return " by norm_num";
     if (refs.size() == 1 && refs[0] == "__ring__")     return " by ring";
     if (refs.size() == 1 && refs[0] == "__linarith__") return " by linarith";
-    if (refs.size() == 1 && refs[0] == "__simp__")     return " by simp";
+    if (refs.size() == 1 && refs[0] == "__simp__")           return " by simp";
+    if (refs.size() == 1 && refs[0] == "__field_simp__")     return " by field_simp";
+    if (refs.size() == 1 && refs[0] == "__positivity__")     return " by positivity";
+    if (refs.size() == 1 && refs[0] == "__gcongr__")         return " by gcongr";
     if (refs.size() == 1 && refs[0] == "__contra__")         return " by contra";
     if (refs.size() == 1 && refs[0] == "__contrapositive__") return " by contrapositive";
     if (refs.empty()) return "";
