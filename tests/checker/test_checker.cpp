@@ -2916,3 +2916,47 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── NL3: silent ImplIntro / NotIntro close at end/qed ────────────────────────
+
+TEST(CheckerTest, NL3AutoCloseImpl) {
+    // Proof of A → B ends at "end" after "suppose h : A" and "have h_b : B by ..."
+    // with no explicit "then A → B" — should pass via auto-discharge at end/qed.
+    auto diag = run_checker("nl3_auto_close_impl", R"(
+axiom ax : P -> Q
+theorem t : P -> Q
+proof
+  suppose h : P
+  have h_q : Q by ax and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL3AutoCloseNot) {
+    // Proof of ¬A ends at "end" after "suppose h : A" and "have bot : false by ..."
+    // with no explicit "then ¬A" — should pass via auto-discharge at end/qed.
+    auto diag = run_checker("nl3_auto_close_not", R"(
+axiom ax_p  : P
+axiom ax_np : not P
+theorem t : not P
+proof
+  suppose h : P
+  have bot : false by ax_np and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL3MissingConsequentError) {
+    // Proof of A → B ends at "end" after "suppose h : A" but no derivation of B.
+    // Should emit an error indicating auto-discharge failed.
+    auto diag = run_checker("nl3_missing_consequent", R"(
+theorem t : P -> Q
+proof
+  suppose h : P
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "auto-discharge"));
+}
