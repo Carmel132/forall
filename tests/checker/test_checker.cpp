@@ -3182,3 +3182,27 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── NL14: wlog step ────────────────────────────────────────────────────────────
+
+TEST(CheckerTest, NL14_WlogInsertsAssumption) {
+    // wlog introduces the stated prop as an assumption, emits a warning,
+    // and the result is usable in subsequent steps.
+    auto diag = run_checker("nl14_wlog", R"(
+axiom ha : P or Q
+theorem t : P
+proof
+  wlog hw : P
+  then P by hw
+end
+)");
+    // Should have no errors (only a warning).
+    EXPECT_FALSE(diag.hasErrors());
+    // Must have the wlog warning.
+    bool has_warning = false;
+    for (const auto& d : diag.diagnostics())
+        if (d.severity == diag::Severity::Warning
+                && d.message.find("wlog") != std::string::npos)
+            has_warning = true;
+    EXPECT_TRUE(has_warning);
+}

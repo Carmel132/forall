@@ -3156,3 +3156,23 @@ end
     ASSERT_NE(hs_inner, nullptr);
     ASSERT_NE(hs_inner->sub_proof, nullptr);
 }
+
+// ── NL14: wlog step ────────────────────────────────────────────────────────────
+
+TEST(ParserTest, NL14_WlogBasic) {
+    auto r = parse_str(R"(
+theorem t : P
+proof
+  wlog hw : P
+  then P by hw
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_TRUE(r.mod.decls[0]->proof.has_value());
+    const auto* ws = get_step<WlogStep>(*r.mod.decls[0]->proof, 0);
+    ASSERT_NE(ws, nullptr);
+    EXPECT_EQ(ws->name, "hw");
+    const auto* atom = std::get_if<Atomic>(&ws->prop.node);
+    ASSERT_NE(atom, nullptr);
+    EXPECT_EQ(atom->name, "P");
+}
