@@ -360,6 +360,14 @@ struct ApplyStep {
     std::string hyp_ref;  // hypothesis name; must be PropImpl{A, B} where B == current goal
 };
 
+// wlog <name> : <prop>
+// Introduces prop as a local assumption with a warning that the general case
+// (showing the full result follows from the WLOG case) is not verified.
+struct WlogStep {
+    std::string name;
+    Prop        prop;
+};
+
 // ── calc block (NL1) ───────────────────────────────────────────────────────────
 //
 // calc
@@ -408,7 +416,7 @@ struct SplitStep {
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
     CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep,
-    CalcStep, SplitStep
+    CalcStep, SplitStep, WlogStep
 >;
 
 struct Step {
