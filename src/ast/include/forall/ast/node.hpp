@@ -357,9 +357,32 @@ struct ApplyStep {
     std::string hyp_ref;  // hypothesis name; must be PropImpl{A, B} where B == current goal
 };
 
+// ── calc block (NL1) ───────────────────────────────────────────────────────────
+//
+// calc
+//   a ≤ b   by h1
+//     = c   by h2
+//     < d   by h3
+//
+// Each link is one relation step.  The checker verifies each step individually,
+// then assembles the transitive conclusion (a ≤ d here) and stores it.
+
+struct CalcLink {
+    RelOp                      op;            // the relational operator for this link
+    ExprPtr                    rhs;           // right-hand side of this link
+    std::vector<std::string>   justification; // refs after "by"
+};
+
+struct CalcStep {
+    std::string              name;   // result label (empty → fresh name)
+    ExprPtr                  lhs;    // LHS of the first link
+    std::vector<CalcLink>    links;  // at least 1 link
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
-    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep
+    CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep,
+    CalcStep
 >;
 
 struct Step {
