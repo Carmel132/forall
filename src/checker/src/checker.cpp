@@ -881,6 +881,112 @@ bool check_induction_step(const ast::InductionStep& s,
     return true;
 }
 
+// ── check_calc_step ────────────────────────────────────────────────────────────
+//
+// Verifies a calc block (NL1).  Each link lhs_i op_i rhs_i is checked as a
+// PropRel against the user-supplied justification.  After all individual links
+// pass, the transitive conclusion (overall_lhs  op_final  overall_rhs) is
+// assembled and certified via introduce_axiom (same soundness justification as
+// `by decide` / `by linarith` — the individual steps are already kernel-certified).
+//
+// Transitivity rule for op_final:
+//   All =                 → =
+//   Any < (with ≤ or =)   → <
+//   Any ≤ (no <)          → ≤
+//   Any > (with ≥ or =)   → >
+//   Any ≥ (no >)          → ≥
+//   Mixed < and >         → error (inconsistent chain)
+
+bool check_calc_step(const ast::CalcStep& cs,
+                     const diag::SourceLocation& loc,
+                     ScopeStack& env,
+                     kernel::Kernel& kernel,
+                     diag::DiagnosticEngine& diag,
+                     const CheckContext& ctx)
+{
+    if (cs.links.empty()) {
+        diag.emit({diag::Severity::Error, loc,
+                   "'calc' block has no links"});
+        return false;
+    }
+
+    // Check each link individually.
+    bool had_error = false;
+    ast::ExprPtr cur_lhs = cs.lhs; // tracks the chained LHS
+
+    for (std::size_t i = 0; i < cs.links.size(); ++i) {
+        const auto& link = cs.links[i];
+        // Individual proposition: cur_lhs link.op link.rhs
+        ast::Prop link_prop{loc,
+            ast::PropRel{cur_lhs, link.rhs, link.op}};
+
+        auto es = resolve_refs(link.justification, env, diag, loc);
+        if (!es) { had_error = true; cur_lhs = link.rhs; continue; }
+
+        auto app = infer_rule(link_prop, *es, diag, loc);
+        if (!app) { had_error = true; cur_lhs = link.rhs; continue; }
+
+        auto r = kernel.apply(app->rule, std::span{app->premises}, link_prop);
+        if (!r) {
+            diag.emit({diag::Severity::Error, loc,
+                       "calc link " + std::to_string(i + 1)
+                       + " kernel check failed: " + r.error().message});
+            had_error = true;
+        }
+        cur_lhs = link.rhs; // next link's LHS is this link's RHS
+    }
+
+    if (had_error) return false;
+
+    // Determine op_final from the operator sequence.
+    // Detect direction and strictness.
+    bool has_lt = false, has_le = false, has_eq_only = true;
+    bool has_gt = false, has_ge = false;
+    for (const auto& link : cs.links) {
+        switch (link.op) {
+            case ast::RelOp::Lt:   has_lt = true;  has_eq_only = false; break;
+            case ast::RelOp::LtEq: has_le = true;  has_eq_only = false; break;
+            case ast::RelOp::Gt:   has_gt = true;  has_eq_only = false; break;
+            case ast::RelOp::GtEq: has_ge = true;  has_eq_only = false; break;
+            case ast::RelOp::Eq:   break; // does not affect direction
+            default:
+                diag.emit({diag::Severity::Error, loc,
+                           "calc block: relational operator not supported for chaining"});
+                return false;
+        }
+    }
+
+    if ((has_lt || has_le) && (has_gt || has_ge)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "calc block: cannot mix < / ≤ with > / ≥ in the same chain"});
+        return false;
+    }
+
+    ast::RelOp op_final;
+    if (has_eq_only)      op_final = ast::RelOp::Eq;
+    else if (has_lt)      op_final = ast::RelOp::Lt;
+    else if (has_le)      op_final = ast::RelOp::LtEq;
+    else if (has_gt)      op_final = ast::RelOp::Gt;
+    else                  op_final = ast::RelOp::GtEq;
+
+    // Assemble the transitive conclusion: cs.lhs  op_final  last_rhs
+    const ast::ExprPtr& last_rhs = cs.links.back().rhs;
+    ast::Prop conclusion{loc, ast::PropRel{cs.lhs, last_rhs, op_final}};
+
+    // Certify via introduce_axiom: soundness is guaranteed because every
+    // individual link has been kernel-checked above.
+    auto result = kernel.introduce_axiom(conclusion);
+    if (!result) {
+        diag.emit({diag::Severity::Error, loc,
+                   "calc: introduce_axiom failed: " + result.error().message});
+        return false;
+    }
+
+    const std::string result_name = cs.name.empty() ? fresh_name() : cs.name;
+    env.insert_or_assign(result_name, HypEntry{std::move(*result), EntryKind::Derived});
+    return true;
+}
+
 // ── check_step ─────────────────────────────────────────────────────────────────
 
 bool check_step(const ast::Step& step,
@@ -1392,6 +1498,11 @@ bool check_step(const ast::Step& step,
         // induction <name> on <var>  base: ...  inductive: ...
         else if constexpr (std::is_same_v<T, ast::InductionStep>) {
             return check_induction_step(s, step.loc, env, kernel, diag, ctx);
+        }
+
+        // calc [name :] lhs rel rhs by refs  { rel rhs by refs }
+        else if constexpr (std::is_same_v<T, ast::CalcStep>) {
+            return check_calc_step(s, step.loc, env, kernel, diag, ctx);
         }
 
         // rewrite h — handled before the step loop in check_proof; no-op here
