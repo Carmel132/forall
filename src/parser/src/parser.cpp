@@ -1990,12 +1990,86 @@ ast::Step Parser::parseWlogStep() {
     return {loc, ast::WlogStep{std::move(name), std::move(prop)}};
 }
 
+// Helper: returns true if the current position starts a direction marker "(→)" or "(<-)".
+// The forward marker is  LParen Arrow RParen.
+// The backward marker is LParen (KwFrom | (Less Minus)) RParen.
+bool Parser::isDirectionMarker() const noexcept {
+    using K = lexer::TokenKind;
+    if (!check(K::LParen)) return false;
+    if (pos_ + 1 >= tokens_.size()) return false;
+    const auto k1 = tokens_[pos_ + 1].kind;
+    if (k1 == K::Arrow) {
+        // (→) : LParen Arrow RParen
+        return pos_ + 2 < tokens_.size() && tokens_[pos_ + 2].kind == K::RParen;
+    }
+    if (k1 == K::KwFrom) {
+        // (<-) via "from": LParen KwFrom RParen
+        return pos_ + 2 < tokens_.size() && tokens_[pos_ + 2].kind == K::RParen;
+    }
+    if (k1 == K::Less) {
+        // (<-) via "<-": LParen Less Minus RParen
+        return pos_ + 3 < tokens_.size()
+            && tokens_[pos_ + 2].kind == K::Minus
+            && tokens_[pos_ + 3].kind == K::RParen;
+    }
+    return false;
+}
+
+// Consume a direction-marker token sequence and return the label string.
+// Assumes isDirectionMarker() is true.
+std::string Parser::consumeDirectionMarker() {
+    using K = lexer::TokenKind;
+    advance(); // consume '('
+    std::string label;
+    if (check(K::Arrow)) {
+        advance(); label = "(->";
+    } else if (check(K::KwFrom)) {
+        advance(); label = "(<-";
+    } else { // Less Minus
+        advance(); // '<'
+        advance(); // '-'
+        label = "(<-";
+    }
+    advance(); // consume ')'
+    label += ")";
+    return label;
+}
+
 ast::ProofBlock Parser::parseProofBlock() {
+    using K = lexer::TokenKind;
     ast::ProofBlock block;
+    const auto proof_loc = peek().loc;
     advance(); // consume "proof"
-    while (!isAtEnd() && !check(lexer::TokenKind::KwEnd))
+
+    // NL20: detect direction-marker biconditional proof.
+    // If the block opens with "(→)" or "(<-)", wrap the entire block as a SplitStep.
+    if (isDirectionMarker()) {
+        std::vector<ast::SplitArm> arms;
+
+        // Parse first arm: from current direction marker until the next marker or end.
+        std::string first_label = consumeDirectionMarker();
+        std::vector<std::unique_ptr<ast::Step>> first_steps;
+        while (!isAtEnd() && !check(K::KwEnd) && !isDirectionMarker())
+            first_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+        arms.push_back(ast::SplitArm{std::move(first_label), std::move(first_steps)});
+
+        // Parse second arm (if present).
+        if (isDirectionMarker()) {
+            std::string second_label = consumeDirectionMarker();
+            std::vector<std::unique_ptr<ast::Step>> second_steps;
+            while (!isAtEnd() && !check(K::KwEnd) && !isDirectionMarker())
+                second_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+            arms.push_back(ast::SplitArm{std::move(second_label), std::move(second_steps)});
+        }
+
+        expect(K::KwEnd, "expected 'end' to close direction-marker proof block");
+        block.steps.push_back(ast::Step{proof_loc, ast::SplitStep{"", std::move(arms)}});
+        return block;
+    }
+
+    while (!isAtEnd() && !check(K::KwEnd))
         block.steps.push_back(parseStep());
-    expect(lexer::TokenKind::KwEnd, "expected 'end' to close proof block");
+    expect(K::KwEnd, "expected 'end' to close proof block");
     return block;
 }
 

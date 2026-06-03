@@ -46,6 +46,10 @@ private:
     [[nodiscard]] ast::Step       parseSplitStep();
     [[nodiscard]] ast::Step       parseWlogStep();
 
+    // NL20: direction-marker helpers for biconditional proof blocks.
+    [[nodiscard]] bool isDirectionMarker() const noexcept;
+    std::string        consumeDirectionMarker();
+
     // Expressions (arithmetic, precedence climbing)
     // Grammar:  expr      = lambda | condExpr | aggregate | exprAdd
     //           lambda    = ("fun" | "λ") id [":" type] ("=>" | ",") expr
