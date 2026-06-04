@@ -593,16 +593,18 @@ static ast::Prop unfold_preds(const ast::Prop& p, const PredDefTable& defs) {
             if (it == defs.end()) return p;
             const auto& entry = it->second;
             if (entry.params.size() != n.args.size()) return p;
-            // Substitute each argument into the body.
+            // Substitute each argument into the body, then beta-reduce,
+            // then recursively unfold any nested predicates in the result.
             ast::Prop result = *entry.body;
             for (std::size_t i = 0; i < entry.params.size(); ++i)
                 result = ast::subst(result, entry.params[i], *n.args[i]);
-            return ast::beta_reduce(result);
+            result = ast::beta_reduce(result);
+            return unfold_preds(result, defs); // recurse to expand nested predicates
         } else if constexpr (std::is_same_v<T, ast::Atomic>) {
             // Nullary predicate: check if it has a zero-param definition.
             auto it = defs.find(n.name);
             if (it == defs.end() || !it->second.params.empty()) return p;
-            return ast::beta_reduce(*it->second.body);
+            return unfold_preds(ast::beta_reduce(*it->second.body), defs);
         } else if constexpr (std::is_same_v<T, ast::PropNot>) {
             return ast::Prop{p.loc, ast::PropNot{
                 ast::make_prop(unfold_preds(*n.inner, defs))}};
@@ -1424,7 +1426,8 @@ bool check_step(const ast::Step& step,
                         continue;
                     }
                     CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
-                                        ctx.sigs, &prop, &sub_term_defs, ctx.struct_env};
+                                        ctx.sigs, &prop, &sub_term_defs, ctx.struct_env,
+                                        ctx.pred_defs};
                     const auto before = diag.diagnostics().size();
                     check_step(sub_step, sub_env, kernel, diag, sub_ctx);
                     const auto& all2 = diag.diagnostics();
@@ -1443,9 +1446,12 @@ bool check_step(const ast::Step& step,
                         return false;
                     }
                     const auto& ts = std::get<ast::ThenStep>(sub_last_then->node);
-                    if (!(ts.prop == prop)) {
+                    // AN8: apply predicate unfolding to the concluding step prop
+                    // so it can be compared against the (already unfolded) goal.
+                    const ast::Prop ts_prop_eff = apply_tdefs(ts.prop);
+                    if (!(ts_prop_eff == prop)) {
                         diag.emit({diag::Severity::Error, sub_last_then->loc,
-                                   "inline proof concludes '" + forall::pretty::to_string(ts.prop)
+                                   "inline proof concludes '" + forall::pretty::to_string(ts_prop_eff)
                                    + "' but goal is '"
                                    + forall::pretty::to_string(prop) + "'"});
                         return false;
