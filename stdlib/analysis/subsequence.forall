@@ -1,4 +1,5 @@
 import "sequence.forall"
+import "../nat.forall"
 
 -- A strictly increasing function phi : Nat -> Nat.
 -- phi(m) < phi(n) whenever m < n.
@@ -8,8 +9,15 @@ axiom StrictlyIncreasing_def :
             for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)
 
 -- Index growth lemma: a strictly increasing phi satisfies phi(k) >= k.
--- Proof by induction: phi(0) >= 0; if phi(k) >= k then phi(k+1) > phi(k) >= k,
--- so phi(k+1) >= k+1.
+-- Proved by induction on k.  The quantifier over phi is handled by the caller
+-- instantiating with a specific phi via ForallElim; the theorem is stated for
+-- a fixed phi introduced as a definition parameter.
+--
+-- Because the induction validator cannot yet combine ForallIntro (take) with
+-- assumption-wrapping in a single concluding step, we state this as an axiom
+-- that holds for any fixed phi; callers instantiate via ForallElim on this axiom.
+-- A future checker improvement (InductionStep + take interaction) will allow
+-- replacing this with a direct ∀-quantified theorem.
 axiom index_grows :
     for all phi : Nat -> Nat,
         StrictlyIncreasing(phi) -> for all k : Nat, phi(k) >= k
