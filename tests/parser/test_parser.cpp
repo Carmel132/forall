@@ -3282,3 +3282,44 @@ TEST(ParserTest, NonAbstractDefinition_FlagIsFalse) {
     ASSERT_EQ(r.mod.decls.size(), 1u);
     EXPECT_FALSE(r.mod.decls[0]->is_abstract);
 }
+
+// Predicate definition with body: definition P(x : T) : Prop := body
+// Parser should produce def_body pointing to the parsed proposition.
+TEST(ParserTest, DefinitionWithBody_SingleParam) {
+    auto r = parse_str("definition IsEven (n : Nat) : Prop := there exists k : Nat, n = k + k");
+    ASSERT_FALSE(r.diag.hasErrors()) << [&]{
+        std::string m; for (auto& d : r.diag.diagnostics()) m += d.message + "\n"; return m; }();
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Definition);
+    EXPECT_EQ(d.name, "IsEven");
+    ASSERT_EQ(d.params.size(), 1u);
+    EXPECT_EQ(d.params[0].name, "n");
+    ASSERT_TRUE(d.def_body.has_value());
+    // Body should be an existential: ∃ k : Nat, n = k + k
+    const auto* ex = std::get_if<PropExists>(&(*d.def_body)->node);
+    ASSERT_NE(ex, nullptr);
+    EXPECT_EQ(ex->var, "k");
+}
+
+// Predicate definition with two params and a relational body.
+TEST(ParserTest, DefinitionWithBody_TwoParams) {
+    auto r = parse_str("definition Divides (a : Nat) (b : Nat) : Prop := there exists k : Nat, b = a * k");
+    ASSERT_FALSE(r.diag.hasErrors()) << [&]{
+        std::string m; for (auto& d : r.diag.diagnostics()) m += d.message + "\n"; return m; }();
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, DeclKind::Definition);
+    ASSERT_EQ(d.params.size(), 2u);
+    EXPECT_EQ(d.params[0].name, "a");
+    EXPECT_EQ(d.params[1].name, "b");
+    ASSERT_TRUE(d.def_body.has_value());
+}
+
+// Definition without body: no def_body present.
+TEST(ParserTest, DefinitionWithoutBody_NoDefBody) {
+    auto r = parse_str("definition P (x : Nat) : Prop");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_FALSE(r.mod.decls[0]->def_body.has_value());
+}

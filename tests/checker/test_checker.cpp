@@ -3687,6 +3687,68 @@ end
     }();
 }
 
+// ── AN8: Predicate definition unfolding ────────────────────────────────────────
+
+// `have` step concludes a predicate whose unfolded body matches a hypothesis.
+// definition Positive(x) := x > 0
+// axiom n_pos : n > 0
+// have h : Positive(n) -- unfolded to n > 0, matches n_pos via Assumption rule
+TEST(CheckerTest, PredDefUnfoldingInHave) {
+    auto diag = run_checker("pred_def_have", R"(
+definition Positive (x : Real) : Prop := x > 0
+axiom n_pos : n > 0
+theorem show_pos : Positive(n)
+proof
+  have h : Positive(n) by n_pos
+  then Positive(n) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// `suppose` step with a predicate definition unfolds the assumption.
+// definition Positive(x) := x > 0
+// Supposing a defined predicate unfolds it so the unfolded body is in scope.
+// axiom n_pos : Positive(n) -- unfolds to n > 0 when used in a have step.
+TEST(CheckerTest, PredDefUnfoldingInSuppose) {
+    auto diag = run_checker("pred_def_suppose", R"(
+definition Positive (x : Real) : Prop := x > 0
+axiom n_pos : Positive(n)
+theorem derive_gt : n > 0
+proof
+  have h : n > 0 by n_pos
+  then n > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// `then` step concludes a predicate by proving its unfolded body.
+// definition Ge(a, b) := a >= b
+TEST(CheckerTest, PredDefUnfoldingInThen) {
+    auto diag = run_checker("pred_def_then", R"(
+definition Ge (a : Real) (b : Real) : Prop := a >= b
+axiom n_ge_0 : n >= 0
+theorem n_ge : Ge(n, 0)
+proof
+  then Ge(n, 0) by n_ge_0
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // induction with a preceding suppose closes the implication automatically.
 TEST(CheckerTest, InductionAfterSuppose) {
     auto diag = run_checker("an6_induction_after_suppose", R"(
