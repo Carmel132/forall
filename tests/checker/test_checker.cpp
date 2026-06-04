@@ -3492,3 +3492,119 @@ end
     EXPECT_TRUE(diag.hasErrors());
     EXPECT_TRUE(has_error(diag, "Nonexistent.foo"));
 }
+
+// ── MOD2: Namespace blocks ─────────────────────────────────────────────────────
+
+// MOD2-1: declarations inside a namespace block are accessible as Ns.name
+TEST(CheckerTest, Namespace_QualifiedAccess) {
+    auto diag = run_checker("ns_qualified", R"(
+namespace Arith
+  axiom add_comm : A -> B
+end Arith
+theorem use_ns : A -> B
+proof
+  suppose h : A
+  have hb : B by Arith.add_comm and h
+  then A -> B by h and hb
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// MOD2-2: after "open Ns", declarations are accessible unqualified
+TEST(CheckerTest, Namespace_OpenBringsIntoScope) {
+    auto diag = run_checker("ns_open", R"(
+namespace Logic
+  axiom excluded_middle : P or not P
+end Logic
+open Logic
+theorem use_em : P or not P
+proof
+  then P or not P by excluded_middle
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// MOD2-3: name collision between two namespaces — later definition wins
+TEST(CheckerTest, Namespace_Collision_LaterWins) {
+    auto diag = run_checker("ns_collision", R"(
+namespace A
+  axiom my_axiom : P
+end A
+namespace B
+  axiom my_axiom : Q
+end B
+open A
+open B
+-- After both opens, "my_axiom" should resolve (later B.my_axiom wins, proving Q)
+axiom want_q : Q
+theorem use_collision : Q
+proof
+  then Q by my_axiom
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── MOD3: private and protected declarations ───────────────────────────────────
+
+// MOD3-1: private axiom in an imported file is NOT accessible in the importer
+TEST(CheckerTest, Private_NotExported) {
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_mod3_priv_lib.forall";
+    auto main = dir / "forall_mod3_priv_main.forall";
+
+    std::ofstream{lib}  << "private axiom secret : P\n";
+    std::ofstream{main} << R"(
+import "forall_mod3_priv_lib.forall"
+theorem use_secret : P
+proof
+  then P by secret
+end
+)";
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_TRUE(diag.hasErrors());
+}
+
+// MOD3-2: protected axiom IS accessible in the importer
+TEST(CheckerTest, Protected_IsExported) {
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_mod3_prot_lib.forall";
+    auto main = dir / "forall_mod3_prot_main.forall";
+
+    std::ofstream{lib}  << "protected axiom shared : P -> Q\n";
+    std::ofstream{main} << R"(
+import "forall_mod3_prot_lib.forall"
+theorem use_shared : P -> Q
+proof
+  suppose h : P
+  have hq : Q by shared and h
+  then P -> Q by h and hq
+end
+)";
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── MOD4: abstract definitions ─────────────────────────────────────────────────
+
+// MOD4-1: abstract definition allows using the name as an opaque fact in proofs
+TEST(CheckerTest, AbstractDefinition_UsableInProof) {
+    auto diag = run_checker("abstract_def", R"(
+abstract definition foo : P -> Q
+theorem use_foo : P -> Q
+proof
+  suppose h : P
+  have hq : Q by foo and h
+  then P -> Q by h and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}

@@ -3222,3 +3222,63 @@ end
     ASSERT_NE(ss, nullptr);
     ASSERT_EQ(ss->arms.size(), 2u);
 }
+
+// ── MOD2: namespace blocks ─────────────────────────────────────────────────────
+
+TEST(ParserTest, Namespace_ParsesInnerDecls) {
+    auto r = parse_str(R"(
+namespace Foo
+  axiom bar : P
+  axiom baz : Q
+end Foo
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& ns = *r.mod.decls[0];
+    EXPECT_EQ(ns.kind, DeclKind::Namespace);
+    EXPECT_EQ(ns.name, "Foo");
+    EXPECT_EQ(ns.ns_decls.size(), 2u);
+}
+
+TEST(ParserTest, Open_ParsesNamespaceName) {
+    auto r = parse_str("open MyNs");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Open);
+    EXPECT_EQ(r.mod.decls[0]->name, "MyNs");
+}
+
+// ── MOD3: private/protected visibility ────────────────────────────────────────
+
+TEST(ParserTest, Private_AxiomVisibility) {
+    auto r = parse_str("private axiom secret : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->visibility, Visibility::Private);
+    EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Axiom);
+}
+
+TEST(ParserTest, Protected_DefinitionVisibility) {
+    auto r = parse_str("protected definition shared : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->visibility, Visibility::Protected);
+    EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Definition);
+}
+
+// ── MOD4: abstract definitions ────────────────────────────────────────────────
+
+TEST(ParserTest, AbstractDefinition_SetsFlag) {
+    auto r = parse_str("abstract definition f : P -> Q");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_TRUE(r.mod.decls[0]->is_abstract);
+    EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Definition);
+}
+
+TEST(ParserTest, NonAbstractDefinition_FlagIsFalse) {
+    auto r = parse_str("definition f : P -> Q");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_FALSE(r.mod.decls[0]->is_abstract);
+}
