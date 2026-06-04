@@ -2327,24 +2327,24 @@ void check_proof(const ast::Decl& decl,
                 had_step_errors = true;
                 continue;
             }
-            // For variable rewriting: lhs must be an ExprVar.
+            // Choose which side to substitute.
+            // Fast path: if one side is a plain variable, use name-based subst.
+            // General path: expression-level find-and-replace via subst_expr.
             const auto* lhs_var = std::get_if<ast::ExprVar>(&eq->lhs->node);
             const auto* rhs_var = std::get_if<ast::ExprVar>(&eq->rhs->node);
-            if (!lhs_var && !rhs_var) {
-                diag.emit({diag::Severity::Error, step.loc,
-                           "rewrite: equality must have a variable on at least one side"});
-                had_step_errors = true;
-                continue;
-            }
-            // Choose which side to substitute.
             ast::Prop new_goal;
-            if (!rw->reverse && lhs_var) {
-                new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
-            } else if (rhs_var) {
-                new_goal = ast::subst(*current_goal, rhs_var->name, *eq->lhs);
+            if (!rw->reverse) {
+                // Forward: replace lhs with rhs.
+                if (lhs_var)
+                    new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
+                else
+                    new_goal = ast::subst_expr(*current_goal, *eq->lhs, *eq->rhs);
             } else {
-                // reverse requested but only lhs is a var — still forward
-                new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
+                // Reverse: replace rhs with lhs.
+                if (rhs_var)
+                    new_goal = ast::subst(*current_goal, rhs_var->name, *eq->lhs);
+                else
+                    new_goal = ast::subst_expr(*current_goal, *eq->rhs, *eq->lhs);
             }
             if (new_goal == *current_goal) {
                 diag.emit({diag::Severity::Warning, step.loc,
@@ -2599,9 +2599,29 @@ void check_proof(const ast::Decl& decl,
         } else if (last_kind == LastKind::Induction) {
             const auto& is = std::get<ast::InductionStep>(last_concluding->node);
             const auto* it = env.find(is.name);
-            if (it && !(it->judgment.prop() == decl.statement))
+            if (!it) {
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
+            } else {
+                // Build the wrapped conclusion by threading through all outstanding
+                // Assumption-kind hypotheses in scope (introduced via suppose).
+                // Each one wraps the result in one layer of ImplIntro:
+                //   A₁ → A₂ → ... → (induction result)
+                // must equal decl.statement.
+                ast::Prop wrapped = it->judgment.prop();
+                std::vector<ast::Prop> assumptions;
+                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                    assumptions.push_back(e.judgment.prop());
+                });
+                // Wrap in reverse order (last assumption is innermost antecedent).
+                for (auto rit = assumptions.rbegin(); rit != assumptions.rend(); ++rit) {
+                    wrapped = ast::Prop{last_concluding->loc,
+                        ast::PropImpl{ast::make_prop(*rit), ast::make_prop(wrapped)}};
+                }
+                if (!(wrapped == decl.statement))
+                    diag.emit({diag::Severity::Error, last_concluding->loc,
+                               "proof concludes with wrong proposition"});
+            }
         } else if (last_kind == LastKind::Split) {
             const auto& ss = std::get<ast::SplitStep>(last_concluding->node);
             const std::string result_name = ss.name.empty() ? "" : ss.name;
