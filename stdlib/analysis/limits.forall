@@ -1,0 +1,45 @@
+import "../algebra/real.forall"
+
+-- Limit of a function f at a point a equals L.
+-- For every eps > 0 there exists delta > 0 such that
+-- 0 < |x - a| < delta implies |f(x) - L| < eps.
+-- The conjunction "delta > 0 and ..." is split into two implications
+-- because "and for all" is not supported by the parser.
+axiom LimitAt_def :
+    for all f : Real -> Real, for all a : Real, for all L : Real,
+        LimitAt(f, a, L) ->
+            for all eps : Real, eps > 0 ->
+                there exists delta : Real,
+                    DeltaWitness(f, a, L, eps, delta)
+
+-- DeltaWitness encapsulates: delta > 0 and forall x, 0 < |x - a| < delta -> |f(x) - L| < eps.
+axiom DeltaWitness_pos :
+    for all f : Real -> Real, for all a : Real, for all L : Real,
+    for all eps : Real, for all delta : Real,
+        DeltaWitness(f, a, L, eps, delta) -> delta > 0
+
+axiom DeltaWitness_holds :
+    for all f : Real -> Real, for all a : Real, for all L : Real,
+    for all eps : Real, for all delta : Real,
+        DeltaWitness(f, a, L, eps, delta) ->
+            for all x : Real,
+                |x - a| < delta -> not (x = a) -> |f(x) - L| < eps
+
+-- Continuity at a point: the limit of f at a equals f(a).
+axiom ContinuousAt_def :
+    for all f : Real -> Real, for all a : Real,
+        ContinuousAt(f, a) -> LimitAt(f, a, f(a))
+
+-- Sum rule: if f and g are continuous at a, so is f + g.
+axiom continuous_sum :
+    for all f : Real -> Real, for all g : Real -> Real, for all a : Real,
+        ContinuousAt(f, a) -> ContinuousAt(g, a) ->
+            ContinuousAt(fun x => f(x) + g(x), a)
+
+-- Chain rule for continuity: if f is continuous at a and g is continuous at f(a),
+-- then g ∘ f is continuous at a.
+axiom continuous_compose :
+    for all f : Real -> Real, for all g : Real -> Real,
+    for all a : Real, for all b : Real,
+        ContinuousAt(f, a) -> ContinuousAt(g, b) -> f(a) = b ->
+            ContinuousAt(fun x => g(f(x)), a)
