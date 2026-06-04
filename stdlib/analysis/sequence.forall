@@ -1,0 +1,29 @@
+import "../algebra/real.forall"
+import "../nat.forall"
+
+-- A sequence of reals is a function Nat -> Real.
+-- Sequences are treated as terms; the indexed access a[n] gives the n-th term.
+
+-- ConvergesTo: a_n -> L (epsilon-delta definition).
+-- For every eps > 0 there exists N such that n >= N implies |a[n] - L| < eps.
+axiom ConvergesTo_def :
+    for all a : Nat -> Real, for all L : Real,
+        ConvergesTo(a, L) -> for all eps : Real, eps > 0 ->
+            there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
+
+-- Every convergent sequence is bounded.
+axiom convergent_bounded :
+    for all a : Nat -> Real, for all L : Real,
+        ConvergesTo(a, L) -> there exists M : Real, for all n : Nat, |a[n]| <= M
+
+-- A Cauchy sequence: terms become arbitrarily close to each other.
+axiom CauchySeq_def :
+    for all a : Nat -> Real,
+        IsCauchy(a) -> for all eps : Real, eps > 0 ->
+            there exists N : Nat, for all m : Nat, for all n : Nat,
+                m >= N -> n >= N -> |a[m] - a[n]| < eps
+
+-- Completeness: every Cauchy sequence of reals converges.
+axiom real_completeness_seq :
+    for all a : Nat -> Real,
+        IsCauchy(a) -> there exists L : Real, ConvergesTo(a, L)
