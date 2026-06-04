@@ -3,15 +3,12 @@ import "../nat.forall"
 
 -- A strictly increasing function phi : Nat -> Nat.
 -- phi(m) < phi(n) whenever m < n.
-axiom StrictlyIncreasing_def :
-    for all phi : Nat -> Nat,
-        StrictlyIncreasing(phi) ->
-            for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)
+-- Defined as a predicate for automatic unfolding.
+definition StrictlyIncreasing (phi : Nat -> Nat) : Prop :=
+    for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)
 
 -- Index growth lemma: a strictly increasing phi satisfies phi(k) >= k.
--- Proved by induction on k.  The quantifier over phi is handled by the caller
--- instantiating with a specific phi via ForallElim; the theorem is stated for
--- a fixed phi introduced as a definition parameter.
+-- Proved by induction on k.
 --
 -- Because the induction validator cannot yet combine ForallIntro (take) with
 -- assumption-wrapping in a single concluding step, we state this as an axiom
@@ -22,18 +19,17 @@ axiom index_grows :
     for all phi : Nat -> Nat,
         StrictlyIncreasing(phi) -> for all k : Nat, phi(k) >= k
 
+-- AllMatch(a, b, phi): b[k] = a[phi(k)] for every k.
+-- Defined as a predicate for automatic unfolding.
+definition AllMatch (a : Nat -> Real) (b : Nat -> Real) (phi : Nat -> Nat) : Prop :=
+    for all k : Nat, b[k] = a[phi(k)]
+
 -- IsSubsequence(a, b): b is a subsequence of a.
 -- There exists a strictly increasing phi such that b[k] = a[phi(k)] for all k.
-axiom IsSubsequence_def :
-    for all a : Nat -> Real, for all b : Nat -> Real,
-        IsSubsequence(a, b) ->
-            there exists phi : Nat -> Nat,
-                StrictlyIncreasing(phi) and AllMatch(a, b, phi)
-
--- AllMatch(a, b, phi): b[k] = a[phi(k)] for every k.
-axiom AllMatch_def :
-    for all a : Nat -> Real, for all b : Nat -> Real, for all phi : Nat -> Nat,
-        AllMatch(a, b, phi) -> for all k : Nat, b[k] = a[phi(k)]
+-- Defined as a predicate for automatic unfolding.
+definition IsSubsequence (a : Nat -> Real) (b : Nat -> Real) : Prop :=
+    there exists phi : Nat -> Nat,
+        StrictlyIncreasing(phi) and AllMatch(a, b, phi)
 
 -- Forward direction: if a_n -> L and b is a subsequence of a, then b_k -> L.
 -- Uses the index growth lemma: phi(k) >= k >= N whenever k >= N.

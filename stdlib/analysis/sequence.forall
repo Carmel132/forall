@@ -6,10 +6,10 @@ import "../nat.forall"
 
 -- ConvergesTo: a_n -> L (epsilon-delta definition).
 -- For every eps > 0 there exists N such that n >= N implies |a[n] - L| < eps.
-axiom ConvergesTo_def :
-    for all a : Nat -> Real, for all L : Real,
-        ConvergesTo(a, L) -> for all eps : Real, eps > 0 ->
-            there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
+-- Defined as a predicate so the checker can unfold it automatically in proofs.
+definition ConvergesTo (a : Nat -> Real) (L : Real) : Prop :=
+    for all eps : Real, eps > 0 ->
+        there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
 
 -- Every convergent sequence is bounded.
 axiom convergent_bounded :
@@ -17,11 +17,11 @@ axiom convergent_bounded :
         ConvergesTo(a, L) -> there exists M : Real, for all n : Nat, |a[n]| <= M
 
 -- A Cauchy sequence: terms become arbitrarily close to each other.
-axiom CauchySeq_def :
-    for all a : Nat -> Real,
-        IsCauchy(a) -> for all eps : Real, eps > 0 ->
-            there exists N : Nat, for all m : Nat, for all n : Nat,
-                m >= N -> n >= N -> |a[m] - a[n]| < eps
+-- Defined as a predicate for automatic unfolding.
+definition IsCauchy (a : Nat -> Real) : Prop :=
+    for all eps : Real, eps > 0 ->
+        there exists N : Nat, for all m : Nat, for all n : Nat,
+            m >= N -> n >= N -> |a[m] - a[n]| < eps
 
 -- Completeness: every Cauchy sequence of reals converges.
 axiom real_completeness_seq :
