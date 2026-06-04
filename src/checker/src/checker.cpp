@@ -372,11 +372,13 @@ infer_quantifier_rule(const ast::Prop& conc,
     }
     const auto& p0 = es[0]->judgment.prop();
 
-    if (std::get_if<ast::PropForall>(&p0.node))
-        return RuleApp{R::ForallElim, {es[0]->judgment}};
-
+    // Check conclusion first: if the conclusion is ∃x.P, this is ExistsIntro regardless
+    // of whether the premise is also universal.
     if (std::get_if<ast::PropExists>(&conc.node))
         return RuleApp{R::ExistsIntro, {es[0]->judgment}};
+
+    if (std::get_if<ast::PropForall>(&p0.node))
+        return RuleApp{R::ForallElim, {es[0]->judgment}};
 
     diag.emit({diag::Severity::Error, loc,
                "'at' witness is only valid when the hypothesis is ∀x.P (ForallElim) "
@@ -1021,10 +1023,18 @@ bool check_obtain_step(const ast::ObtainStep& s,
     if (!fresh) return false;
 
     // 3. Verify hyp_prop == subst(body, exists_var, ExprVar{s.var})
-    const ast::Prop expected_hyp =
+    // Beta-reduce after substitution so ExprApp{ExprVar{v}, args} → ExprCall{v, args}.
+    // Also unfold any predicate definitions in both sides before comparing.
+    const ast::Prop expected_hyp_raw =
         ast::subst(*ex->body, ex->var,
                    ast::Expr{loc, ast::ExprVar{s.var}});
-    if (!(s.hyp_prop == expected_hyp)) {
+    const ast::Prop expected_hyp = (ctx.pred_defs && !ctx.pred_defs->empty())
+        ? unfold_preds(ast::beta_reduce(expected_hyp_raw), *ctx.pred_defs)
+        : ast::beta_reduce(expected_hyp_raw);
+    const ast::Prop user_hyp = (ctx.pred_defs && !ctx.pred_defs->empty())
+        ? unfold_preds(ast::beta_reduce(s.hyp_prop), *ctx.pred_defs)
+        : ast::beta_reduce(s.hyp_prop);
+    if (!(user_hyp == expected_hyp)) {
         diag.emit({diag::Severity::Error, loc,
                    "obtain arm hypothesis does not match the existential body; "
                    "expected `" + forall::pretty::to_string(expected_hyp) + "`"});
@@ -1032,10 +1042,11 @@ bool check_obtain_step(const ast::ObtainStep& s,
     }
 
     // 4. Build sub-environment with s.var taken and s.hyp_name : s.hyp_prop
+    // Use the normalised/unfolded hyp form so steps inside the arm see the expanded props.
     ScopeStack sub_env = env;
     sub_env.push();
     sub_env.take_var(s.var);
-    auto hyp_j = kernel.introduce_axiom(s.hyp_prop);
+    auto hyp_j = kernel.introduce_axiom(user_hyp);
     sub_env.insert_or_assign(s.hyp_name,
                              HypEntry{std::move(*hyp_j), EntryKind::Assumption});
 
