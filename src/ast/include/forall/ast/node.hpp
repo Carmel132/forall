@@ -428,12 +428,12 @@ using StructField = std::variant<FieldTerm, FieldAxiom>;
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-// MOD2: Namespace kind groups declarations under a qualified prefix.
+// Namespace kind groups declarations under a qualified prefix.
 // Open kind brings a namespace into unqualified scope.
 enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient,
                       Namespace, Open };
 
-// MOD3: visibility of a declaration (controls export during import).
+// visibility of a declaration (controls export during import).
 enum class Visibility { Public, Private, Protected };
 
 // A single named parameter of a definition, e.g. (x : Nat).
@@ -458,20 +458,20 @@ struct Decl {
     // For DeclKind::Quotient:
     std::string                          quot_carrier;    // carrier type name (e.g. "Int")
     std::string                          quot_rel;        // equivalence relation name (e.g. "int_eq")
-    // MOD2: for DeclKind::Namespace — inner declarations
+    // for DeclKind::Namespace — inner declarations
     std::vector<std::unique_ptr<Decl>> ns_decls;
-    // MOD3: visibility for export control
+    // visibility for export control
     Visibility                visibility{Visibility::Public};
-    // MOD4: abstract flag — definition body not unfoldable
+    // abstract flag — definition body not unfoldable
     bool                      is_abstract{false};
-    // AN8: propositional body for `definition P(x : T) := body` forms.
+    // propositional body for `definition P(x : T) := body` forms.
     // When present, the checker registers P as a predicate definition that
     // can be unfolded: P(t) → subst(body, param_names, args).
     std::optional<PropPtr>    def_body;
 };
 
 // Maps structure name → its field list.  Used by the checker to process
-// structure instantiations (DT3).
+// structure instantiations.
 using StructEnv = std::map<std::string, std::vector<StructField>>;
 
 using DeclPtr = std::unique_ptr<Decl>;

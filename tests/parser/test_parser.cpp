@@ -2162,7 +2162,7 @@ TEST(ParserTest, InstanceDecl_MissingTypeName) {
     EXPECT_TRUE(r.diag.hasErrors());
 }
 
-// ── RL3: contradiction from / RL6: suppose for contradiction that ─────────────
+// ── contradiction from / suppose for contradiction that ─────────────
 
 TEST(ParserTest, ContradictionFrom) {
     // "contradiction from nh and h" — "from" is an alias for ":"
@@ -2196,7 +2196,7 @@ end)");
     EXPECT_TRUE(ss->for_contradiction);
 }
 
-// ── RL7: "from" as alias for "by" in have steps ───────────────────────────────
+// ── "from" as alias for "by" in have steps ───────────────────────────────
 
 TEST(ParserTest, HaveStepFrom) {
     // "have h : P from ax" — "from" is an alias for "by"
@@ -2214,7 +2214,7 @@ end)");
 }
 
 TEST(ParserTest, MultiVarBinder_TwoVarsSpaceSep) {
-    // PB2: "for all x y : Nat, P" must parse as PropForall{x, PropForall{y, P}}
+    // "for all x y : Nat, P" must parse as PropForall{x, PropForall{y, P}}
     auto r = parse_str("axiom a : for all x y : Nat, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* outer = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2229,7 +2229,7 @@ TEST(ParserTest, MultiVarBinder_TwoVarsSpaceSep) {
 }
 
 TEST(ParserTest, MultiVarBinder_ThreeVarsNoType) {
-    // PB2: "for all x y z, P" nests three foralls
+    // "for all x y z, P" nests three foralls
     auto r = parse_str("axiom a : for all x y z, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* f1 = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2241,7 +2241,7 @@ TEST(ParserTest, MultiVarBinder_ThreeVarsNoType) {
 }
 
 TEST(ParserTest, MultiVarBinder_AndSeparated) {
-    // PB2: "for all x and y : Nat, P" — "and" as separator
+    // "for all x and y : Nat, P" — "and" as separator
     auto r = parse_str("axiom a : for all x and y : Nat, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* outer = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2253,7 +2253,7 @@ TEST(ParserTest, MultiVarBinder_AndSeparated) {
 }
 
 TEST(ParserTest, MultiVarBinder_ExistsTwo) {
-    // PB2: "there exists x y : Nat, P" — ∃ also supports multi-var
+    // "there exists x y : Nat, P" — ∃ also supports multi-var
     auto r = parse_str("axiom a : there exists x y : Nat, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* outer = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
@@ -2263,7 +2263,7 @@ TEST(ParserTest, MultiVarBinder_ExistsTwo) {
 }
 
 TEST(ParserTest, MultiVarBinder_SingleVarStillWorks) {
-    // PB2: single-variable form unchanged
+    // single-variable form unchanged
     auto r = parse_str("axiom a : for all x : Nat, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* f = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2273,7 +2273,7 @@ TEST(ParserTest, MultiVarBinder_SingleVarStillWorks) {
 }
 
 TEST(ParserTest, BoundedBinder_ForallLt) {
-    // PB3: "for all i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)"
+    // "for all i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)"
     auto r = parse_str("axiom a : for all i < n, P(i)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2290,7 +2290,7 @@ TEST(ParserTest, BoundedBinder_ForallLt) {
 }
 
 TEST(ParserTest, BoundedBinder_ForallGt) {
-    // PB3: "for all i > 0, P(i)" desugars to "∀ i : Nat, i > 0 → P(i)"
+    // "for all i > 0, P(i)" desugars to "∀ i : Nat, i > 0 → P(i)"
     auto r = parse_str("axiom a : for all i > 0, P(i)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2303,7 +2303,7 @@ TEST(ParserTest, BoundedBinder_ForallGt) {
 }
 
 TEST(ParserTest, BoundedBinder_ExistsLeq) {
-    // PB3: "there exists i <= n, P(i)"
+    // "there exists i <= n, P(i)"
     auto r = parse_str("axiom a : there exists i <= n, P(i)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* ex = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
@@ -2316,7 +2316,7 @@ TEST(ParserTest, BoundedBinder_ExistsLeq) {
 }
 
 TEST(ParserTest, TupleType_Pair_InForallBinder) {
-    // PB4: "for all p : (Nat, Nat), P" uses TypeTuple
+    // "for all p : (Nat, Nat), P" uses TypeTuple
     auto r = parse_str("axiom a : for all p : (Nat, Nat), P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2330,7 +2330,7 @@ TEST(ParserTest, TupleType_Pair_InForallBinder) {
 }
 
 TEST(ParserTest, TupleType_Triple) {
-    // PB4: three-element tuple type in a binder
+    // three-element tuple type in a binder
     auto r = parse_str("axiom a : for all t : (Nat, Int, Real), P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2344,7 +2344,7 @@ TEST(ParserTest, TupleType_Triple) {
 }
 
 TEST(ParserTest, TupleType_SingleParenIsNotTuple) {
-    // PB4: "(Nat)" should reduce to just Nat (not TypeTuple{Nat})
+    // "(Nat)" should reduce to just Nat (not TypeTuple{Nat})
     auto r = parse_str("axiom a : for all x : (Nat), P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2354,7 +2354,7 @@ TEST(ParserTest, TupleType_SingleParenIsNotTuple) {
 }
 
 TEST(ParserTest, TruePropKeyword) {
-    // ML1: "true" parses as PropTrue{}
+    // "true" parses as PropTrue{}
     auto r = parse_str("axiom a : true");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* pt = std::get_if<ast::PropTrue>(&r.mod.decls[0]->statement.node);
@@ -2362,7 +2362,7 @@ TEST(ParserTest, TruePropKeyword) {
 }
 
 TEST(ParserTest, TruePropUnicode) {
-    // ML1: ⊤ (E2 88 A4) parses as PropTrue{}
+    // ⊤ (E2 88 A4) parses as PropTrue{}
     auto r = parse_str("axiom a : \xe2\x88\xa4");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* pt = std::get_if<ast::PropTrue>(&r.mod.decls[0]->statement.node);
@@ -2370,7 +2370,7 @@ TEST(ParserTest, TruePropUnicode) {
 }
 
 TEST(ParserTest, DoubleNegation_Axiom) {
-    // PB1: "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
+    // "not (not P)" must parse as PropNot{PropNot{Atomic{"P"}}}, not an error
     auto r = parse_str("axiom dne : not (not P) -> P");
     ASSERT_FALSE(r.diag.hasErrors());
     ASSERT_EQ(r.mod.decls.size(), 1u);
@@ -2387,7 +2387,7 @@ TEST(ParserTest, DoubleNegation_Axiom) {
 }
 
 TEST(ParserTest, DoubleNegation_Parenthesized) {
-    // PB1: axiom about "¬(¬P)" using Unicode symbols
+    // axiom about "¬(¬P)" using Unicode symbols
     auto r = parse_str("axiom dne2 : ¬(¬P)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* outer_not = std::get_if<ast::PropNot>(&r.mod.decls[0]->statement.node);
@@ -2397,7 +2397,7 @@ TEST(ParserTest, DoubleNegation_Parenthesized) {
 }
 
 TEST(ParserTest, ShowStep_Basic) {
-    // MS4: "show P" parses as ShowStep
+    // "show P" parses as ShowStep
     auto r = parse_str(R"(
 axiom ax : P
 theorem t : P
@@ -2414,7 +2414,7 @@ end)");
 }
 
 TEST(ParserTest, ExactStep_Basic) {
-    // MS3: "exact ax" parses as ExactStep with hyp_ref = "ax"
+    // "exact ax" parses as ExactStep with hyp_ref = "ax"
     auto r = parse_str(R"(
 axiom ax : P
 theorem t : P
@@ -2428,7 +2428,7 @@ end)");
 }
 
 TEST(ParserTest, RewriteStep_Forward) {
-    // MS1: "rewrite h" parses as RewriteStep with reverse=false
+    // "rewrite h" parses as RewriteStep with reverse=false
     auto r = parse_str(R"(
 axiom eq : x = y
 theorem t : P(x)
@@ -2513,7 +2513,7 @@ TEST(ParserTest, StructureMalformed) {
     EXPECT_TRUE(r.diag.hasErrors());
 }
 
-// ── DT2: Field projection (ExprField) ─────────────────────────────────────────
+// ── Field projection (ExprField) ─────────────────────────────────────────
 
 TEST(ParserTest, FieldProjectionBasic) {
     // g.mul should parse to ExprField{ExprVar{"g"}, "mul"}
@@ -2557,7 +2557,7 @@ TEST(ParserTest, FieldProjectionInProp) {
     EXPECT_NE(std::get_if<ExprField>(&rel->rhs->node), nullptr);
 }
 
-// ── DT3: Structure instantiation ──────────────────────────────────────────────
+// ── Structure instantiation ──────────────────────────────────────────────
 
 TEST(ParserTest, StructureInstantiation) {
     // definition NatAdd : Monoid :=
@@ -2596,10 +2596,10 @@ TEST(ParserTest, StructureInstantiationWithLambda) {
     EXPECT_NE(std::get_if<ExprLambda>(&it->second->node), nullptr);
 }
 
-// ── DT5: Pi types ─────────────────────────────────────────────────────────────
+// ── Pi types ─────────────────────────────────────────────────────────────
 
 TEST(ParserTest, TypePiBasic) {
-    // DT5: "(G : Group) -> Prop" as a binder type parses to TypePi
+    // "(G : Group) -> Prop" as a binder type parses to TypePi
     auto r = parse_str("axiom a : for all f : (G : Group) -> Prop, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2615,7 +2615,7 @@ TEST(ParserTest, TypePiBasic) {
 }
 
 TEST(ParserTest, TypePiVsTypeFun) {
-    // DT5 regression: "Nat -> Real" still parses as TypeFun (no bound variable)
+    // "Nat -> Real" still parses as TypeFun (no bound variable)
     auto r = parse_str("axiom a : for all f : Nat -> Real, P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2628,7 +2628,7 @@ TEST(ParserTest, TypePiVsTypeFun) {
 }
 
 TEST(ParserTest, TypePiVsTypeTuple) {
-    // DT5 regression: "(Nat, Real)" without "->" still parses as TypeTuple
+    // "(Nat, Real)" without "->" still parses as TypeTuple
     auto r = parse_str("axiom a : for all p : (Nat, Real), P");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
@@ -2641,7 +2641,7 @@ TEST(ParserTest, TypePiVsTypeTuple) {
     EXPECT_EQ(*tt->elements[1], ast::type_real());
 }
 
-// ── DT9: Quotient type declarations ───────────────────────────────────────────
+// ── Quotient type declarations ───────────────────────────────────────────
 
 TEST(ParserTest, QuotientBasic) {
     // quotient Z2 := Int over eq2
@@ -2694,7 +2694,7 @@ TEST(ParserTest, QuotientMalformed) {
 
 // ── NL natural-language step aliases ─────────────────────────────────────────
 
-// NL4: "note that P by refs" and "observe that P by refs" → HaveStep{"_", P, refs}
+// "note that P by refs" and "observe that P by refs" → HaveStep{"_", P, refs}
 TEST(ParserTest, NL4_NoteThatHaveStep) {
     auto r = parse_str(R"(theorem t : P
 proof
@@ -2719,7 +2719,7 @@ end)");
     EXPECT_EQ(have2->name, "_");
 }
 
-// NL5: "since h1 and h2, have h : P"
+// "since h1 and h2, have h : P"
 TEST(ParserTest, NL5_SinceHaveStep) {
     auto r = parse_str(R"(theorem t : P and Q
 proof
@@ -2737,7 +2737,7 @@ end)");
     EXPECT_EQ(have->justification[1], "hq");
 }
 
-// NL6: "by definition of X", "by axiom of X", "by lemma X", "by theorem X"
+// "by definition of X", "by axiom of X", "by lemma X", "by theorem X"
 TEST(ParserTest, NL6_QualifiedJustification) {
     // All four forms: qualifiers discarded, only the ref name kept
     auto r = parse_str(R"(theorem t : P
@@ -2772,7 +2772,7 @@ end)");
     EXPECT_EQ(s4->justification[0], "h4");
 }
 
-// NL7: "fix x : T" same as "take x : T" (lexer alias, produces TakeStep)
+// "fix x : T" same as "take x : T" (lexer alias, produces TakeStep)
 TEST(ParserTest, NL7_FixAliasTake) {
     auto r1 = parse_str(R"(theorem t : P proof take x : Nat end)");
     auto r2 = parse_str(R"(theorem t : P proof fix x : Nat end)");
@@ -2785,7 +2785,7 @@ TEST(ParserTest, NL7_FixAliasTake) {
     EXPECT_EQ(s1->var, s2->var);
 }
 
-// NL8: "let n be arbitrary [in T]" → TakeStep
+// "let n be arbitrary [in T]" → TakeStep
 TEST(ParserTest, NL8_LetBeArbitrary) {
     auto r1 = parse_str(R"(theorem t : P proof let n be arbitrary end)");
     auto r2 = parse_str(R"(theorem t : P proof let n be arbitrary in Nat end)");
@@ -2802,7 +2802,7 @@ TEST(ParserTest, NL8_LetBeArbitrary) {
     EXPECT_EQ(forall::pretty::to_string(*s2->type), "Nat");
 }
 
-// NL9: "we need to show P" and "it suffices to show P" → ShowStep
+// "we need to show P" and "it suffices to show P" → ShowStep
 TEST(ParserTest, NL9_WeNeedToShow) {
     auto r = parse_str(R"(theorem t : P
 proof
@@ -2819,7 +2819,7 @@ end)");
     ASSERT_NE(s2, nullptr);
 }
 
-// NL10: "so P [by refs]", "which gives P", "which shows P" → ThenStep
+// "so P [by refs]", "which gives P", "which shows P" → ThenStep
 TEST(ParserTest, NL10_SoWhichGives) {
     auto r1 = parse_str(R"(theorem t : P proof suppose h : P so P by h end)");
     ASSERT_FALSE(r1.diag.hasErrors());
@@ -2839,7 +2839,7 @@ TEST(ParserTest, NL10_SoWhichGives) {
     ASSERT_NE(s3, nullptr);
 }
 
-// NL13: "we know X" → HaveStep{"_", Atomic{X}, [X]}
+// "we know X" → HaveStep{"_", Atomic{X}, [X]}
 TEST(ParserTest, NL13_WeKnow) {
     auto r = parse_str(R"(theorem t : P
 proof
@@ -2859,7 +2859,7 @@ end)");
     EXPECT_EQ(a->name, "h");
 }
 
-// NL15: "hence P [by refs]" maps to ThenStep (lexer alias)
+// "hence P [by refs]" maps to ThenStep (lexer alias)
 //        "it follows that P [by refs]" → ThenStep
 TEST(ParserTest, NL15_HenceAndItFollowsThat) {
     auto r1 = parse_str(R"(theorem t : P proof suppose h : P hence P by h end)");
@@ -2877,7 +2877,7 @@ TEST(ParserTest, NL15_HenceAndItFollowsThat) {
     EXPECT_EQ(s2->justification[0], "h");
 }
 
-// NL16: "by hypothesis" / "by assumption" → __hypothesis__ / __assumption__ sentinels
+// "by hypothesis" / "by assumption" → __hypothesis__ / __assumption__ sentinels
 TEST(ParserTest, NL16_ByHypothesis) {
     auto r = parse_str(R"(theorem t : P
 proof
@@ -2896,7 +2896,7 @@ end)");
     EXPECT_EQ(s2->justification[0], "__assumption__");
 }
 
-// NL18: "we prove that P" → ShowStep{P}
+// "we prove that P" → ShowStep{P}
 TEST(ParserTest, NL18_WeProveThat) {
     auto r = parse_str(R"(theorem t : P
 proof
@@ -2910,7 +2910,7 @@ end)");
     EXPECT_NE(std::get_if<Atomic>(&s->prop.node), nullptr);
 }
 
-// NL19: "suppose h1 : P and h2 : Q" → two SupposeSteps
+// "suppose h1 : P and h2 : Q" → two SupposeSteps
 TEST(ParserTest, NL19_SupposeMultiple) {
     auto r = parse_str(R"(theorem t : P and Q
 proof
@@ -2932,9 +2932,9 @@ end)");
     EXPECT_EQ(*s2->name, "hq");
 }
 
-// ── calc step tests (NL1) ──────────────────────────────────────────────────────
+// ── calc step tests ──────────────────────────────────────────────────────
 
-// NL1-P1: basic equality chain  a = b by h1  = c by h2
+// basic equality chain  a = b by h1  = c by h2
 TEST(ParserTest, CalcStep_BasicEqualityChain) {
     auto r = parse_str(R"(
 theorem t : a = a
@@ -2959,7 +2959,7 @@ end
     EXPECT_EQ(cs->links[1].justification[0], "h2");
 }
 
-// NL1-P2: mixed ≤ = < chain
+// mixed ≤ = < chain
 TEST(ParserTest, CalcStep_MixedOps) {
     auto r = parse_str(R"(
 theorem t : a < a
@@ -2976,7 +2976,7 @@ end
     EXPECT_EQ(cs->links[2].op, RelOp::Lt);
 }
 
-// NL1-P3: named calc result
+// named calc result
 TEST(ParserTest, CalcStep_NamedResult) {
     auto r = parse_str(R"(
 theorem t : a <= a
@@ -2991,7 +2991,7 @@ end
     ASSERT_EQ(cs->links.size(), 2u);
 }
 
-// NL1-P4: single-link calc (trivial)
+// single-link calc (trivial)
 TEST(ParserTest, CalcStep_SingleLink) {
     auto r = parse_str(R"(
 theorem t : a = a
@@ -3006,7 +3006,7 @@ end
     EXPECT_EQ(cs->links[0].op, RelOp::Eq);
 }
 
-// NL1-P5: calc inside a full theorem with other steps
+// calc inside a full theorem with other steps
 TEST(ParserTest, CalcStep_InFullTheorem) {
     auto r = parse_str(R"(
 theorem t : x < z
@@ -3030,9 +3030,9 @@ end
     ASSERT_NE(ts, nullptr);
 }
 
-// ── split step tests (NL2) ─────────────────────────────────────────────────────
+// ── split step tests ─────────────────────────────────────────────────────
 
-// NL2-P1: conjunction split — left/right arms parse correctly
+// conjunction split — left/right arms parse correctly
 TEST(ParserTest, SplitStep_ConjunctionLeftRight) {
     auto r = parse_str(R"(
 theorem t : P and Q
@@ -3056,7 +3056,7 @@ end
     ASSERT_EQ(ss->arms[1].steps.size(), 1u);
 }
 
-// NL2-P2: biconditional split — (->) and (<-) labels
+// biconditional split — (->) and (<-) labels
 TEST(ParserTest, SplitStep_BiconditionalArrows) {
     auto r = parse_str(R"(
 theorem t : P iff Q
@@ -3084,7 +3084,7 @@ end
     ASSERT_GE(ss->arms[1].steps.size(), 2u);
 }
 
-// NL2-P3: named split result
+// named split result
 TEST(ParserTest, SplitStep_NamedResult) {
     auto r = parse_str(R"(
 theorem t : P and Q
@@ -3103,7 +3103,7 @@ end
     ASSERT_EQ(ss->arms.size(), 2u);
 }
 
-// ── NL11: inline have sub-proofs ───────────────────────────────────────────────
+// ── inline have sub-proofs ───────────────────────────────────────────────
 
 TEST(ParserTest, NL11_HaveSubProofBasic) {
     auto r = parse_str(R"(
@@ -3157,7 +3157,7 @@ end
     ASSERT_NE(hs_inner->sub_proof, nullptr);
 }
 
-// ── NL14: wlog step ────────────────────────────────────────────────────────────
+// ── wlog step ────────────────────────────────────────────────────────────
 
 TEST(ParserTest, NL14_WlogBasic) {
     auto r = parse_str(R"(
@@ -3177,7 +3177,7 @@ end
     EXPECT_EQ(atom->name, "P");
 }
 
-// ── NL20: direction-marker biconditional proofs ────────────────────────────────
+// ── direction-marker biconditional proofs ────────────────────────────────
 
 TEST(ParserTest, NL20_DirectionMarkersProduceSplitStep) {
     // A proof block starting with (→) / (←) should be parsed as a SplitStep.
@@ -3223,7 +3223,7 @@ end
     ASSERT_EQ(ss->arms.size(), 2u);
 }
 
-// ── MOD2: namespace blocks ─────────────────────────────────────────────────────
+// ── namespace blocks ─────────────────────────────────────────────────────
 
 TEST(ParserTest, Namespace_ParsesInnerDecls) {
     auto r = parse_str(R"(
@@ -3248,7 +3248,7 @@ TEST(ParserTest, Open_ParsesNamespaceName) {
     EXPECT_EQ(r.mod.decls[0]->name, "MyNs");
 }
 
-// ── MOD3: private/protected visibility ────────────────────────────────────────
+// ── private/protected visibility ────────────────────────────────────────
 
 TEST(ParserTest, Private_AxiomVisibility) {
     auto r = parse_str("private axiom secret : P");
@@ -3266,7 +3266,7 @@ TEST(ParserTest, Protected_DefinitionVisibility) {
     EXPECT_EQ(r.mod.decls[0]->kind, DeclKind::Definition);
 }
 
-// ── MOD4: abstract definitions ────────────────────────────────────────────────
+// ── abstract definitions ────────────────────────────────────────────────
 
 TEST(ParserTest, AbstractDefinition_SetsFlag) {
     auto r = parse_str("abstract definition f : P -> Q");

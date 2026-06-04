@@ -193,7 +193,7 @@ end)";
 }
 
 TEST(FormatterTest, AsciiMode_ArrowBecomesAscii) {
-    // IX3: --ascii converts → to ->
+    // --ascii converts → to ->
     auto mod = parse_str("axiom mp : P -> Q");
     auto result = formatter::format_module(mod, formatter::FormatterOptions{.ascii_output = true});
     EXPECT_NE(result.find("->"), std::string::npos);
@@ -201,7 +201,7 @@ TEST(FormatterTest, AsciiMode_ArrowBecomesAscii) {
 }
 
 TEST(FormatterTest, AsciiMode_AndBecomesAscii) {
-    // IX3: --ascii converts ∧ to "and"
+    // --ascii converts ∧ to "and"
     auto mod = parse_str("axiom a : P and Q -> R");
     auto result = formatter::format_module(mod, formatter::FormatterOptions{.ascii_output = true});
     // ∧ becomes "and" — which it already was since we wrote "P and Q"
@@ -213,7 +213,7 @@ TEST(FormatterTest, AsciiMode_AndBecomesAscii) {
 }
 
 TEST(FormatterTest, UnicodeMode_Default) {
-    // IX3: default mode emits Unicode → not ->
+    // default mode emits Unicode → not ->
     auto mod = parse_str("axiom mp : P -> Q");
     auto result = formatter::format_module(mod);
     EXPECT_NE(result.find("\xe2\x86\x92"), std::string::npos); // has →

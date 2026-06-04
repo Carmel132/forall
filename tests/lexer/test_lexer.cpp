@@ -160,7 +160,7 @@ TEST(LexerTest, BottomUnicodeSymbol) {
 // ── NL aliases ─────────────────────────────────────────────────────────────────
 
 TEST(LexerTest, NL7_FixMapsToKwTake) {
-    // NL7: "fix" is an alias for "take"
+    // "fix" is an alias for "take"
     diag::DiagnosticEngine diag;
     lexer::Lexer lex{"fix take", "test", diag};
     auto toks = lex.tokenize();
@@ -170,7 +170,7 @@ TEST(LexerTest, NL7_FixMapsToKwTake) {
 }
 
 TEST(LexerTest, NL15_HenceMapsToKwThen) {
-    // NL15: "hence" is an alias for "then"
+    // "hence" is an alias for "then"
     diag::DiagnosticEngine diag;
     lexer::Lexer lex{"hence then therefore", "test", diag};
     auto toks = lex.tokenize();
@@ -181,7 +181,7 @@ TEST(LexerTest, NL15_HenceMapsToKwThen) {
 }
 
 TEST(LexerTest, NL17_BecauseMapsToKwBy) {
-    // NL17: "because" is an alias for "by"
+    // "because" is an alias for "by"
     diag::DiagnosticEngine diag;
     lexer::Lexer lex{"because by from", "test", diag};
     auto toks = lex.tokenize();
@@ -192,7 +192,7 @@ TEST(LexerTest, NL17_BecauseMapsToKwBy) {
 }
 
 TEST(LexerTest, NL10_SoToken) {
-    // NL10: "so" lexes as KwSo
+    // "so" lexes as KwSo
     diag::DiagnosticEngine diag;
     lexer::Lexer lex{"so", "test", diag};
     auto toks = lex.tokenize();

@@ -193,8 +193,8 @@ Token Lexer::nextToken() {
             {"instance",     TokenKind::KwInstance},
             {"structure",    TokenKind::KwStructure},
             {"quotient",     TokenKind::KwQuotient},
-            {"namespace",    TokenKind::KwNamespace}, // MOD2
-            {"open",         TokenKind::KwOpen},      // MOD2
+            {"namespace",    TokenKind::KwNamespace},
+            {"open",         TokenKind::KwOpen},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},

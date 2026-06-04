@@ -188,7 +188,7 @@ end
 }
 
 TEST(CheckerTest, ValidLetExprDef) {
-    // TR3: let x = expr — the binding is a no-op when x not used in props.
+    // let x = expr — the binding is a no-op when x not used in props.
     auto diag = run_checker("valid_let_expr_def", R"(
 theorem trivial : P -> P
 proof
@@ -201,7 +201,7 @@ end
 }
 
 TEST(CheckerTest, ValidLetExprUsedInHave) {
-    // TR3: let delta = eps — delta is substituted to eps in the have step.
+    // let delta = eps — delta is substituted to eps in the have step.
     auto diag = run_checker("valid_let_expr_used_in_have", R"(
 axiom eps_pos : eps > 0
 theorem test : eps > 0
@@ -215,7 +215,7 @@ end
 }
 
 TEST(CheckerTest, ValidLetExprSubstituted) {
-    // TR3: let delta = eps — delta is substituted in the final then step.
+    // let delta = eps — delta is substituted in the final then step.
     auto diag = run_checker("valid_let_expr_substituted", R"(
 axiom eps_pos : eps > 0
 theorem test : eps > 0
@@ -1767,7 +1767,7 @@ axiom T_distrib_right : P
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── CheckContext / TypeEnv threading (C2-P2) ─────────────────────────────────
+// ── CheckContext / TypeEnv threading ─────────────────────────────────
 
 TEST(CheckerTest, CheckContext_TypeEnvReachesSubProof) {
     // 'take n : Nat' before a cases step — the type env should be visible inside
@@ -1844,7 +1844,7 @@ instance Foo : Ring
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── by norm_num (C2-I1/I2/I3) ────────────────────────────────────────────────
+// ── by norm_num (I2/I3) ────────────────────────────────────────────────
 
 TEST(CheckerTest, NormNum_SimpleEquality) {
     // Constant: 2 + 3 = 5 (same as decide, but via poly normalization)
@@ -1971,7 +1971,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── by ring (C3-I1/I2/I3) ─────────────────────────────────────────────────────
+// ── by ring (I2/I3) ─────────────────────────────────────────────────────
 
 TEST(CheckerTest, Ring_Commutativity) {
     auto diag = run_checker("ring_comm", R"(
@@ -2052,7 +2052,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── RL1: auto-discharge (then P → Q with no justification) ───────────────────
+// ── auto-discharge (then P → Q with no justification) ───────────────────
 
 TEST(CheckerTest, AutoDischarge_ImplIntro_Basic) {
     // "then P → Q" with no 'by' clause — auto-finds suppose[P] and derived[Q]
@@ -2124,7 +2124,7 @@ end
     EXPECT_TRUE(has_error(diag, "auto-discharge"));
 }
 
-// ── RL1 + RL7: combined — "have h : P from ax" + "then P -> Q" (no by) ──────
+// ── auto-discharge combined — "have h : P from ax" + "then P -> Q" (no by) ──────
 
 TEST(CheckerTest, AutoDischarge_WithFromAlias) {
     auto diag = run_checker("auto_discharge_with_from", R"(
@@ -2139,7 +2139,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── RL2: anonymous steps (have _ : P by ...) ─────────────────────────────────
+// ── anonymous steps (have _ : P by ...) ─────────────────────────────────
 
 TEST(CheckerTest, AnonymousStep_Basic) {
     // "have _ : P by ax" — underscore name; result stored internally
@@ -2168,7 +2168,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── RL5: optional cases result label ─────────────────────────────────────────
+// ── optional cases result label ─────────────────────────────────────────
 
 TEST(CheckerTest, CasesOptionalLabel_Valid) {
     // "cases h" without a result label — checker auto-generates a name
@@ -2213,7 +2213,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── RL4: bare "then" closes goal without repeating the statement ──────────────
+// ── bare "then" closes goal without repeating the statement ──────────────
 
 TEST(CheckerTest, BareThен_SimpleAxiom) {
     // "then" with no proposition: checker infers goal from decl.statement
@@ -2254,7 +2254,7 @@ end
 }
 
 TEST(CheckerTest, TrueIntro_HaveStep) {
-    // ML1: "have ht : true by" (empty refs) uses TrueIntro
+    // "have ht : true by" (empty refs) uses TrueIntro
     auto diag = run_checker("true_intro_have", R"(
 theorem t : true
 proof
@@ -2266,7 +2266,7 @@ end
 }
 
 TEST(CheckerTest, TrueIntro_ThenStep) {
-    // ML1: "then true" directly closes a true goal
+    // "then true" directly closes a true goal
     auto diag = run_checker("true_intro_then", R"(
 theorem t : true
 proof
@@ -2277,7 +2277,7 @@ end
 }
 
 TEST(CheckerTest, TrueIntro_BareThen) {
-    // ML1: bare "then" with true goal
+    // bare "then" with true goal
     auto diag = run_checker("true_intro_bare_then", R"(
 theorem t : true
 proof
@@ -2288,7 +2288,7 @@ end
 }
 
 TEST(CheckerTest, ShowStep_Valid) {
-    // MS4: "show P" succeeds when P matches the theorem statement
+    // "show P" succeeds when P matches the theorem statement
     auto diag = run_checker("show_valid", R"(
 axiom ax : P
 theorem t : P
@@ -2301,7 +2301,7 @@ end
 }
 
 TEST(CheckerTest, ShowStep_Mismatch_Error) {
-    // MS4: "show Q" fails when theorem statement is P
+    // "show Q" fails when theorem statement is P
     auto diag = run_checker("show_mismatch", R"(
 axiom ax : P
 theorem t : P
@@ -2314,7 +2314,7 @@ end
 }
 
 TEST(CheckerTest, ExactStep_Valid) {
-    // MS3: "exact ax" closes the goal when ax : P and goal is P
+    // "exact ax" closes the goal when ax : P and goal is P
     auto diag = run_checker("exact_valid", R"(
 axiom ax : P
 theorem t : P
@@ -2326,7 +2326,7 @@ end
 }
 
 TEST(CheckerTest, ExactStep_WrongType_Error) {
-    // MS3: "exact ax" fails when ax : Q and goal is P
+    // "exact ax" fails when ax : Q and goal is P
     auto diag = run_checker("exact_wrong", R"(
 axiom ax : Q
 theorem t : P
@@ -2338,7 +2338,7 @@ end
 }
 
 TEST(CheckerTest, ExactStep_UnknownHyp_Error) {
-    // MS3: "exact unknown" fails on missing hypothesis
+    // "exact unknown" fails on missing hypothesis
     auto diag = run_checker("exact_unknown", R"(
 theorem t : P
 proof
@@ -2349,7 +2349,7 @@ end
 }
 
 TEST(CheckerTest, RewriteStep_Basic) {
-    // MS1: rewrite x_eq transforms goal P(x) -> P(y) when x_eq : x = y
+    // rewrite x_eq transforms goal P(x) -> P(y) when x_eq : x = y
     auto diag = run_checker("rewrite_basic", R"(
 axiom ax_Py : P(y)
 axiom x_eq : x = y
@@ -2363,7 +2363,7 @@ end
 }
 
 TEST(CheckerTest, RewriteStep_NoEffect_Warning) {
-    // MS1: rewrite where var doesn't appear in goal gives a warning
+    // rewrite where var doesn't appear in goal gives a warning
     auto diag = run_checker("rewrite_no_effect", R"(
 axiom ax : P
 axiom eq : z = w
@@ -2377,7 +2377,7 @@ end
 }
 
 TEST(CheckerTest, RewriteStep_NonEq_Error) {
-    // MS1: rewrite with a non-equality hypothesis fails
+    // rewrite with a non-equality hypothesis fails
     auto diag = run_checker("rewrite_non_eq", R"(
 axiom ax : P
 theorem t : Q
@@ -2491,7 +2491,7 @@ end
 }
 
 TEST(CheckerTest, ApplyStep_Basic) {
-    // MS2: "apply h" where h : A → B transforms goal B to A
+    // "apply h" where h : A → B transforms goal B to A
     auto diag = run_checker("apply_basic", R"(
 axiom h_impl : P -> Q
 axiom h_p : P
@@ -2505,7 +2505,7 @@ end
 }
 
 TEST(CheckerTest, ApplyStep_WrongImplType_Error) {
-    // MS2: "apply h" fails when h's consequent doesn't match the goal
+    // "apply h" fails when h's consequent doesn't match the goal
     auto diag = run_checker("apply_wrong", R"(
 axiom h_impl : P -> R
 theorem t : Q
@@ -2518,7 +2518,7 @@ end
 }
 
 TEST(CheckerTest, ApplyStep_NotImpl_Error) {
-    // MS2: "apply h" fails when h is not an implication
+    // "apply h" fails when h is not an implication
     auto diag = run_checker("apply_not_impl", R"(
 axiom ax : P
 theorem t : Q
@@ -2531,7 +2531,7 @@ end
 }
 
 TEST(CheckerTest, ByContra_Basic) {
-    // ML3: "by contra" closes goal when ⊥ is in scope from contradiction
+    // "by contra" closes goal when ⊥ is in scope from contradiction
     auto diag = run_checker("by_contra", R"(
 axiom ax_p : P
 axiom ax_np : not P
@@ -2545,7 +2545,7 @@ end
 }
 
 TEST(CheckerTest, ByContra_NoFalse_Error) {
-    // ML3: "by contra" fails when ⊥ is not in scope
+    // "by contra" fails when ⊥ is not in scope
     auto diag = run_checker("by_contra_no_false", R"(
 theorem t : Q
 proof
@@ -2556,7 +2556,7 @@ end
 }
 
 TEST(CheckerTest, SufficesStep_Basic) {
-    // MS5: "suffices h : P" where h : P → goal already in scope — desugars to apply h
+    // "suffices h : P" where h : P → goal already in scope — desugars to apply h
     auto diag = run_checker("suffices_basic", R"(
 axiom h_impl : P -> Q
 axiom h_p : P
@@ -2570,7 +2570,7 @@ end
 }
 
 TEST(CheckerTest, MultipleErrors_BothDeclarationsChecked) {
-    // IX2: checker should report errors from both declarations even when the
+    // checker should report errors from both declarations even when the
     // first has parse-level errors — don't abort after first error.
     auto diag = run_checker("multi_error", R"(
 theorem t1 : P
@@ -2631,7 +2631,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── DT3: Structure instantiation ──────────────────────────────────────────────
+// ── Structure instantiation ──────────────────────────────────────────────
 
 TEST(CheckerTest, ValidStructureInstantiation) {
     // Define a structure with a term field and an axiom referencing it via
@@ -2680,10 +2680,10 @@ definition Bad : NoSuchStruct :=
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── DT5: Parametric structure params and TakeStep injection ───────────────────
+// ── Parametric structure params and TakeStep injection ───────────────────
 
 TEST(CheckerTest, ValidParametricStructureParam) {
-    // DT5: theorem with (M : MyStruct) param injects M_my_axiom into the proof
+    // theorem with (M : MyStruct) param injects M_my_axiom into the proof
     // so it can be used directly as a hypothesis reference.
     auto diag = run_checker("dt5_param", R"(
 structure MyStruct :=
@@ -2698,7 +2698,7 @@ end
 }
 
 TEST(CheckerTest, ValidTakeStructureInjectsAxioms) {
-    // DT5: "take G : MyStruct" inside a proof injects G_my_axiom into scope.
+    // "take G : MyStruct" inside a proof injects G_my_axiom into scope.
     auto diag = run_checker("dt5_take", R"(
 structure MyStruct :=
   axiom my_axiom : P and Q
@@ -2712,10 +2712,10 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── DT6: Parametric theorems over structures ──────────────────────────────────
+// ── Parametric theorems over structures ──────────────────────────────────
 
 TEST(CheckerTest, ValidParametricTheoremUsesInjectedAxiom) {
-    // DT6: a theorem with param (M : MyStruct) injects M_my_axiom into the proof
+    // a theorem with param (M : MyStruct) injects M_my_axiom into the proof
     // scope so it can be cited directly as a hypothesis reference (underscore form).
     auto diag = run_checker("dt6_param_underscore", R"(
 structure MyStruct :=
@@ -2730,7 +2730,7 @@ end
 }
 
 TEST(CheckerTest, ValidParametricTheoremWithDotNotation) {
-    // DT6: the same injected axiom is also accessible via dot notation "M.my_axiom".
+    // the same injected axiom is also accessible via dot notation "M.my_axiom".
     auto diag = run_checker("dt6_param_dot", R"(
 structure MyStruct :=
   axiom my_axiom : P and Q
@@ -2743,10 +2743,10 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── DT7: Numeric coercions (Nat ↪ Int ↪ Rat ↪ Real) ─────────────────────────
+// ── Numeric coercions (Nat ↪ Int ↪ Rat ↪ Real) ─────────────────────────
 
 TEST(CheckerTest, ValidMixedNumericPropRel) {
-    // DT7: n : Nat and literal 0 (Nat) in an equality — no spurious type warning.
+    // n : Nat and literal 0 (Nat) in an equality — no spurious type warning.
     auto diag = run_checker("dt7_nat_eq_zero", R"(
 theorem nat_eq_zero : n = 0
 proof
@@ -2759,7 +2759,7 @@ end
 }
 
 TEST(CheckerTest, ValidNatInRealComparison) {
-    // DT7: a function expecting Real should accept a Nat argument silently
+    // a function expecting Real should accept a Nat argument silently
     // via the numeric tower coercion (no Mismatch warning → no error).
     auto diag = run_checker("dt7_nat_in_real_call", R"(
 definition f_real (x : Real) : P
@@ -2784,7 +2784,7 @@ end
     EXPECT_FALSE(diag2.hasErrors());
 }
 
-// ── DT9: Quotient type declarations ───────────────────────────────────────────
+// ── Quotient type declarations ───────────────────────────────────────────
 
 TEST(CheckerTest, ValidQuotientDeclaration) {
     // A quotient declaration with all three standard equivalence axioms inserts
@@ -2816,7 +2816,7 @@ end
 
 // ── NL natural-language checker tests ────────────────────────────────────────
 
-// NL4: "note that P by h" works (anonymous have resolves via Assumption rule)
+// "note that P by h" works (anonymous have resolves via Assumption rule)
 TEST(CheckerTest, NL4_NoteThat) {
     auto diag = run_checker("nl4_note_that", R"(
 theorem t : P
@@ -2829,7 +2829,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL5: "since h1 and h2, have hpq : P and Q" works
+// "since h1 and h2, have hpq : P and Q" works
 TEST(CheckerTest, NL5_Since) {
     auto diag = run_checker("nl5_since", R"(
 theorem t : P and Q
@@ -2843,7 +2843,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL13: "we know X" introduces an anonymous have: have _ : X by X.
+// "we know X" introduces an anonymous have: have _ : X by X.
 // This works when the hypothesis name and the proposition name are the same,
 // e.g. "suppose P : P" and then "we know P".
 TEST(CheckerTest, NL13_WeKnow) {
@@ -2858,7 +2858,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL16: "by hypothesis" resolves to the unique assumption in scope
+// "by hypothesis" resolves to the unique assumption in scope
 TEST(CheckerTest, NL16_ByHypothesisUnique) {
     auto diag = run_checker("nl16_hypothesis_unique", R"(
 theorem t : P
@@ -2871,7 +2871,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL16: "by assumption" resolves to the unique assumption in scope
+// "by assumption" resolves to the unique assumption in scope
 TEST(CheckerTest, NL16_ByAssumptionUnique) {
     auto diag = run_checker("nl16_assumption_unique", R"(
 theorem t : P
@@ -2884,7 +2884,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL16: multiple assumptions in scope → warning (not error), still resolves
+// multiple assumptions in scope → warning (not error), still resolves
 TEST(CheckerTest, NL16_ByHypothesisAmbiguousWarning) {
     auto diag = run_checker("nl16_hypothesis_ambiguous", R"(
 theorem t : P
@@ -2905,7 +2905,7 @@ end
     EXPECT_TRUE(has_warning);
 }
 
-// NL19: "suppose h1 : P and h2 : Q" — both hypotheses in scope
+// "suppose h1 : P and h2 : Q" — both hypotheses in scope
 TEST(CheckerTest, NL19_SupposeMultiple) {
     auto diag = run_checker("nl19_suppose_multiple", R"(
 theorem t : P and Q
@@ -2917,7 +2917,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── NL3: silent ImplIntro / NotIntro close at end/qed ────────────────────────
+// ── silent ImplIntro / NotIntro close at end/qed ────────────────────────
 
 TEST(CheckerTest, NL3AutoCloseImpl) {
     // Proof of A → B ends at "end" after "suppose h : A" and "have h_b : B by ..."
@@ -2961,9 +2961,9 @@ end
     EXPECT_TRUE(has_error(diag, "auto-discharge"));
 }
 
-// ── calc block tests (NL1) ─────────────────────────────────────────────────────
+// ── calc block tests ─────────────────────────────────────────────────────
 
-// NL1-C1: pure equality chain — passes and result available for later use
+// pure equality chain — passes and result available for later use
 TEST(CheckerTest, CalcStep_PureEqualityChain) {
     auto diag = run_checker("calc_eq_chain", R"(
 axiom h1 : a = b
@@ -2977,7 +2977,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL1-C2: mixed ≤/=/< chain — op_final is <, result usable downstream
+// mixed ≤/=/< chain — op_final is <, result usable downstream
 TEST(CheckerTest, CalcStep_MixedChainOpFinal) {
     auto diag = run_checker("calc_mixed_chain", R"(
 axiom h1 : a <= b
@@ -2992,7 +2992,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL1-C3: named result used in subsequent then — passes
+// named result used in subsequent then — passes
 TEST(CheckerTest, CalcStep_NamedResultUsedInThen) {
     auto diag = run_checker("calc_named_result", R"(
 axiom h1 : x = y
@@ -3006,7 +3006,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL1-C4: incorrect individual step — error reported
+// incorrect individual step — error reported
 TEST(CheckerTest, CalcStep_WrongJustification) {
     auto diag = run_checker("calc_bad_step", R"(
 axiom h1 : a = b
@@ -3020,7 +3020,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// NL1-C5: inconsistent direction (< mixed with >) — error reported
+// inconsistent direction (< mixed with >) — error reported
 TEST(CheckerTest, CalcStep_InconsistentDirection) {
     auto diag = run_checker("calc_inconsistent_dir", R"(
 axiom h1 : a < b
@@ -3034,9 +3034,9 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── split step tests (NL2) ─────────────────────────────────────────────────────
+// ── split step tests ─────────────────────────────────────────────────────
 
-// NL2-C1: conjunction split — both arms proved, result in scope
+// conjunction split — both arms proved, result in scope
 TEST(CheckerTest, SplitStep_ConjunctionPasses) {
     auto diag = run_checker("split_conj_ok", R"(
 axiom hp : P
@@ -3053,7 +3053,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL2-C2: biconditional (P iff Q desugars to (P->Q) and (Q->P)) — split works
+// biconditional (P iff Q desugars to (P->Q) and (Q->P)) — split works
 TEST(CheckerTest, SplitStep_BiconditionalPasses) {
     auto diag = run_checker("split_iff_ok", R"(
 axiom hpq : P -> Q
@@ -3072,7 +3072,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// NL2-C3: wrong label — split with a goal that is not a conjunction should error
+// wrong label — split with a goal that is not a conjunction should error
 TEST(CheckerTest, SplitStep_NonConjunctionGoalErrors) {
     auto diag = run_checker("split_non_conj", R"(
 theorem t : P or Q
@@ -3087,7 +3087,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// NL2-C4: missing arm — split with only one arm should error
+// missing arm — split with only one arm should error
 TEST(CheckerTest, SplitStep_MissingArmErrors) {
     auto diag = run_checker("split_one_arm", R"(
 axiom hp : P
@@ -3101,7 +3101,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── NL11: inline have sub-proofs ───────────────────────────────────────────────
+// ── inline have sub-proofs ───────────────────────────────────────────────
 
 TEST(CheckerTest, NL11_HaveSubProofPasses) {
     auto diag = run_checker("nl11_basic", R"(
@@ -3154,7 +3154,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── NL12: by contrapositive ────────────────────────────────────────────────────
+// ── by contrapositive ────────────────────────────────────────────────────
 
 TEST(CheckerTest, NL12_ContrapositivePasses) {
     // Prove P → Q by: suppose ¬Q, derive ¬P, then P → Q by contrapositive.
@@ -3183,7 +3183,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// ── NL14: wlog step ────────────────────────────────────────────────────────────
+// ── wlog step ────────────────────────────────────────────────────────────
 
 TEST(CheckerTest, NL14_WlogInsertsAssumption) {
     // wlog introduces the stated prop as an assumption, emits a warning,
@@ -3207,7 +3207,7 @@ end
     EXPECT_TRUE(has_warning);
 }
 
-// ── NL20: direction-marker biconditional proofs ────────────────────────────────
+// ── direction-marker biconditional proofs ────────────────────────────────
 
 TEST(CheckerTest, NL20_DirectionMarkersBiconditionalPasses) {
     // Biconditional proof using (→)/(←) direction markers.
@@ -3245,9 +3245,9 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
-// ── omega tactic tests (DP1) ───────────────────────────────────────────────────
+// ── omega tactic tests ───────────────────────────────────────────────────
 
-// DP1-1: trivial non-negativity from hypothesis
+// trivial non-negativity from hypothesis
 TEST(CheckerTest, Omega_TrivialNonneg) {
     auto diag = run_checker("omega_nonneg", R"(
 theorem t : n >= 0
@@ -3259,7 +3259,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-2: linear sum lower bound  a >= 1, b >= 1 => a + b >= 2
+// linear sum lower bound  a >= 1, b >= 1 => a + b >= 2
 TEST(CheckerTest, Omega_SumLowerBound) {
     auto diag = run_checker("omega_sum_lower", R"(
 theorem t : a + b >= 2
@@ -3272,7 +3272,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-3: squeeze  n >= 0, n <= 0 => n = 0
+// squeeze  n >= 0, n <= 0 => n = 0
 TEST(CheckerTest, Omega_Squeeze) {
     auto diag = run_checker("omega_squeeze", R"(
 theorem t : n = 0
@@ -3285,7 +3285,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-4: strict inconsistency  a > b, b > a => false
+// strict inconsistency  a > b, b > a => false
 TEST(CheckerTest, Omega_StrictInconsistency) {
     auto diag = run_checker("omega_strict_incons", R"(
 theorem t : false
@@ -3298,7 +3298,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-5: simple additive  n >= 0 => n + 1 >= 1
+// simple additive  n >= 0 => n + 1 >= 1
 TEST(CheckerTest, Omega_Additive) {
     auto diag = run_checker("omega_additive", R"(
 theorem t : n + 1 >= 1
@@ -3310,7 +3310,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-6: omega in a have step
+// omega in a have step
 TEST(CheckerTest, Omega_HaveStep) {
     auto diag = run_checker("omega_have", R"(
 theorem t : x + y >= 0
@@ -3324,7 +3324,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP1-7: rejection of a false claim
+// rejection of a false claim
 TEST(CheckerTest, Omega_FalseClaim_Error) {
     auto diag = run_checker("omega_false_claim", R"(
 theorem t : n >= 5
@@ -3337,7 +3337,7 @@ end
     EXPECT_TRUE(has_error(diag, "omega"));
 }
 
-// DP1-8: equality from two-sided inequalities via omega
+// equality from two-sided inequalities via omega
 TEST(CheckerTest, Omega_TwoSidedEquality) {
     auto diag = run_checker("omega_two_sided_eq", R"(
 theorem t : a = b
@@ -3350,9 +3350,9 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── push neg tactic tests (DP5) ────────────────────────────────────────────────
+// ── push neg tactic tests ────────────────────────────────────────────────
 
-// DP5-1: push neg on goal ¬(A ∧ B) → ¬A ∨ ¬B
+// push neg on goal ¬(A ∧ B) → ¬A ∨ ¬B
 TEST(CheckerTest, PushNeg_AndGoal) {
     auto diag = run_checker("push_neg_and_goal", R"(
 theorem t : not (A and B)
@@ -3365,7 +3365,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP5-2: double negation elimination ¬¬A → A
+// double negation elimination ¬¬A → A
 TEST(CheckerTest, PushNeg_DoubleNeg) {
     auto diag = run_checker("push_neg_double_neg", R"(
 theorem t : not (not A)
@@ -3378,7 +3378,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP5-3: relational negation ¬(a < b) → a ≥ b
+// relational negation ¬(a < b) → a ≥ b
 TEST(CheckerTest, PushNeg_RelationalLt) {
     auto diag = run_checker("push_neg_rel_lt", R"(
 theorem t : not (a < b)
@@ -3391,7 +3391,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP5-4: push neg at h — hypothesis ¬(A ∨ B) → ¬A ∧ ¬B
+// push neg at h — hypothesis ¬(A ∨ B) → ¬A ∧ ¬B
 TEST(CheckerTest, PushNeg_AtHypOrGoal) {
     auto diag = run_checker("push_neg_at_or", R"(
 theorem t : not A and not B
@@ -3404,7 +3404,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP5-5: push neg on ¬(A → B) → A ∧ ¬B
+// push neg on ¬(A → B) → A ∧ ¬B
 TEST(CheckerTest, PushNeg_Implication) {
     auto diag = run_checker("push_neg_impl", R"(
 theorem t : not (A -> B)
@@ -3418,7 +3418,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// DP5-6: relational negation ¬(a = b) → a ≠ b
+// relational negation ¬(a = b) → a ≠ b
 TEST(CheckerTest, PushNeg_RelationalEq) {
     auto diag = run_checker("push_neg_rel_eq", R"(
 theorem t : not (a = b)
@@ -3431,9 +3431,9 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── MOD1: Qualified names ──────────────────────────────────────────────────────
+// ── Qualified names ──────────────────────────────────────────────────────
 
-// MOD1-1: qualified name "Lib.base" works after importing "lib.forall"
+// qualified name "Lib.base" works after importing "lib.forall"
 TEST(CheckerTest, QualifiedName_Works) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
@@ -3457,7 +3457,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// MOD1-2: unqualified name still works after import (backward-compatible)
+// unqualified name still works after import (backward-compatible)
 TEST(CheckerTest, QualifiedName_UnqualifiedStillWorks) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
@@ -3480,7 +3480,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// MOD1-3: a completely unknown qualified name fails with a clear error
+// a completely unknown qualified name fails with a clear error
 TEST(CheckerTest, QualifiedName_UnknownFails) {
     auto diag = run_checker("qualified_unknown", R"(
 axiom base3 : P
@@ -3493,9 +3493,9 @@ end
     EXPECT_TRUE(has_error(diag, "Nonexistent.foo"));
 }
 
-// ── MOD2: Namespace blocks ─────────────────────────────────────────────────────
+// ── Namespace blocks ─────────────────────────────────────────────────────
 
-// MOD2-1: declarations inside a namespace block are accessible as Ns.name
+// declarations inside a namespace block are accessible as Ns.name
 TEST(CheckerTest, Namespace_QualifiedAccess) {
     auto diag = run_checker("ns_qualified", R"(
 namespace Arith
@@ -3511,7 +3511,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// MOD2-2: after "open Ns", declarations are accessible unqualified
+// after "open Ns", declarations are accessible unqualified
 TEST(CheckerTest, Namespace_OpenBringsIntoScope) {
     auto diag = run_checker("ns_open", R"(
 namespace Logic
@@ -3526,7 +3526,7 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// MOD2-3: name collision between two namespaces — later definition wins
+// name collision between two namespaces — later definition wins
 TEST(CheckerTest, Namespace_Collision_LaterWins) {
     auto diag = run_checker("ns_collision", R"(
 namespace A
@@ -3547,9 +3547,9 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── MOD3: private and protected declarations ───────────────────────────────────
+// ── private and protected declarations ───────────────────────────────────
 
-// MOD3-1: private axiom in an imported file is NOT accessible in the importer
+// private axiom in an imported file is NOT accessible in the importer
 TEST(CheckerTest, Private_NotExported) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
@@ -3570,7 +3570,7 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
-// MOD3-2: protected axiom IS accessible in the importer
+// protected axiom IS accessible in the importer
 TEST(CheckerTest, Protected_IsExported) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
@@ -3593,9 +3593,9 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── MOD4: abstract definitions ─────────────────────────────────────────────────
+// ── abstract definitions ─────────────────────────────────────────────────
 
-// MOD4-1: abstract definition allows using the name as an opaque fact in proofs
+// abstract definition allows using the name as an opaque fact in proofs
 TEST(CheckerTest, AbstractDefinition_UsableInProof) {
     auto diag = run_checker("abstract_def", R"(
 abstract definition foo : P -> Q
@@ -3687,7 +3687,7 @@ end
     }();
 }
 
-// ── AN8: Predicate definition unfolding ────────────────────────────────────────
+// ── Predicate definition unfolding ────────────────────────────────────────
 
 // `have` step concludes a predicate whose unfolded body matches a hypothesis.
 // definition Positive(x) := x > 0

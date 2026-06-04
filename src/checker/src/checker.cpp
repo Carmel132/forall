@@ -32,14 +32,14 @@ enum class EntryKind { Assumption, Derived };
 struct HypEntry {
     kernel::Judgment   judgment;
     EntryKind          kind;
-    // MOD3: visibility — Private entries are not exported across import boundaries.
+    // visibility — Private entries are not exported across import boundaries.
     ast::Visibility    visibility{ast::Visibility::Public};
 };
 
 // Module-level flat map: axioms + proved lemmas/definitions accumulate here.
 using HypEnv = std::map<std::string, HypEntry>;
 
-// AN8: predicate definition unfolding table.
+// predicate definition unfolding table.
 // Maps predicate name → { ordered param names, body proposition }.
 // Populated from `definition P(x : T) := body` declarations.
 // Used by unfold_preds() to expand PropPred/Atomic nodes before kernel calls.
@@ -117,7 +117,7 @@ public:
     }
 
     // Find the innermost Derived entry whose proposition equals p.
-    // Returns nullptr if none exists. Used by auto-discharge (RL1).
+    // Returns nullptr if none exists. Used by auto-discharge.
     [[nodiscard]] const HypEntry* find_derived(const ast::Prop& p) const {
         for (auto it = frames_.rbegin(); it != frames_.rend(); ++it)
             for (const auto& [n, e] : *it)
@@ -129,7 +129,7 @@ public:
 
 // ── module_name_from_path ─────────────────────────────────────────────────────
 //
-// MOD1: Derive a qualified-name prefix from an import path.
+// Derive a qualified-name prefix from an import path.
 // Examples:
 //   "nat.forall"          → "Nat"
 //   "stdlib/nat.forall"   → "Nat"
@@ -164,7 +164,7 @@ static std::string fresh_name() {
 
 // ── resolve_refs ───────────────────────────────────────────────────────────────
 //
-// NL16: "__hypothesis__" / "__assumption__" sentinels resolve to the unique
+// "__hypothesis__" / "__assumption__" sentinels resolve to the unique
 // Assumption-kind entry in the current scope.  If there are multiple, a Warning
 // is emitted and the first one is used.  If there are none, an Error is emitted.
 
@@ -177,7 +177,7 @@ resolve_refs(const std::vector<std::string>& refs,
     std::vector<const HypEntry*> out;
     out.reserve(refs.size());
     for (const auto& name : refs) {
-        // NL16: "by hypothesis" / "by assumption" → resolve to the active assumption
+        // "by hypothesis" / "by assumption" → resolve to the active assumption
         if (name == "__hypothesis__" || name == "__assumption__") {
             std::vector<const HypEntry*> assumptions;
             env.for_each_assumption([&](const std::string&, const HypEntry& e) {
@@ -197,7 +197,7 @@ resolve_refs(const std::vector<std::string>& refs,
             continue;
         }
         const auto* e = env.find(name);
-        // MOD1: qualified-name fallback — if "Mod.name" not found directly,
+        // qualified-name fallback — if "Mod.name" not found directly,
         // try the unqualified suffix after the last '.'.
         if (!e) {
             auto dot = name.rfind('.');
@@ -395,7 +395,7 @@ infer_quantifier_rule(const ast::Prop& conc,
 
 using Rational = std::pair<long long, long long>; // numerator / denominator
 
-// Polynomial types (C2-P4). Full definitions in the polynomial section below;
+// Polynomial types. Full definitions in the polynomial section below;
 // declared here so check_step can call normalize_expr.
 using Monomial = std::map<std::string, int>;   // var → positive exponent
 using Poly     = std::map<Monomial, Rational>;  // monomial → coeff
@@ -516,15 +516,15 @@ struct CheckContext {
     const InstanceTable&                         instances;    // type_name → {class_names}
     const HypEnv&                                module_env;   // axiom/lemma entries (for norm_num)
     const ast::FuncSigTable&                     sigs;         // function signatures
-    const ast::Prop*                             goal;         // theorem statement (for RL4 __qed__ sentinel)
-    const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // TR3: let x = expr bindings
-    const ast::StructEnv*                        struct_env{nullptr}; // NL11: for sub-proof injection
-    const PredDefTable*                          pred_defs{nullptr};  // AN8: predicate definition bodies
+    const ast::Prop*                             goal;         // theorem statement (for bare 'then' sentinel)
+    const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // let x = expr bindings
+    const ast::StructEnv*                        struct_env{nullptr}; // for sub-proof injection
+    const PredDefTable*                          pred_defs{nullptr};  // predicate definition bodies
 };
 
 // ── unfold_preds ──────────────────────────────────────────────────────────────
 //
-// AN8: Recursively expand PropPred nodes whose name appears in pred_defs by
+// Recursively expand PropPred nodes whose name appears in pred_defs by
 // substituting the definition's body with the call's arguments.  Recurses into
 // all PropNode and ExprNode variants.  No-op when pred_defs is null.
 static ast::Prop unfold_preds(const ast::Prop& p, const PredDefTable& defs);
@@ -643,7 +643,7 @@ bool check_step(const ast::Step& step,
                 diag::DiagnosticEngine& diag,
                 const CheckContext& ctx);
 
-// Forward declaration for normalize_expr (defined in C2-P4 section further below).
+// Forward declaration for normalize_expr (defined in the polynomial section below).
 static Poly normalize_expr(const ast::Expr& e);
 
 // Forward declarations for linarith helpers (defined after ring_equal below).
@@ -807,7 +807,7 @@ bool check_cases_step(const ast::CasesStep& s,
                    "OrElim failed: " + result.error().message});
         return false;
     }
-    // RL5: if the user omitted the result label, generate a fresh internal name.
+    // if the user omitted the result label, generate a fresh internal name.
     const std::string result_name = s.name.empty() ? fresh_name() : s.name;
     env.insert_or_assign(result_name, HypEntry{std::move(*result), EntryKind::Derived});
     return true;
@@ -1222,7 +1222,7 @@ bool check_induction_step(const ast::InductionStep& s,
 
 // ── check_calc_step ────────────────────────────────────────────────────────────
 //
-// Verifies a calc block (NL1).  Each link lhs_i op_i rhs_i is checked as a
+// Verifies a calc block.  Each link lhs_i op_i rhs_i is checked as a
 // PropRel against the user-supplied justification.  After all individual links
 // pass, the transitive conclusion (overall_lhs  op_final  overall_rhs) is
 // assembled and certified via introduce_axiom (same soundness justification as
@@ -1334,9 +1334,9 @@ bool check_step(const ast::Step& step,
                 diag::DiagnosticEngine& diag,
                 const CheckContext& ctx)
 {
-    // TR3: helper to apply let-bound term definitions to a proposition,
+    // helper to apply let-bound term definitions to a proposition,
     // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises.
-    // AN8: also unfolds predicate definitions (PropPred → body).
+    // also unfolds predicate definitions (PropPred → body).
     auto apply_tdefs = [&](ast::Prop p) -> ast::Prop {
         if (ctx.term_defs) {
             for (const auto& [name, expr] : *ctx.term_defs)
@@ -1399,13 +1399,13 @@ bool check_step(const ast::Step& step,
         }
 
         // have <name> : <prop> by <refs> [at <expr>]
-        // have <name> : <prop> proof ... end  (NL11: inline sub-proof)
-        // RL2: name may be "_" for an anonymous step — assign a fresh internal name.
+        // have <name> : <prop> proof ... end  (inline sub-proof)
+        // name may be "_" for an anonymous step — assign a fresh internal name.
         else if constexpr (std::is_same_v<T, ast::HaveStep>) {
             const ast::Prop prop = apply_tdefs(s.prop);
             const std::string step_name = (s.name == "_") ? fresh_name() : s.name;
 
-            // NL11: inline sub-proof block — check recursively with prop as goal.
+            // inline sub-proof block — check recursively with prop as goal.
             if (s.sub_proof) {
                 // Run the sub-block in a child scope seeded from the current scope.
                 // All outer hypotheses are visible; sub-proof-local steps stay local.
@@ -1446,7 +1446,7 @@ bool check_step(const ast::Step& step,
                         return false;
                     }
                     const auto& ts = std::get<ast::ThenStep>(sub_last_then->node);
-                    // AN8: apply predicate unfolding to the concluding step prop
+                    // apply predicate unfolding to the concluding step prop
                     // so it can be compared against the (already unfolded) goal.
                     const ast::Prop ts_prop_eff = apply_tdefs(ts.prop);
                     if (!(ts_prop_eff == prop)) {
@@ -1566,7 +1566,7 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
-            // "by omega" — integer/Presburger arithmetic (DP1)
+            // "by omega" — integer/Presburger arithmetic
             if (s.justification.size() == 1 && s.justification[0] == "__omega__") {
                 bool is_rel   = std::get_if<ast::PropRel>(&prop.node) != nullptr;
                 bool is_false = std::get_if<ast::PropFalse>(&prop.node) != nullptr;
@@ -1655,7 +1655,7 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            // TR3/AN5: expand any let-bound names in the witness expression and beta-reduce.
+            // expand any let-bound names in the witness expression and beta-reduce.
             std::optional<ast::Expr> witness_expanded;
             if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
             const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
@@ -1689,7 +1689,7 @@ bool check_step(const ast::Step& step,
         // then <prop> by <refs> [at <expr>]
         else if constexpr (std::is_same_v<T, ast::ThenStep>) {
             const ast::Prop prop = apply_tdefs(s.prop);
-            // RL4: "__qed__" sentinel — bare "then" with no proposition.
+            // "__qed__" sentinel — bare "then" with no proposition.
             // Substitute the theorem's goal, then continue as a normal ThenStep.
             // The __qed__ sentinel is always first; extra refs follow it.
             if (!s.justification.empty() && s.justification[0] == "__qed__") {
@@ -1705,7 +1705,7 @@ bool check_step(const ast::Step& step,
                 return check_step(synth, env, kernel, diag, ctx);
             }
 
-            // RL1: auto-discharge — allow bare "then P → Q" or "then ¬P" with no
+            // auto-discharge — allow bare "then P → Q" or "then ¬P" with no
             // justification by finding the most-recent matching Assumption in scope.
             if (s.justification.empty()) {
                 // Try ImplIntro: conclusion is A → B — look for assume[A], derive[B]
@@ -1884,7 +1884,7 @@ bool check_step(const ast::Step& step,
                 (void)kernel.introduce_axiom(prop);
                 return true;
             }
-            // "by omega" — integer/Presburger arithmetic (DP1, ThenStep variant)
+            // "by omega" — integer/Presburger arithmetic (ThenStep variant)
             if (s.justification.size() == 1 && s.justification[0] == "__omega__") {
                 bool is_rel   = std::get_if<ast::PropRel>(&prop.node) != nullptr;
                 bool is_false = std::get_if<ast::PropFalse>(&prop.node) != nullptr;
@@ -1903,7 +1903,7 @@ bool check_step(const ast::Step& step,
                 kernel.introduce_axiom(prop);
                 return true;
             }
-            // "by contra" — proof by contradiction (ML3)
+            // "by contra" — proof by contradiction
             // Finds hn : ¬P (assumption) and bot : ⊥ (derived) in scope.
             // Applies FalseElim(⊥) = P.  The ¬P assumption is not needed for FalseElim
             // but its presence confirms the contradiction was set up correctly.
@@ -1999,7 +1999,7 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            // TR3/AN5: expand let-bound names in the witness and beta-reduce.
+            // expand let-bound names in the witness and beta-reduce.
             std::optional<ast::Expr> witness_expanded;
             if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
             const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
@@ -2253,7 +2253,7 @@ static void check_proprel_types(const ast::Prop& prop,
                            "type mismatch: right-hand side of membership relation is not a set"});
             } else {
                 const auto& rset = std::get<ast::TypeSet>(rt->node);
-                // DT7: allow numeric tower coercions for membership checks.
+                // allow numeric tower coercions for membership checks.
                 if (!(*lt == *rset.element_type) && !numeric_coercible(*lt, *rset.element_type)) {
                     diag.emit({diag::Severity::Warning, loc,
                                "type mismatch: '"
@@ -2334,7 +2334,7 @@ void check_proof(const ast::Decl& decl,
     ScopeStack  env{module_env};
     ast::TypeEnv type_env; // types from typed 'take x : T' steps
 
-    // DT5: inject structure fields for theorem/lemma params of structure type.
+    // inject structure fields for theorem/lemma params of structure type.
     // For each param (name : S) where S is a known structure:
     //   - register param's type in type_env so field projection type inference works
     //   - inject FieldAxiom fields as "param_name_axiom_name" hypotheses into env
@@ -2360,7 +2360,7 @@ void check_proof(const ast::Decl& decl,
                     if (r) {
                         HypEntry entry{*r, EntryKind::Derived};
                         env.insert_or_assign(hyp_name,     entry);
-                        // DT6: also register under "param.axiom_name" (dot notation)
+                        // also register under "param.axiom_name" (dot notation)
                         env.insert_or_assign(hyp_name_dot, std::move(entry));
                     }
                 }
@@ -2380,7 +2380,7 @@ void check_proof(const ast::Decl& decl,
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
 
-    // AN8: unfold predicate definitions in the theorem statement so that the goal
+    // unfold predicate definitions in the theorem statement so that the goal
     // presented to the proof is the definitionally-expanded form.  This allows
     // proofs to work in terms of the definition body rather than the predicate name.
     // The original decl.statement is preserved for error messages; we work against
@@ -2398,14 +2398,14 @@ void check_proof(const ast::Decl& decl,
     // validator can chain ImplElim(h, proof_of_A) → B after the subproof of A.
     std::vector<const HypEntry*> apply_stack;
 
-    // TR3: term-level local definitions from "let x = expr".
+    // term-level local definitions from "let x = expr".
     // Applied as substitution into propositions before each step is checked.
     std::map<std::string, ast::ExprPtr> term_defs;
 
     // Apply all current term definitions to a proposition by substitution,
     // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises to
     // a[phi(n)] before kernel comparison.
-    // AN8: also unfold predicate definitions.
+    // also unfold predicate definitions.
     auto apply_term_defs = [&](ast::Prop p) -> ast::Prop {
         for (const auto& [name, expr] : term_defs)
             p = ast::subst(p, name, *expr);
@@ -2422,7 +2422,7 @@ void check_proof(const ast::Decl& decl,
             if (ts->type.has_value())
                 type_env[ts->var] = *ts->type;
 
-        // DT5: TakeStep struct injection — when "take G : S" and S is a known
+        // TakeStep struct injection — when "take G : S" and S is a known
         // structure, inject S's FieldAxiom fields as hypotheses and FieldTerm
         // fields as signatures, mirroring the param injection done above.
         if (struct_env) {
@@ -2441,7 +2441,7 @@ void check_proof(const ast::Decl& decl,
                                     if (r) {
                                         HypEntry entry{*r, EntryKind::Derived};
                                         env.insert_or_assign(hyp_name,     entry);
-                                        // DT6: also register under "var.axiom_name"
+                                        // also register under "var.axiom_name"
                                         env.insert_or_assign(hyp_name_dot, std::move(entry));
                                     }
                                 }
@@ -2457,7 +2457,7 @@ void check_proof(const ast::Decl& decl,
             }
         }
 
-        // MS1: RewriteStep transforms the current goal before check_step runs.
+        // RewriteStep transforms the current goal before check_step runs.
         if (const auto* rw = std::get_if<ast::RewriteStep>(&step.node)) {
             const HypEntry* h = env.find(rw->hyp_ref);
             if (!h) {
@@ -2502,7 +2502,7 @@ void check_proof(const ast::Decl& decl,
             continue; // not a proof step, just goal transformation
         }
 
-        // TR3: LetStep with definition — record the term binding and skip check_step.
+        // LetStep with definition — record the term binding and skip check_step.
         if (const auto* ls = std::get_if<ast::LetStep>(&step.node)) {
             if (ls->definition) {
                 term_defs[ls->var] = *ls->definition;
@@ -2511,7 +2511,7 @@ void check_proof(const ast::Decl& decl,
             continue;
         }
 
-        // MS2: ApplyStep — backward implication application.
+        // ApplyStep — backward implication application.
         // apply h where h : A → B and current_goal = B → transforms goal to A.
         // Stores h's judgment for final ImplElim at conclusion validation.
         if (const auto* ap = std::get_if<ast::ApplyStep>(&step.node)) {
@@ -2640,7 +2640,7 @@ void check_proof(const ast::Decl& decl,
     // a broken proof are more noise than signal.
     if (!had_step_errors) {
         if (last_kind == LastKind::None) {
-            // NL3: auto-close at end/qed when goal is A → B or ¬A and the required
+            // auto-close at end/qed when goal is A → B or ¬A and the required
             // pieces (Assumption of the antecedent + Derived of the consequent) are
             // already in scope.  This lets the user omit the explicit "then A → B".
             if (const auto* im = std::get_if<ast::PropImpl>(&current_goal->node)) {
@@ -2700,10 +2700,10 @@ void check_proof(const ast::Decl& decl,
             }
         } else if (last_kind == LastKind::Then) {
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
-            // RL4: __qed__ sentinel substitutes current goal — skip prop check.
+            // __qed__ sentinel substitutes current goal — skip prop check.
             const bool is_qed_sentinel = !ts.justification.empty()
                                          && ts.justification[0] == "__qed__";
-            // TR3: apply term definitions to the conclusion before comparing.
+            // apply term definitions to the conclusion before comparing.
             const ast::Prop ts_prop = apply_term_defs(ts.prop);
             if (!is_qed_sentinel && ts_prop != *current_goal) {
                 const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
@@ -2712,7 +2712,7 @@ void check_proof(const ast::Decl& decl,
                            + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
                            end_col});
             }
-            // MS2: If apply_stack is non-empty, verify the chain reaches decl.statement.
+            // If apply_stack is non-empty, verify the chain reaches decl.statement.
             // Each apply h:A→B requires the subproof to conclude A, then ImplElim gives B.
             // The final result must equal decl.statement.
             if (!apply_stack.empty() && !is_qed_sentinel) {
@@ -2866,7 +2866,7 @@ static bool check_instance(const std::string& type_name,
 
 // ── resolve_ring_axioms ────────────────────────────────────────────────────────
 //
-// C2-P3: Axiom-set reachability.
+// Axiom-set reachability.
 // Given a type name (e.g. "Real"), the current InstanceTable, and the current
 // module_env, returns a map from law-name suffix (e.g. "add_comm") to the
 // corresponding Judgment for "<TypeName>_add_comm".
@@ -2922,7 +2922,7 @@ resolve_ring_axioms(const std::string& type_name,
     return result;
 }
 
-// ── Polynomial normal form (C2-P4) ────────────────────────────────────────────
+// ── Polynomial normal form ────────────────────────────────────────────
 //
 // Represents a multivariate polynomial as a sum of terms, each term being a
 // rational coefficient times a monomial.
@@ -3350,7 +3350,7 @@ static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStac
     return std::nullopt;
 }
 
-// ── field_simp tactic (DP2) ────────────────────────────────────────────────────
+// ── field_simp tactic ────────────────────────────────────────────────────
 //
 // Normalizes a goal of the form  lhs = rhs  where both sides may contain
 // division, by reducing both sides to a canonical rational form and comparing.
@@ -3523,7 +3523,7 @@ static bool field_simp_tactic(const ast::Prop& goal, ScopeStack& env,
     return true;
 }
 
-// ── positivity tactic (DP3) ────────────────────────────────────────────────────
+// ── positivity tactic ────────────────────────────────────────────────────
 //
 // Proves goals of the form  expr ≥ 0  or  expr > 0  by structural recursion
 // on the expression.  Returns the inferred RelOp (GtEq or Gt) for the
@@ -3655,7 +3655,7 @@ static bool positivity_tactic(const ast::Prop& goal, const ScopeStack& env,
     return true;
 }
 
-// ── gcongr tactic (DP4) ────────────────────────────────────────────────────────
+// ── gcongr tactic ────────────────────────────────────────────────────────
 //
 // Proves goals of the form  f(a) ≤ f(b)  (or <, ≥, >) by finding a monotonicity
 // argument.  Tries the following strategies:
@@ -3907,7 +3907,7 @@ static bool omega_tactic(const ast::Prop& goal, const ScopeStack& env)
     return fourier_motzkin(hyps);
 }
 
-// ── push_neg: push negations inward (DP5) ─────────────────────────────────────
+// ── push_neg: push negations inward ─────────────────────────────────────
 //
 // Applies De Morgan / classical equivalences to push a ¬ as deep as possible:
 //   ¬(A ∧ B)   →  ¬A ∨ ¬B
@@ -4042,7 +4042,7 @@ static ast::Prop push_neg(const ast::Prop& p)
 struct ModuleResult {
     HypEnv         env;
     InstanceTable  instances;
-    PredDefTable   pred_defs; // AN8: predicate definition bodies from this module
+    PredDefTable   pred_defs; // predicate definition bodies from this module
 };
 
 ModuleResult check_module(const std::filesystem::path& path,
@@ -4063,12 +4063,12 @@ ModuleResult check_module(const std::filesystem::path& path,
 
     lexer::Lexer lex{buf.str(), path.string(), diag};
     auto tokens = lex.tokenize();
-    // IX2: Don't abort on lexer errors — continue to parse to collect more errors.
+    // Don't abort on lexer errors — continue to parse to collect more errors.
 
     parser::Parser parser{tokens, diag};
     ast::Module mod = parser.parse();
     mod.path = path.string();
-    // IX2: Don't abort on parse errors — run the checker on successfully-parsed
+    // Don't abort on parse errors — run the checker on successfully-parsed
     // declarations to report as many errors as possible in a single pass.
     // The checker skips over any declaration whose statement contains parse
     // sentinel nodes (they will have caused parse errors already).
@@ -4076,15 +4076,15 @@ ModuleResult check_module(const std::filesystem::path& path,
     HypEnv module_env;
     ast::FuncSigTable sig_table; // built from definition declarations with params
     InstanceTable instance_table; // populated from instance declarations
-    ast::StructEnv struct_env;    // populated from structure declarations (DT3)
-    PredDefTable pred_def_table;  // AN8: predicate definitions with bodies
+    ast::StructEnv struct_env;    // populated from structure declarations
+    PredDefTable pred_def_table;  // predicate definitions with bodies
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
         switch (decl->kind) {
 
         case ast::DeclKind::Axiom: {
-            // AN8: unfold predicate definitions in the axiom statement so that
+            // unfold predicate definitions in the axiom statement so that
             // hypotheses stored in module_env carry the expanded form.
             const ast::Prop eff_stmt = pred_def_table.empty()
                                        ? decl->statement
@@ -4114,7 +4114,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                 }
             }
             if (no_new_errors) {
-                // AN8: also unfold predicates in the theorem statement stored in env.
+                // also unfold predicates in the theorem statement stored in env.
                 const ast::Prop eff = pred_def_table.empty()
                                       ? decl->statement
                                       : unfold_preds(decl->statement, pred_def_table);
@@ -4126,7 +4126,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Import: {
-            // IX4: if import path starts with "stdlib/" and stdlib_root is set,
+            // if import path starts with "stdlib/" and stdlib_root is set,
             // resolve relative to stdlib_root rather than the current file's directory.
             const std::string& import_name = decl->name;
             std::filesystem::path import_path;
@@ -4137,8 +4137,8 @@ ModuleResult check_module(const std::filesystem::path& path,
             auto canonical   = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag, visited, stdlib_root);
-                // MOD1: also insert entries under the qualified prefix "ModName.entry".
-                // MOD3: skip Private entries — they are not exported across import boundaries.
+                // also insert entries under the qualified prefix "ModName.entry".
+                // skip Private entries — they are not exported across import boundaries.
                 const std::string mod_prefix = module_name_from_path(import_name) + ".";
                 for (auto& [name, entry] : imported.env) {
                     if (entry.visibility == ast::Visibility::Private) continue;
@@ -4148,7 +4148,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                 for (auto& [tname, classes] : imported.instances)
                     for (const auto& cls : classes)
                         instance_table[tname].insert(cls);
-                // AN8: merge imported predicate definitions.
+                // merge imported predicate definitions.
                 for (auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
             }
@@ -4156,7 +4156,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
 
         case ast::DeclKind::Definition: {
-            // DT3: structure instantiation sub-case
+            // structure instantiation sub-case
             if (!decl->struct_type.empty()) {
                 // Look up the structure definition.
                 auto sit = struct_env.find(decl->struct_type);
@@ -4170,7 +4170,7 @@ ModuleResult check_module(const std::filesystem::path& path,
 
                 // For each FieldTerm binding, register <inst>_<field> in sig_table
                 // so that type inference and future proofs can reference the fields.
-                // (DT4: minimal operator registration)
+                // (minimal operator registration)
                 for (const auto& sf : fields) {
                     if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
                         auto bit = decl->struct_bindings.find(ft->name);
@@ -4228,7 +4228,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                 if (const auto* tf = std::get_if<ast::TypeFun>(&ret.node))
                     sig_table[decl->name] = *tf;
             }
-            // AN8: if a body is present, register in pred_def_table.
+            // if a body is present, register in pred_def_table.
             if (decl->def_body && !decl->is_abstract) {
                 PredDefEntry entry;
                 for (const auto& p : decl->params)
@@ -4266,7 +4266,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                 }
             }
             // Register each FieldTerm in the FuncSigTable so type inference
-            // can resolve calls to structure method names (DT4).
+            // can resolve calls to structure method names.
             for (const auto& field : decl->fields) {
                 if (const auto* ft = std::get_if<ast::FieldTerm>(&field)) {
                     // Only register if the field type is a function type.
@@ -4321,7 +4321,7 @@ ModuleResult check_module(const std::filesystem::path& path,
             break;
         }
 
-        // MOD2: namespace block — process inner decls with "NsName." prefix
+        // namespace block — process inner decls with "NsName." prefix
         case ast::DeclKind::Namespace: {
             const std::string& ns_name = decl->name;
             const std::string prefix = ns_name + ".";
@@ -4385,7 +4385,7 @@ ModuleResult check_module(const std::filesystem::path& path,
             break;
         }
 
-        // MOD2: open directive — bring all "NsName.x" entries into unqualified scope
+        // open directive — bring all "NsName.x" entries into unqualified scope
         case ast::DeclKind::Open: {
             const std::string prefix = decl->name + ".";
             // Collect entries to add (can't insert while iterating the same map).
@@ -4453,8 +4453,8 @@ void Checker::check_content(const std::string& source, const std::string& filena
             auto canonical = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
-                // MOD1: also insert under the qualified prefix "ModName.entry".
-                // MOD3: skip Private entries.
+                // also insert under the qualified prefix "ModName.entry".
+                // skip Private entries.
                 const std::string mod_prefix = module_name_from_path(iname) + ".";
                 for (auto& [n, e] : imported.env) {
                     if (e.visibility == ast::Visibility::Private) continue;
@@ -4463,7 +4463,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                 }
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
-                // AN8: merge imported predicate definitions.
+                // merge imported predicate definitions.
                 for (auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
             }
@@ -4520,7 +4520,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                             "quotient '" + decl->name + "' is missing a transitivity axiom (name should contain 'trans')"});
             break;
         }
-        // MOD2: namespace block in check_content
+        // namespace block in check_content
         case ast::DeclKind::Namespace: {
             const std::string prefix = decl->name + ".";
             for (const auto& inner : decl->ns_decls) {
@@ -4544,7 +4544,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
             }
             break;
         }
-        // MOD2: open directive in check_content
+        // open directive in check_content
         case ast::DeclKind::Open: {
             const std::string prefix = decl->name + ".";
             std::vector<std::pair<std::string, HypEntry>> to_add;
@@ -4571,7 +4571,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                                                     HypEntry{std::move(*r), EntryKind::Derived});
             } else if (decl->kind == ast::DeclKind::Definition) {
                 if (!decl->struct_type.empty()) {
-                    // DT3: structure instantiation
+                    // structure instantiation
                     auto sit = struct_env.find(decl->struct_type);
                     if (sit == struct_env.end()) {
                         diag_.emit({diag::Severity::Error, decl->loc,
@@ -4610,7 +4610,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) module_env.insert_or_assign(decl->name,
                                                         HypEntry{std::move(*r), EntryKind::Derived});
-                    // AN8: register predicate body if present.
+                    // register predicate body if present.
                     if (decl->def_body && !decl->is_abstract) {
                         PredDefEntry entry;
                         for (const auto& p : decl->params)
@@ -4694,7 +4694,7 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                 }
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
-                // AN8: merge imported predicate definitions.
+                // merge imported predicate definitions.
                 for (auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
             }
@@ -4796,7 +4796,7 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                         module_env.insert_or_assign(decl->name,
                                                     HypEntry{std::move(*r), EntryKind::Derived});
                     }
-                    // AN8: register predicate body if present.
+                    // register predicate body if present.
                     if (decl->def_body && !decl->is_abstract) {
                         PredDefEntry entry;
                         for (const auto& p : decl->params)

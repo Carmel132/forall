@@ -486,7 +486,7 @@ ast::Prop Parser::parseQuantifier() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
 
-    // PB3: bounded binder — "∀ i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)".
+    // bounded binder — "∀ i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)".
     // Only valid for a single variable; checked before the multi-var loop.
     if (vars.size() == 1) {
         if (auto rel = as_rel_op(peek().kind); rel.has_value()) {
@@ -823,9 +823,9 @@ ast::Prop Parser::parseAtomicProp() {
 // "by decide"   — evaluates closed arithmetic; sentinel "__decide__"
 // "by norm_num" — polynomial ring equality; sentinel "__norm_num__"
 // "by ring"     — polynomial identity over commutative ring; sentinel "__ring__"
-// NL6: "by definition of X" / "by axiom of X" / "by lemma X" / "by theorem X"
+// "by definition of X" / "by axiom of X" / "by lemma X" / "by theorem X"
 //       — qualifier words discarded; only X matters
-// NL16: "by hypothesis" / "by assumption" → sentinels "__hypothesis__" / "__assumption__"
+// "by hypothesis" / "by assumption" → sentinels "__hypothesis__" / "__assumption__"
 std::vector<std::string> Parser::parseJustification() {
     std::vector<std::string> refs;
     if (check(lexer::TokenKind::KwDecide)) {
@@ -880,13 +880,13 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__contra__");
         return refs;
     }
-    // NL12: "contrapositive" — prove A → B by showing ¬B → ¬A
+    // "contrapositive" — prove A → B by showing ¬B → ¬A
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contrapositive") {
         advance();
         refs.push_back("__contrapositive__");
         return refs;
     }
-    // NL16: "by hypothesis" / "by assumption" — resolve to the unique active assumption
+    // "by hypothesis" / "by assumption" — resolve to the unique active assumption
     if (check(lexer::TokenKind::Identifier)
             && (peek().lexeme == "hypothesis" || peek().lexeme == "assumption")) {
         std::string sentinel = (peek().lexeme == "hypothesis")
@@ -895,10 +895,10 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back(std::move(sentinel));
         return refs;
     }
-    // NL6 qualifiers are keyword tokens (KwDefinition, KwAxiom, KwLemma, KwTheorem),
+    // Qualifiers like "by definition of X" / "by axiom of X" are keyword tokens,
     // so we cannot early-return if the token is not an Identifier — check below.
     {
-        // NL6: optional qualifier words before the ref name.
+        // optional qualifier words before the ref name.
         // "definition of" — 2 tokens to discard; "definition" is KwDefinition
         // "axiom of"      — 2 tokens to discard; "axiom" is KwAxiom
         // "lemma"         — 1 token to discard; "lemma" is KwLemma
@@ -931,7 +931,7 @@ std::vector<std::string> Parser::parseJustification() {
         // Parse a single reference, which may be dotted: "M.my_axiom".
         auto parse_one_ref = [&]() -> std::string {
             std::string name{advance().lexeme}; // consume the identifier
-            // DT6: if followed by '.' and another identifier, join as "X.y".
+            // if followed by '.' and another identifier, join as "X.y".
             if (check(lexer::TokenKind::Dot)
                     && pos_ + 1 < tokens_.size()
                     && tokens_[pos_ + 1].kind == lexer::TokenKind::Identifier) {
@@ -962,8 +962,8 @@ ast::TypeNode Parser::parseType() {
     using K = lexer::TokenKind;
     const auto loc = peek().loc;
 
-    // PB4: Tuple type "(Nat, Int)"  — TypeTuple with two or more elements.
-    // DT5: Pi type "(x : A) -> B"  — TypePi, distinguished from tuple by ':' inside.
+    // Tuple type "(Nat, Int)"  — TypeTuple with two or more elements.
+    // Pi type "(x : A) -> B"  — TypePi, distinguished from tuple by ':' inside.
     if (check(K::LParen)) {
         // Lookahead: if we see '(' identifier ':' ... ')' '->', this is a Pi type.
         // Discriminant: the ':' at depth 1 immediately after an identifier.
@@ -1088,7 +1088,7 @@ ast::Step Parser::parseLetStep() {
                                   ast::make_expr(std::move(expr))}};
     }
 
-    // NL8: let x be arbitrary [in T]  → TakeStep{x, T}
+    // let x be arbitrary [in T]  → TakeStep{x, T}
     // Detect: KwBe followed by Identifier "arbitrary"
     if (check(lexer::TokenKind::KwBe)
             && pos_ + 1 < tokens_.size()
@@ -1235,20 +1235,20 @@ ast::Step Parser::parseSupposeStep() {
         advance(); // consume ':'
     }
 
-    // NL19: "suppose h1 : P and h2 : Q" → two SupposeSteps.
+    // "suppose h1 : P and h2 : Q" → two SupposeSteps.
     // Problem: parseProp() is greedy — "P and hq" would be parsed as PropAnd{P, hq}.
     // Solution: scan ahead to detect "and <Identifier> :" pattern at paren-depth 0.
     // If found at position j, the "and" at j is the multi-suppose separator; parse
-    // only up to j (stop at the first top-level "and" that is part of the NL19 pattern).
+    // only up to j (stop at the first top-level "and" that is part of pattern).
     //
     // We implement this by parsing the prop normally, then checking if the result
     // is a conjunction whose RHS is an Atomic{name2} where the next token is ':'.
-    // If so, undo: the conjunction was mis-parsed — the 'and' was the NL19 separator.
+    // If so, undo: the conjunction was mis-parsed — the 'and' was separator.
     // We restore position to just before the 'and' by saving/restoring pos_.
 
     auto parse_possibly_limited_prop = [&]() -> ast::Prop {
         if (for_contradiction) return parseProp();
-        // Scan for top-level "and Identifier :" at depth 0, which would signal NL19.
+        // Scan for top-level "and Identifier :" at depth 0, which would signal a multi-suppose.
         // We only do this when the name is known (name.has_value()).
         if (!name.has_value()) return parseProp();
         // Look for the pattern: at depth 0, an And/KwAnd token followed by Identifier Colon.
@@ -1286,14 +1286,14 @@ ast::Step Parser::parseSupposeStep() {
         // For the common case, the prop between 'suppose h : ' and ' and h2 :' is atomic.
         // Parse an implication but stop at the top-level 'and':
         // We call parseBiconditional → parseImplication → parseDisjunction → parseConjunction.
-        // parseConjunction eats all top-level 'and' tokens. To stop before NL19 'and', we
+        // parseConjunction eats all top-level 'and' tokens. To stop before the multi-suppose 'and', we
         // parse just one parseNegation() (no conjunction loop).
         return parseNegation();
     };
 
     auto prop = parse_possibly_limited_prop();
 
-    // NL19: if we limited to parseNegation(), check if the next token is 'and <Identifier> :'
+    // if we limited to parseNegation(), check if the next token is 'and <Identifier> :'
     if (!for_contradiction && name.has_value()
             && check(lexer::TokenKind::And)
             && pos_ + 1 < tokens_.size()
@@ -1313,7 +1313,7 @@ ast::Step Parser::parseSupposeStep() {
 }
 
 // have <name> : <prop> by <justification> [at <expr>]
-// have <name> : <prop> proof ... end        (NL11: inline sub-proof)
+// have <name> : <prop> proof ... end        (inline sub-proof)
 // <name> may be "_" for an anonymous step; the checker assigns a fresh internal name.
 ast::Step Parser::parseHaveStep() {
     const auto loc = peek().loc;
@@ -1329,7 +1329,7 @@ ast::Step Parser::parseHaveStep() {
     expect(lexer::TokenKind::Colon, "expected ':' after hypothesis name");
     auto prop = parseProp();
 
-    // NL11: "have h : P proof ... end" — inline sub-proof block
+    // "have h : P proof ... end" — inline sub-proof block
     if (check(lexer::TokenKind::KwProof)) {
         auto block = parseProofBlock();
         auto sub = std::make_unique<ast::ProofBlock>(std::move(block));
@@ -1353,7 +1353,7 @@ ast::Step Parser::parseHaveStep() {
 }
 
 // then [<prop>] [(by | from) <justification> [at <expr>]]
-// RL4: if no proposition follows "then", emits a "__qed__" sentinel;
+// if no proposition follows "then", emits a "__qed__" sentinel;
 // the checker substitutes decl.statement as the goal.
 ast::Step Parser::parseThenStep() {
     using K = lexer::TokenKind;
@@ -1382,7 +1382,7 @@ ast::Step Parser::parseThenStep() {
     std::optional<ast::ExprPtr> witness;
 
     if (is_bare_then()) {
-        // Goal-close form (RL4): defer prop to checker via sentinel.
+        // Goal-close form: defer prop to checker via sentinel.
         ast::Prop dummy{loc, ast::PropFalse{}};
         refs.push_back("__qed__");
         if (check(K::KwBy) || check(K::KwFrom)) {
@@ -1429,7 +1429,7 @@ ast::Step Parser::parseCasesStep() {
 
     // Grammar: "cases [<name> :] <ref>"
     // If an identifier is followed by ':', it is the result label; otherwise
-    // the identifier is the disjunct ref and the result is unnamed (RL5).
+    // the identifier is the disjunct ref and the result is unnamed.
     std::string name;
     std::string disjunct_ref;
 
@@ -1727,7 +1727,7 @@ ast::Step Parser::parseCalcStep() {
 ast::Step Parser::parseStep() {
     using K = lexer::TokenKind;
 
-    // Drain deferred steps (produced by e.g. NL19 multi-suppose) before parsing new ones.
+    // Drain deferred steps (e.g. from multi-suppose) before parsing new ones.
     if (!deferred_steps_.empty()) {
         auto s = std::move(deferred_steps_.front());
         deferred_steps_.erase(deferred_steps_.begin());
@@ -1740,12 +1740,12 @@ ast::Step Parser::parseStep() {
     if (check(K::KwSuppose))      return parseSupposeStep();
 
     // "we have" — two-token phrase aliasing "have"
-    // Also handle NL9 "we need to show P", NL13 "we know X", NL18 "we prove that P"
+    // Also handle "we need to show P", "we know X", "we prove that P"
     if (check(K::Identifier) && peek().lexeme == "we") {
         if (pos_ + 1 < tokens_.size() && tokens_[pos_ + 1].kind == K::KwHave) {
             advance(); return parseHaveStep();
         }
-        // NL9: "we need to show P"
+        // "we need to show P"
         if (pos_ + 1 < tokens_.size()
                 && tokens_[pos_ + 1].kind == K::Identifier
                 && tokens_[pos_ + 1].lexeme == "need"
@@ -1761,7 +1761,7 @@ ast::Step Parser::parseStep() {
             auto prop = parseProp();
             return {loc, ast::ShowStep{std::move(prop)}};
         }
-        // NL13: "we know X"
+        // "we know X"
         if (pos_ + 1 < tokens_.size()
                 && tokens_[pos_ + 1].kind == K::Identifier
                 && tokens_[pos_ + 1].lexeme == "know"
@@ -1774,7 +1774,7 @@ ast::Step Parser::parseStep() {
             ast::Prop ref_prop{loc, ast::Atomic{ref}};
             return {loc, ast::HaveStep{"_", std::move(ref_prop), {ref}, std::nullopt}};
         }
-        // NL18: "we prove that P"
+        // "we prove that P"
         if (pos_ + 1 < tokens_.size()
                 && tokens_[pos_ + 1].kind == K::Identifier
                 && tokens_[pos_ + 1].lexeme == "prove"
@@ -1790,7 +1790,7 @@ ast::Step Parser::parseStep() {
 
     if (check(K::KwHave))         return parseHaveStep();
     if (check(K::KwThen))         return parseThenStep();
-    // NL10: "so P [by refs]" — maps KwSo to a ThenStep
+    // "so P [by refs]" — maps KwSo to a ThenStep
     if (check(K::KwSo)) {
         const auto loc = peek().loc;
         advance(); // consume "so"
@@ -1809,7 +1809,7 @@ ast::Step Parser::parseStep() {
     if (check(K::KwInduction))    return parseInductionStep();
     if (check(K::KwWlog))         return parseWlogStep();
 
-    // rewrite [←/<-] h — equality rewriting step (MS1)
+    // rewrite [←/<-] h — equality rewriting step
     if (check(K::KwRewrite)) {
         const auto loc = peek().loc;
         advance(); // consume "rewrite"
@@ -1831,7 +1831,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::RewriteStep{std::move(ref), rev}};
     }
 
-    // apply h — backward implication application step (MS2)
+    // apply h — backward implication application step
     // "apply" is context-sensitive: only a step keyword when it appears alone
     // as an identifier (not as a function call "apply(...)").
     if (check(K::Identifier) && peek().lexeme == "apply"
@@ -1843,7 +1843,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ApplyStep{std::move(ref)}};
     }
 
-    // push neg [at h] — push negations inward (DP5)
+    // push neg [at h] — push negations inward
     // "push" is context-sensitive; the two-word sequence "push neg" is the step.
     // Syntax:  push neg           → apply to the current goal
     //          push neg at h      → apply to hypothesis h in scope
@@ -1866,7 +1866,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::PushNegStep{std::move(hyp)}};
     }
 
-    // suffices h : P — MS5: reduce goal to proving P, auto-searching for P → goal.
+    // suffices h : P — reduce goal to proving P, auto-searching for P → goal.
     // "suffices" is context-sensitive (not a reserved keyword).
     // Syntax: suffices <name> : <prop>
     // Semantics: look for <name> : P → current_goal already in scope and apply it.
@@ -1888,7 +1888,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ApplyStep{std::move(name)}};
     }
 
-    // show P — goal annotation step (MS4)
+    // show P — goal annotation step
     if (check(K::KwShow)) {
         const auto loc = peek().loc;
         advance(); // consume "show"
@@ -1896,7 +1896,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ShowStep{std::move(prop)}};
     }
 
-    // exact h — close goal directly via a named hypothesis (MS3)
+    // exact h — close goal directly via a named hypothesis
     if (check(K::KwExact)) {
         const auto loc = peek().loc;
         advance(); // consume "exact"
@@ -1909,7 +1909,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ExactStep{std::move(ref)}};
     }
 
-    // NL4: "note that P by refs" / "observe that P by refs" → have _ : P by refs
+    // "note that P by refs" / "observe that P by refs" → have _ : P by refs
     if (check(K::Identifier)
             && (peek().lexeme == "note" || peek().lexeme == "observe")
             && pos_ + 1 < tokens_.size()
@@ -1926,7 +1926,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::HaveStep{"_", std::move(prop), std::move(refs), std::nullopt}};
     }
 
-    // NL5: "since h1 and h2, have name : P"
+    // "since h1 and h2, have name : P"
     if (check(K::Identifier) && peek().lexeme == "since") {
         const auto loc = peek().loc;
         advance(); // consume "since"
@@ -1954,7 +1954,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::nullopt}};
     }
 
-    // NL9: "it suffices to show P"
+    // "it suffices to show P"
     if (check(K::Identifier) && peek().lexeme == "it"
             && pos_ + 1 < tokens_.size()
             && tokens_[pos_ + 1].kind == K::Identifier
@@ -1972,7 +1972,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ShowStep{std::move(prop)}};
     }
 
-    // NL15: "it follows that P [by refs]"
+    // "it follows that P [by refs]"
     if (check(K::Identifier) && peek().lexeme == "it"
             && pos_ + 1 < tokens_.size()
             && tokens_[pos_ + 1].kind == K::Identifier
@@ -1991,7 +1991,7 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
     }
 
-    // NL10: "which gives P" / "which shows P" → ThenStep{P, []}
+    // "which gives P" / "which shows P" → ThenStep{P, []}
     if (check(K::Identifier) && peek().lexeme == "which"
             && pos_ + 1 < tokens_.size()
             && tokens_[pos_ + 1].kind == K::Identifier
@@ -2016,7 +2016,7 @@ ast::Step Parser::parseStep() {
 }
 
 // wlog <name> : <prop>
-// NL14: introduces prop as an assumption with a side-obligation warning.
+// introduces prop as an assumption with a side-obligation warning.
 ast::Step Parser::parseWlogStep() {
     const auto loc = peek().loc;
     advance(); // consume "wlog"
@@ -2084,7 +2084,7 @@ ast::ProofBlock Parser::parseProofBlock() {
     const auto proof_loc = peek().loc;
     advance(); // consume "proof"
 
-    // NL20: detect direction-marker biconditional proof.
+    // detect direction-marker biconditional proof.
     // If the block opens with "(→)" or "(<-)", wrap the entire block as a SplitStep.
     if (isDirectionMarker()) {
         std::vector<ast::SplitArm> arms;
@@ -2211,7 +2211,7 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
     expect(K::Colon, "expected ':' after definition name");
     auto prop = parseProp();
 
-    // AN8: optional predicate body  ":= prop_body"
+    // optional predicate body  ":= prop_body"
     std::optional<ast::PropPtr> def_body;
     if (check(K::ColonEquals)) {
         advance(); // consume ':='
@@ -2251,7 +2251,7 @@ std::optional<ast::DeclPtr> Parser::parseTheorem(ast::DeclKind kind) {
     }
     std::string name{advance().lexeme};
 
-    // DT5: parse optional parameter list: { "(" id ":" type ")" }
+    // parse optional parameter list: { "(" id ":" type ")" }
     // Same syntax as definition params; the ':' separator between param and type is
     // the discriminant.  This is a standard `(name : type)` binder list, NOT a Pi
     // type — the Pi type only arises when `(x : A)` is followed by `->`.
@@ -2601,7 +2601,7 @@ std::optional<ast::DeclPtr> Parser::parseOpen() {
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
 
-    // MOD3: detect optional "private" / "protected" context-sensitive prefix.
+    // detect optional "private" / "protected" context-sensitive prefix.
     ast::Visibility vis = ast::Visibility::Public;
     if (check(K::Identifier) && peek().lexeme == "private") {
         vis = ast::Visibility::Private;
@@ -2611,7 +2611,7 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
         advance();
     }
 
-    // MOD4: detect optional "abstract" context-sensitive prefix before "definition".
+    // detect optional "abstract" context-sensitive prefix before "definition".
     bool is_abstract = false;
     if (check(K::Identifier) && peek().lexeme == "abstract") {
         is_abstract = true;

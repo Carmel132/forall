@@ -485,7 +485,7 @@ TEST(KernelTest, TrueIntro_WrongArity) {
     EXPECT_FALSE(r.has_value());
 }
 
-// ── ForallElim with lambda witness (TR1/TR4 integration) ─────────────────────
+// ── ForallElim with lambda witness (definitional equality integration) ──────
 //
 // This test verifies that definitional equality (beta-reduction) allows
 // ForallElim to succeed when the witness is a lambda expression.
@@ -552,7 +552,7 @@ TEST(KernelTest, ForallElim_LambdaWitness_WrongConclusion) {
     EXPECT_FALSE(result.has_value());
 }
 
-// ── DT8: Proof irrelevance ────────────────────────────────────────────────────
+// ── Proof irrelevance ────────────────────────────────────────────────────
 //
 // ProofIrrel documents the implicit invariant that Judgment values carry no
 // proof terms — two derivations of the same Prop are interchangeable.

@@ -29,8 +29,8 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseInstance();
     [[nodiscard]] std::optional<ast::DeclPtr> parseStructure();
     [[nodiscard]] std::optional<ast::DeclPtr> parseQuotient();
-    [[nodiscard]] std::optional<ast::DeclPtr> parseNamespace(); // MOD2
-    [[nodiscard]] std::optional<ast::DeclPtr> parseOpen();      // MOD2
+    [[nodiscard]] std::optional<ast::DeclPtr> parseNamespace();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseOpen();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();
@@ -48,7 +48,7 @@ private:
     [[nodiscard]] ast::Step       parseSplitStep();
     [[nodiscard]] ast::Step       parseWlogStep();
 
-    // NL20: direction-marker helpers for biconditional proof blocks.
+    // direction-marker helpers for biconditional proof blocks.
     [[nodiscard]] bool isDirectionMarker() const noexcept;
     std::string        consumeDirectionMarker();
 
@@ -118,7 +118,7 @@ private:
     diag::DiagnosticEngine&       diag_;
     std::size_t                   pos_{0};
 
-    // Deferred steps: multi-step productions (e.g. NL19 "suppose h1 : P and h2 : Q")
+    // Deferred steps: multi-step productions (e.g. "suppose h1 : P and h2 : Q")
     // push the extra steps here; parseStep() drains this queue first.
     std::vector<ast::Step>        deferred_steps_;
 };

@@ -544,7 +544,7 @@ TEST(BetaReduce, NestedRedex_ReducesBoth) {
     EXPECT_EQ(beta_reduce(full_redex), elit("5"));
 }
 
-// TR1 via subst: when subst replaces a function-position variable with a lambda,
+// When subst replaces a function-position variable with a lambda,
 // the resulting ExprApp is a beta-redex that beta_reduce collapses.
 TEST(BetaReduce, SubstCreatesExprApp_ThenReduces) {
     // Expr: f(3)  →  ExprCall{"f", [3]}

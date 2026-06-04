@@ -17,22 +17,22 @@
 // No external JSON library required -- we do minimal hand-rolled JSON
 // parsing and generation for the small subset needed.
 //
-// -- Hover protocol (LSP2) ----------------------------------------------------
+// -- Hover protocol ----------------------------------------------------
 // Request:  textDocument/hover  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { contents: { kind: "markdown", value: "**name** : prop" } } }
 //           or { result: null } if not found.
 //
-// -- Definition protocol (LSP3) -----------------------------------------------
+// -- Definition protocol -----------------------------------------------
 // Request:  textDocument/definition  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { uri, range: { start: {line,char}, end: {line,char} } } }
 //           or { result: null } if not found.
 //
-// -- Completion protocol (LSP4) -----------------------------------------------
+// -- Completion protocol -----------------------------------------------
 // Request:  textDocument/completion  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { isIncomplete: false, items: [ {label, kind}, ... ] } }
 //   CompletionItemKind: 6 = Variable (hyp names), 14 = Keyword (step/tactic keywords)
 //
-// -- Inlay hints protocol (LSP5) ----------------------------------------------
+// -- Inlay hints protocol ----------------------------------------------
 // Request:  textDocument/inlayHints  { textDocument: {uri}, range: {...} }
 // Response: { result: [ {position: {line,char}, label, kind} ] }
 //   InlayHintKind: 1 = Type
@@ -473,7 +473,7 @@ int main() {
             }
 
         } else if (method == "textDocument/hover") {
-            // LSP2: hover -> show proposition for the identifier under cursor.
+            // hover -> show proposition for the identifier under cursor.
             const std::string uri = extract_uri(json);
             auto [line1, col1] = extract_position(json);
 
@@ -501,7 +501,7 @@ int main() {
             write_message(resp.str());
 
         } else if (method == "textDocument/definition") {
-            // LSP3: go-to-definition -> return the intro location for the identifier.
+            // go-to-definition -> return the intro location for the identifier.
             const std::string uri = extract_uri(json);
             auto [line1, col1] = extract_position(json);
 
@@ -541,7 +541,7 @@ int main() {
             write_message(resp.str());
 
         } else if (method == "textDocument/completion") {
-            // LSP4: context-aware completions.
+            // context-aware completions.
             const std::string uri = extract_uri(json);
             auto [line1, col1] = extract_position(json);
 
@@ -594,7 +594,7 @@ int main() {
             write_message(resp.str());
 
         } else if (method == "textDocument/inlayHints") {
-            // LSP5: emit inlay hints for take/have type annotations.
+            // emit inlay hints for take/have type annotations.
             const std::string uri = extract_uri(json);
 
             std::ostringstream resp;

@@ -793,7 +793,7 @@ std::optional<TypeNode> numeric_promote(const TypeNode& a, const TypeNode& b) {
 }
 
 // Returns the numeric rank of a type (0=Nat, 1=Int, 2=Rat, 3=Real), or -1 if non-numeric.
-// Used by DT7 coercion checks.
+// Used by numeric subtype coercion checks.
 static int numeric_rank(const TypeNode& t) {
     return std::visit([](const auto& n) -> int {
         using T = std::decay_t<decltype(n)>;
@@ -937,7 +937,7 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
             for (std::size_t i = 0; i < n.args.size(); ++i) {
                 auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
                 if (!arg_t) return arg_t;
-                // DT7: allow implicit numeric tower coercions (Nat → Int → Rat → Real).
+                // allow implicit numeric tower coercions (Nat → Int → Rat → Real).
                 const bool types_match = (*arg_t == *cur->domain)
                     || numeric_coercible(*arg_t, *cur->domain);
                 if (!types_match)
