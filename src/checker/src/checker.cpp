@@ -115,6 +115,32 @@ public:
     }
 };
 
+// ── module_name_from_path ─────────────────────────────────────────────────────
+//
+// MOD1: Derive a qualified-name prefix from an import path.
+// Examples:
+//   "nat.forall"          → "Nat"
+//   "stdlib/nat.forall"   → "Nat"
+//   "MyModule.forall"     → "MyModule"
+//   "my_module.forall"    → "My_module"
+static std::string module_name_from_path(const std::string& import_path) {
+    // Take the filename stem (strip directory and extension).
+    std::string stem;
+    auto slash = import_path.rfind('/');
+    auto bslash = import_path.rfind('\\');
+    std::size_t name_start = 0;
+    if (slash  != std::string::npos) name_start = std::max(name_start, slash  + 1);
+    if (bslash != std::string::npos) name_start = std::max(name_start, bslash + 1);
+    stem = import_path.substr(name_start);
+    // Strip ".forall" extension if present.
+    if (stem.size() > 7 && stem.substr(stem.size() - 7) == ".forall")
+        stem = stem.substr(0, stem.size() - 7);
+    // Capitalize the first character.
+    if (!stem.empty() && std::islower(static_cast<unsigned char>(stem[0])))
+        stem[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(stem[0])));
+    return stem;
+}
+
 // ── fresh name generator ───────────────────────────────────────────────────────
 // Returns a unique internal name for anonymous steps (have _ : ...) and
 // unlabelled cases blocks (cases <ref>).  Names begin with "__" so they can
@@ -159,6 +185,13 @@ resolve_refs(const std::vector<std::string>& refs,
             continue;
         }
         const auto* e = env.find(name);
+        // MOD1: qualified-name fallback — if "Mod.name" not found directly,
+        // try the unqualified suffix after the last '.'.
+        if (!e) {
+            auto dot = name.rfind('.');
+            if (dot != std::string::npos)
+                e = env.find(name.substr(dot + 1));
+        }
         if (!e) {
             diag.emit({diag::Severity::Error, loc,
                        "unknown hypothesis '" + name + "'"});
@@ -3907,8 +3940,12 @@ ModuleResult check_module(const std::filesystem::path& path,
             auto canonical   = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag, visited, stdlib_root);
-                for (auto& [name, entry] : imported.env)
+                // MOD1: also insert entries under the qualified prefix "ModName.entry".
+                const std::string mod_prefix = module_name_from_path(import_name) + ".";
+                for (auto& [name, entry] : imported.env) {
                     module_env.insert_or_assign(name, entry);
+                    module_env.insert_or_assign(mod_prefix + name, entry);
+                }
                 for (auto& [tname, classes] : imported.instances)
                     for (const auto& cls : classes)
                         instance_table[tname].insert(cls);
@@ -4125,7 +4162,12 @@ void Checker::check_content(const std::string& source, const std::string& filena
             auto canonical = std::filesystem::weakly_canonical(import_path);
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
-                for (auto& [n, e] : imported.env) module_env.insert_or_assign(n, e);
+                // MOD1: also insert under the qualified prefix "ModName.entry".
+                const std::string mod_prefix = module_name_from_path(iname) + ".";
+                for (auto& [n, e] : imported.env) {
+                    module_env.insert_or_assign(n, e);
+                    module_env.insert_or_assign(mod_prefix + n, e);
+                }
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
             }
