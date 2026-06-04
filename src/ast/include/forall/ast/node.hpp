@@ -428,7 +428,13 @@ using StructField = std::variant<FieldTerm, FieldAxiom>;
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
-enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient };
+// MOD2: Namespace kind groups declarations under a qualified prefix.
+// Open kind brings a namespace into unqualified scope.
+enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient,
+                      Namespace, Open };
+
+// MOD3: visibility of a declaration (controls export during import).
+enum class Visibility { Public, Private, Protected };
 
 // A single named parameter of a definition, e.g. (x : Nat).
 struct Param {
@@ -452,6 +458,12 @@ struct Decl {
     // For DeclKind::Quotient:
     std::string                          quot_carrier;    // carrier type name (e.g. "Int")
     std::string                          quot_rel;        // equivalence relation name (e.g. "int_eq")
+    // MOD2: for DeclKind::Namespace — inner declarations
+    std::vector<std::unique_ptr<Decl>> ns_decls;
+    // MOD3: visibility for export control
+    Visibility                visibility{Visibility::Public};
+    // MOD4: abstract flag — definition body not unfoldable
+    bool                      is_abstract{false};
 };
 
 // Maps structure name → its field list.  Used by the checker to process
