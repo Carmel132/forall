@@ -1,14 +1,26 @@
-// forall-lsp: Language Server Protocol Phase 1
+// forall-lsp: Language Server Protocol server
 //
 // Implements LSP 3.17 over JSON-RPC via stdin/stdout.
-// Phase 1 capabilities: textDocument/didOpen, didChange, didSave →
-//   re-run checker → emit textDocument/publishDiagnostics.
 //
-// No external JSON library required — we do minimal hand-rolled JSON
+// Capabilities:
+//   Phase 1: textDocument/didOpen, didChange, didSave ->
+//              re-run checker -> emit textDocument/publishDiagnostics
+//   Phase 2: textDocument/hover ->
+//              look up identifier in module-level LspEnv, return proposition
+//
+// No external JSON library required -- we do minimal hand-rolled JSON
 // parsing and generation for the small subset needed.
+//
+// -- Hover protocol (LSP2) ----------------------------------------------------
+// Request:  textDocument/hover  { textDocument: {uri}, position: {line, character} }
+// Response: { result: { contents: { kind: "markdown", value: "**name** : prop" } } }
+//           or { result: null } if not found.
+// -----------------------------------------------------------------------------
 
 #include <forall/checker/checker.hpp>
 #include <forall/diagnostics/diagnostic.hpp>
+#include <forall/lexer/lexer.hpp>
+#include <forall/lexer/token.hpp>
 
 #include <cstdlib>
 #include <iostream>
@@ -17,7 +29,7 @@
 #include <string>
 #include <unordered_map>
 
-// ── Minimal JSON-RPC helpers ─────────────────────────────────────────────────
+// -- Minimal JSON-RPC helpers -------------------------------------------------
 
 // Read a single JSON-RPC message from stdin.
 // Format: "Content-Length: N\r\n\r\n<N bytes of JSON>"
@@ -59,7 +71,7 @@ static std::string json_escape(const std::string& s) {
     return out;
 }
 
-// Extract a string value for a JSON key (very minimal — single-level only).
+// Extract a string value for a JSON key (very minimal -- single-level only).
 // Returns empty string if not found.
 static std::string json_str(const std::string& json, const std::string& key) {
     const std::string needle = "\"" + key + "\":\"";
@@ -81,7 +93,7 @@ static int json_id(const std::string& json) {
     if (pos == std::string::npos) return -1;
     pos += needle.size();
     while (pos < json.size() && (json[pos] == ' ')) ++pos;
-    if (pos < json.size() && json[pos] == '"') return -1; // string id — unsupported
+    if (pos < json.size() && json[pos] == '"') return -1; // string id -- unsupported
     try { return std::stoi(json.substr(pos)); } catch (...) { return -1; }
 }
 
@@ -94,7 +106,6 @@ static std::string json_method(const std::string& json) {
 // Handles: { "textDocument": { "text": "..." } }
 // and:     { "contentChanges": [ { "text": "..." } ] }
 static std::string extract_text(const std::string& json) {
-    // Try direct "text" in textDocument params.
     auto pos = json.find("\"text\":\"");
     if (pos == std::string::npos) return {};
     pos += 8;
@@ -153,7 +164,7 @@ static std::string uri_to_path(const std::string& uri) {
     return decoded;
 }
 
-// ── Diagnostic → LSP JSON ────────────────────────────────────────────────────
+// -- Diagnostic -> LSP JSON ---------------------------------------------------
 
 static std::string severity_to_lsp(forall::diag::Severity sev) {
     switch (sev) {
@@ -178,7 +189,7 @@ static std::string make_publish_diagnostics(const std::string& uri,
         // LSP lines/cols are 0-based; our SourceLocation is 1-based.
         uint32_t line    = d.loc.line > 0 ? d.loc.line - 1 : 0;
         uint32_t col     = d.loc.col  > 0 ? d.loc.col  - 1 : 0;
-        // Use end_col when available (exclusive, 1-based → 0-based = end_col - 1).
+        // Use end_col when available (exclusive, 1-based -> 0-based = end_col - 1).
         uint32_t end_col = (d.end_col > d.loc.col) ? (d.end_col - 1) : (col + 1);
         out << R"({"range":{"start":{"line":)" << line
             << R"(,"character":)" << col
@@ -191,22 +202,86 @@ static std::string make_publish_diagnostics(const std::string& uri,
     return out.str();
 }
 
-// ── LSP server main loop ─────────────────────────────────────────────────────
+// -- Position extraction helpers ----------------------------------------------
 
-static void validate_and_publish(const std::string& uri, const std::string& source) {
+// Extract a numeric value for a JSON key (integer).  Returns -1 if absent.
+static int json_int(const std::string& json, const std::string& key) {
+    const std::string needle = "\"" + key + "\":";
+    auto pos = json.find(needle);
+    if (pos == std::string::npos) return -1;
+    pos += needle.size();
+    while (pos < json.size() && json[pos] == ' ') ++pos;
+    if (pos >= json.size() || json[pos] == '"') return -1;
+    try { return std::stoi(json.substr(pos)); } catch (...) { return -1; }
+}
+
+// Extract cursor position from a textDocument request.
+// LSP positions are 0-based; we convert to 1-based for our SourceLocation.
+// Returns {line1based, col1based} or {0, 0} on failure.
+static std::pair<uint32_t, uint32_t> extract_position(const std::string& json) {
+    auto pos_start = json.find("\"position\":");
+    if (pos_start == std::string::npos) return {0, 0};
+    const std::string sub = json.substr(pos_start);
+    int line = json_int(sub, "line");
+    int character = json_int(sub, "character");
+    if (line < 0 || character < 0) return {0, 0};
+    return {static_cast<uint32_t>(line + 1), static_cast<uint32_t>(character + 1)};
+}
+
+// -- Identifier hit-testing ---------------------------------------------------
+//
+// Tokenizes the source and finds the identifier token whose location spans the
+// given 1-based (line, col) position.  Returns the token lexeme, or empty
+// string if no identifier is at that position.
+
+static std::string find_name_at(const std::string& source,
+                                 const std::string& filename,
+                                 uint32_t line1, uint32_t col1)
+{
+    forall::diag::DiagnosticEngine dummy_diag;
+    forall::lexer::Lexer lex{source, filename, dummy_diag};
+    const auto tokens = lex.tokenize();
+
+    for (const auto& tok : tokens) {
+        if (tok.loc.line != line1) continue;
+        // Token spans [start_col, start_col + len).  loc.col is 1-based.
+        uint32_t start_col = tok.loc.col;
+        uint32_t end_col   = start_col + static_cast<uint32_t>(tok.lexeme.size());
+        if (col1 >= start_col && col1 < end_col) {
+            if (tok.kind == forall::lexer::TokenKind::Identifier)
+                return tok.lexeme;
+        }
+    }
+    return {};
+}
+
+// -- Document state -----------------------------------------------------------
+
+struct DocState {
+    std::string              source;
+    forall::checker::LspEnv  lsp_env;  // populated after each validation
+};
+
+// -- LSP server main loop -----------------------------------------------------
+
+// Validate source, publish diagnostics, and return the LspEnv for hover/definition.
+static forall::checker::LspEnv validate_and_publish(const std::string& uri,
+                                                     const std::string& source)
+{
     forall::diag::DiagnosticEngine diag;
     forall::checker::Checker checker{diag};
     const std::string path = uri_to_path(uri);
-    checker.check_content(source, path);
+    auto lsp_env = checker.check_content_lsp(source, path);
     write_message(make_publish_diagnostics(uri, diag.diagnostics()));
+    return lsp_env;
 }
 
 int main() {
     // Disable sync for faster I/O.
     std::ios::sync_with_stdio(false);
 
-    // In-memory document store: URI → source text.
-    std::unordered_map<std::string, std::string> documents;
+    // In-memory document store: URI -> DocState.
+    std::unordered_map<std::string, DocState> documents;
 
     while (true) {
         auto msg = read_message();
@@ -220,7 +295,10 @@ int main() {
             // Respond with server capabilities.
             std::ostringstream resp;
             resp << R"({"jsonrpc":"2.0","id":)" << id
-                 << R"(,"result":{"capabilities":{"textDocumentSync":1},"serverInfo":{"name":"forall-lsp","version":"0.1.0"}}})";
+                 << R"(,"result":{"capabilities":{)"
+                 << R"("textDocumentSync":1,)"
+                 << R"("hoverProvider":true)"
+                 << R"(},"serverInfo":{"name":"forall-lsp","version":"0.2.0"}}})";
             write_message(resp.str());
 
         } else if (method == "initialized") {
@@ -238,26 +316,57 @@ int main() {
             const std::string uri  = extract_uri(json);
             const std::string text = extract_text(json);
             if (!uri.empty()) {
-                documents[uri] = text;
-                validate_and_publish(uri, text);
+                auto& doc = documents[uri];
+                doc.source  = text;
+                doc.lsp_env = validate_and_publish(uri, text);
             }
 
         } else if (method == "textDocument/didChange") {
             const std::string uri  = extract_uri(json);
             const std::string text = extract_text(json);
             if (!uri.empty() && !text.empty()) {
-                documents[uri] = text;
-                validate_and_publish(uri, text);
+                auto& doc = documents[uri];
+                doc.source  = text;
+                doc.lsp_env = validate_and_publish(uri, text);
             }
 
         } else if (method == "textDocument/didSave") {
             const std::string uri = extract_uri(json);
             auto it = documents.find(uri);
-            if (it != documents.end())
-                validate_and_publish(uri, it->second);
+            if (it != documents.end()) {
+                it->second.lsp_env = validate_and_publish(uri, it->second.source);
+            }
+
+        } else if (method == "textDocument/hover") {
+            // LSP2: hover -> show proposition for the identifier under cursor.
+            const std::string uri = extract_uri(json);
+            auto [line1, col1] = extract_position(json);
+
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id;
+
+            auto it = documents.find(uri);
+            if (it != documents.end() && line1 > 0 && col1 > 0) {
+                const std::string name = find_name_at(it->second.source,
+                                                       uri_to_path(uri),
+                                                       line1, col1);
+                auto eit = it->second.lsp_env.find(name);
+                if (!name.empty() && eit != it->second.lsp_env.end()) {
+                    resp << R"(,"result":{"contents":{"kind":"markdown","value":"**)"
+                         << json_escape(name) << "** : "
+                         << json_escape(eit->second.prop_text)
+                         << R"("}})";
+                } else {
+                    resp << R"(,"result":null)";
+                }
+            } else {
+                resp << R"(,"result":null)";
+            }
+            resp << "}";
+            write_message(resp.str());
 
         } else if (id >= 0) {
-            // Unknown request — respond with null result.
+            // Unknown request -- respond with null result.
             std::ostringstream resp;
             resp << R"({"jsonrpc":"2.0","id":)" << id << R"(,"result":null})";
             write_message(resp.str());

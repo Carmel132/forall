@@ -4250,4 +4250,180 @@ void Checker::check_content(const std::string& source, const std::string& filena
     }
 }
 
+// ── check_content_lsp ─────────────────────────────────────────────────────────
+//
+// Like check_content, but also returns an LspEnv mapping every module-level
+// name to its pretty-printed proposition and introduction source location.
+// Used by the LSP server for hover and go-to-definition.
+
+LspEnv Checker::check_content_lsp(const std::string& source,
+                                   const std::string& filename)
+{
+    // Lex and parse from the in-memory buffer.
+    lexer::Lexer lex{source, filename, diag_};
+    auto tokens = lex.tokenize();
+    parser::Parser parser{tokens, diag_};
+    ast::Module mod = parser.parse();
+    mod.path = filename;
+
+    const std::filesystem::path file_path{filename};
+    const auto current_dir = file_path.parent_path().empty()
+                             ? std::filesystem::current_path()
+                             : file_path.parent_path();
+
+    kernel::Kernel kernel;
+    HypEnv module_env;
+    ast::FuncSigTable sig_table;
+    InstanceTable instance_table;
+    ast::StructEnv struct_env;
+    std::set<std::filesystem::path> visited;
+    if (!filename.empty())
+        visited.insert(std::filesystem::weakly_canonical(file_path));
+
+    LspEnv lsp_env;
+
+    // Helper: record a name in lsp_env.
+    auto record = [&](const std::string& name,
+                      const ast::Prop& prop,
+                      const diag::SourceLocation& loc) {
+        lsp_env[name] = LspEntry{forall::pretty::to_string(prop), loc};
+    };
+
+    for (const auto& decl : mod.decls) {
+        switch (decl->kind) {
+        case ast::DeclKind::Import: {
+            const std::string& iname = decl->name;
+            std::filesystem::path import_path;
+            if (!stdlib_root_.empty() && iname.substr(0, 7) == "stdlib/")
+                import_path = stdlib_root_ / iname.substr(7);
+            else
+                import_path = current_dir / iname;
+            auto canonical = std::filesystem::weakly_canonical(import_path);
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
+                for (auto& [n, e] : imported.env) {
+                    module_env.insert_or_assign(n, e);
+                    // Record imported names with an unknown location (from another file).
+                    if (!lsp_env.count(n))
+                        lsp_env[n] = LspEntry{forall::pretty::to_string(e.judgment.prop()), {}};
+                }
+                for (auto& [t, cls] : imported.instances)
+                    for (const auto& c : cls) instance_table[t].insert(c);
+            }
+            break;
+        }
+        case ast::DeclKind::Structure: {
+            struct_env[decl->name] = decl->fields;
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (r) {
+                        module_env.insert_or_assign(axiom_name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+                        record(axiom_name, fa->prop, decl->loc);
+                    }
+                }
+                if (const auto* ft = std::get_if<ast::FieldTerm>(&field)) {
+                    if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                        sig_table[decl->name + "_" + ft->name] = *tf;
+                }
+            }
+            break;
+        }
+        case ast::DeclKind::Quotient: {
+            for (const auto& field : decl->fields) {
+                if (const auto* fa = std::get_if<ast::FieldAxiom>(&field)) {
+                    const std::string axiom_name = decl->name + "_" + fa->name;
+                    auto r = kernel.introduce_axiom(fa->prop);
+                    if (r) {
+                        module_env.insert_or_assign(axiom_name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+                        record(axiom_name, fa->prop, decl->loc);
+                    }
+                }
+            }
+            break;
+        }
+        case ast::DeclKind::Axiom:
+        case ast::DeclKind::Definition:
+        case ast::DeclKind::Theorem:
+        case ast::DeclKind::Lemma:
+        case ast::DeclKind::Instance:
+        default: {
+            if (decl->kind == ast::DeclKind::Axiom) {
+                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                auto r = kernel.introduce_axiom(decl->statement);
+                if (r) {
+                    record(decl->name, decl->statement, decl->loc);
+                    module_env.insert_or_assign(decl->name,
+                                                HypEntry{std::move(*r), EntryKind::Derived});
+                }
+            } else if (decl->kind == ast::DeclKind::Definition) {
+                if (!decl->struct_type.empty()) {
+                    auto sit = struct_env.find(decl->struct_type);
+                    if (sit == struct_env.end()) {
+                        diag_.emit({diag::Severity::Error, decl->loc,
+                                    "unknown structure type '" + decl->struct_type + "'"});
+                        break;
+                    }
+                    const auto& fields = sit->second;
+                    const auto& inst_name = decl->name;
+                    for (const auto& sf : fields) {
+                        if (const auto* ft = std::get_if<ast::FieldTerm>(&sf)) {
+                            auto bit = decl->struct_bindings.find(ft->name);
+                            if (bit == decl->struct_bindings.end()) continue;
+                            if (const auto* tf = std::get_if<ast::TypeFun>(&ft->type.node))
+                                sig_table[inst_name + "_" + ft->name] = *tf;
+                        }
+                    }
+                    for (const auto& sf : fields) {
+                        if (const auto* fa = std::get_if<ast::FieldAxiom>(&sf)) {
+                            ast::Prop instantiated = fa->prop;
+                            for (const auto& sf2 : fields) {
+                                if (const auto* ft = std::get_if<ast::FieldTerm>(&sf2)) {
+                                    auto bit = decl->struct_bindings.find(ft->name);
+                                    if (bit == decl->struct_bindings.end()) continue;
+                                    instantiated = ast::subst(instantiated, ft->name, *bit->second);
+                                }
+                            }
+                            instantiated = ast::beta_reduce(instantiated);
+                            const std::string axiom_name = inst_name + "_" + fa->name;
+                            auto r = kernel.introduce_axiom(instantiated);
+                            if (r) {
+                                record(axiom_name, instantiated, decl->loc);
+                                module_env.insert_or_assign(axiom_name,
+                                                           HypEntry{std::move(*r), EntryKind::Derived});
+                            }
+                        }
+                    }
+                } else {
+                    check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                    auto r = kernel.introduce_axiom(decl->statement);
+                    if (r) {
+                        record(decl->name, decl->statement, decl->loc);
+                        module_env.insert_or_assign(decl->name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                }
+            } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
+                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
+                if (!diag_.hasErrors()) {
+                    auto r = kernel.introduce_axiom(decl->statement);
+                    if (r) {
+                        record(decl->name, decl->statement, decl->loc);
+                        module_env.insert_or_assign(decl->name,
+                                                   HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                }
+            }
+            break;
+        }
+        }
+    }
+
+    return lsp_env;
+}
+
 } // namespace forall::checker
