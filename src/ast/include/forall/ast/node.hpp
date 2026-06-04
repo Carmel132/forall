@@ -524,6 +524,14 @@ std::set<std::string> free_vars(const Expr& expr);
 Prop subst(const Prop& prop, const std::string& var, const Expr& replacement);
 Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
 
+// subst_expr: expression-level find-and-replace.
+// Replaces every structurally-equal occurrence of `find` inside `prop` (or
+// `expr`) with `replace`.  Unlike `subst`, the target is a full expression
+// rather than a named variable — needed for rewriting e.g. `b[k]` → `a[phi(k)]`
+// inside an absolute-value term.
+[[nodiscard]] Prop subst_expr(const Prop& prop, const Expr& find, const Expr& replace);
+[[nodiscard]] Expr subst_expr(const Expr& expr, const Expr& find, const Expr& replace);
+
 // ── Beta-reduction ────────────────────────────────────────────────────────────
 //
 // Reduces ExprApp{ExprLambda{x,_,body}, [arg, ...]} → subst(body, x, arg)

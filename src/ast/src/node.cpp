@@ -369,6 +369,120 @@ Expr subst(const Expr& expr, const std::string& var, const Expr& replacement) {
     return subst_expr(expr, var, replacement);
 }
 
+// ── subst_expr (expression-level find-and-replace) ───────────────────────────
+//
+// Replaces every structurally-equal occurrence of `find` inside a Prop or Expr
+// with `replace`.  Structural equality uses operator== (ignores source locs).
+// Used by the RewriteStep handler to rewrite e.g. b[k] → a[phi(k)] inside
+// absolute value or arithmetic expressions.
+
+static Expr find_replace_e(const Expr& e, const Expr& find, const Expr& replace);
+static Prop find_replace_p(const Prop& p, const Expr& find, const Expr& replace);
+
+static Expr find_replace_e(const Expr& e, const Expr& find, const Expr& replace) {
+    if (e == find) return replace;
+    return std::visit([&](const auto& n) -> Expr {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = e.loc;
+        if constexpr (std::is_same_v<T, ExprLit> || std::is_same_v<T, ExprVar>)
+            return e;
+        else if constexpr (std::is_same_v<T, ExprBinary>)
+            return Expr{loc, ExprBinary{n.op,
+                make_expr(find_replace_e(*n.lhs, find, replace)),
+                make_expr(find_replace_e(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprUnary>)
+            return Expr{loc, ExprUnary{n.op, make_expr(find_replace_e(*n.operand, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprAbs>)
+            return Expr{loc, ExprAbs{make_expr(find_replace_e(*n.operand, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprCall>) {
+            std::vector<ExprPtr> args;
+            for (const auto& a : n.args) args.push_back(make_expr(find_replace_e(*a, find, replace)));
+            return Expr{loc, ExprCall{n.name, std::move(args)}};
+        }
+        else if constexpr (std::is_same_v<T, ExprIndex>)
+            return Expr{loc, ExprIndex{
+                make_expr(find_replace_e(*n.array, find, replace)),
+                make_expr(find_replace_e(*n.index, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprTuple>) {
+            std::vector<ExprPtr> elems;
+            for (const auto& el : n.elements) elems.push_back(make_expr(find_replace_e(*el, find, replace)));
+            return Expr{loc, ExprTuple{std::move(elems)}};
+        }
+        else if constexpr (std::is_same_v<T, ExprSetLit>) {
+            std::vector<ExprPtr> elems;
+            for (const auto& el : n.elements) elems.push_back(make_expr(find_replace_e(*el, find, replace)));
+            return Expr{loc, ExprSetLit{std::move(elems)}};
+        }
+        else if constexpr (std::is_same_v<T, ExprSetCompr>)
+            return Expr{loc, ExprSetCompr{n.var, n.type,
+                make_prop(find_replace_p(*n.pred, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprLambda>)
+            return Expr{loc, ExprLambda{n.var, n.type,
+                make_expr(find_replace_e(*n.body, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprIf>)
+            return Expr{loc, ExprIf{
+                make_prop(find_replace_p(*n.cond, find, replace)),
+                make_expr(find_replace_e(*n.then_, find, replace)),
+                make_expr(find_replace_e(*n.else_, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprAgg>)
+            return Expr{loc, ExprAgg{n.op, n.var, n.type, n.rel, n.bound,
+                make_expr(find_replace_e(*n.body, find, replace))}};
+        else if constexpr (std::is_same_v<T, ExprApp>) {
+            std::vector<ExprPtr> args;
+            for (const auto& a : n.args) args.push_back(make_expr(find_replace_e(*a, find, replace)));
+            return Expr{loc, ExprApp{make_expr(find_replace_e(*n.func, find, replace)), std::move(args)}};
+        }
+        else if constexpr (std::is_same_v<T, ExprField>)
+            return Expr{loc, ExprField{make_expr(find_replace_e(*n.base, find, replace)), n.field_name}};
+        else
+            return e;
+    }, e.node);
+}
+
+static Prop find_replace_p(const Prop& p, const Expr& find, const Expr& replace) {
+    return std::visit([&](const auto& n) -> Prop {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = p.loc;
+        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse> || std::is_same_v<T, PropTrue>)
+            return p;
+        else if constexpr (std::is_same_v<T, PropNot>)
+            return Prop{loc, PropNot{make_prop(find_replace_p(*n.inner, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropAnd>)
+            return Prop{loc, PropAnd{make_prop(find_replace_p(*n.lhs, find, replace)),
+                                     make_prop(find_replace_p(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropOr>)
+            return Prop{loc, PropOr{make_prop(find_replace_p(*n.lhs, find, replace)),
+                                    make_prop(find_replace_p(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropImpl>)
+            return Prop{loc, PropImpl{make_prop(find_replace_p(*n.lhs, find, replace)),
+                                      make_prop(find_replace_p(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropForall>)
+            return Prop{loc, PropForall{n.var, n.type, make_prop(find_replace_p(*n.body, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropExists>)
+            return Prop{loc, PropExists{n.var, n.type, make_prop(find_replace_p(*n.body, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropRel>)
+            return Prop{loc, PropRel{
+                make_expr(find_replace_e(*n.lhs, find, replace)),
+                make_expr(find_replace_e(*n.rhs, find, replace)),
+                n.op}};
+        else if constexpr (std::is_same_v<T, PropPred>) {
+            std::vector<ExprPtr> args;
+            for (const auto& a : n.args) args.push_back(make_expr(find_replace_e(*a, find, replace)));
+            return Prop{loc, PropPred{n.name, std::move(args)}};
+        }
+        else
+            return p;
+    }, p.node);
+}
+
+Prop subst_expr(const Prop& prop, const Expr& find, const Expr& replace) {
+    return find_replace_p(prop, find, replace);
+}
+
+Expr subst_expr(const Expr& expr, const Expr& find, const Expr& replace) {
+    return find_replace_e(expr, find, replace);
+}
+
 // ── beta_reduce implementation ────────────────────────────────────────────────
 //
 // Reduces ExprApp{ExprLambda{x, t, body}, [arg0, arg1, ...]}:
@@ -462,6 +576,11 @@ static Expr beta_reduce_expr(const Expr& e) {
                 Expr next{loc, ExprApp{make_expr(body_subst), std::move(remaining)}};
                 return beta_reduce_expr(next);
             }
+            // If the function reduces to a plain variable, collapse to ExprCall so
+            // that  subst("f", ExprVar{"g"}) applied to f(x)  gives  ExprCall{"g",[x]}
+            // rather than the stuck ExprApp{ExprVar{"g"},[x]}.
+            if (const auto* fv = std::get_if<ExprVar>(&func_reduced.node))
+                return Expr{loc, ExprCall{fv->name, std::move(args_reduced)}};
             // Function did not reduce to a lambda (or no args) — leave as ExprApp.
             return Expr{loc, ExprApp{make_expr(func_reduced), std::move(args_reduced)}};
         } else if constexpr (std::is_same_v<T, ExprField>) {
