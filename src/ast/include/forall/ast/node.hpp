@@ -464,6 +464,10 @@ struct Decl {
     Visibility                visibility{Visibility::Public};
     // MOD4: abstract flag — definition body not unfoldable
     bool                      is_abstract{false};
+    // AN8: propositional body for `definition P(x : T) := body` forms.
+    // When present, the checker registers P as a predicate definition that
+    // can be unfolded: P(t) → subst(body, param_names, args).
+    std::optional<PropPtr>    def_body;
 };
 
 // Maps structure name → its field list.  Used by the checker to process
