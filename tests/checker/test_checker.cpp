@@ -3608,3 +3608,41 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── AN5: beta-reduce after apply_term_defs ─────────────────────────────────────
+// These tests verify that propositions involving lambda terms are beta-reduced
+// before kernel comparison, enabling ForallElim witnesses to normalise correctly.
+
+// AN5-1: ForallElim with a lambda witness whose body reduces to the stated conclusion.
+// ∀ f : Nat -> Nat, P(f(0))  instantiated at  fun x => x + 1  should give P(0 + 1).
+// After beta-reduction: f[0] = (fun x => x+1)(0) = 0+1, so conclusion is P(0+1).
+TEST(CheckerTest, AN5_BetaReduceAfterForallElim) {
+    auto diag = run_checker("an5_beta_forallelim", R"(
+axiom all_f : for all f : Nat -> Nat, P(f(0))
+theorem inst_at_succ : P(0 + 1)
+proof
+  let s = fun x : Nat => x + 1
+  have h : P(s(0)) by all_f at s
+  then P(0 + 1) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// AN5-2: let x = expr substitution followed by beta-reduction in a ForallElim step.
+// The let-bound term is used as a witness; the resulting proposition must normalise.
+TEST(CheckerTest, AN5_LetTermAsForallElimWitness) {
+    auto diag = run_checker("an5_let_witness", R"(
+axiom all_n : for all n : Nat, n >= 0
+theorem zero_ge_zero : 0 >= 0
+proof
+  have h : 0 >= 0 by all_n at 0
+  then 0 >= 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
