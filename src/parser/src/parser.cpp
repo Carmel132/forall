@@ -2530,22 +2530,111 @@ std::optional<ast::DeclPtr> Parser::parseQuotient() {
     return decl;
 }
 
+// ── parseNamespace ─────────────────────────────────────────────────────────────
+// namespace <Name>
+//   <declarations...>
+// end <Name>  (or just "end")
+std::optional<ast::DeclPtr> Parser::parseNamespace() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "namespace"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected namespace name after 'namespace'"});
+        return std::nullopt;
+    }
+    std::string ns_name = std::string{advance().lexeme};
+
+    // Parse inner declarations until "end <Name>" or "end" or EOF.
+    std::vector<ast::DeclPtr> inner_decls;
+    while (!isAtEnd()) {
+        // Stop on "end" (with optional matching name).
+        if (check(K::KwEnd)) {
+            advance(); // consume "end"
+            // Optionally consume the matching name.
+            if (check(K::Identifier) && peek().lexeme == ns_name)
+                advance();
+            break;
+        }
+        if (auto d = parseDeclaration())
+            inner_decls.push_back(std::move(*d));
+        else
+            syncToDeclaration();
+    }
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::Namespace, ns_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->ns_decls = std::move(inner_decls);
+    return decl;
+}
+
+// ── parseOpen ──────────────────────────────────────────────────────────────────
+// open <Name>
+std::optional<ast::DeclPtr> Parser::parseOpen() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "open"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected namespace name after 'open'"});
+        return std::nullopt;
+    }
+    std::string ns_name = std::string{advance().lexeme};
+
+    return std::make_unique<ast::Decl>(
+        ast::DeclKind::Open, ns_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
-    if (check(K::KwAxiom))      return parseAxiom();
-    if (check(K::KwDefinition)) return parseDefinition();
-    if (check(K::KwTheorem))    return parseTheorem(ast::DeclKind::Theorem);
-    if (check(K::KwLemma))      return parseTheorem(ast::DeclKind::Lemma);
-    if (check(K::KwImport))     return parseImport();
-    if (check(K::KwInstance))   return parseInstance();
-    if (check(K::KwStructure))  return parseStructure();
-    if (check(K::KwQuotient))   return parseQuotient();
 
-    diag_.emit({diag::Severity::Error, peek().loc,
-                "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', 'structure', or 'quotient'; got '"
-                + peek().lexeme + "'"});
-    advance();
-    return std::nullopt;
+    // MOD3: detect optional "private" / "protected" context-sensitive prefix.
+    ast::Visibility vis = ast::Visibility::Public;
+    if (check(K::Identifier) && peek().lexeme == "private") {
+        vis = ast::Visibility::Private;
+        advance();
+    } else if (check(K::Identifier) && peek().lexeme == "protected") {
+        vis = ast::Visibility::Protected;
+        advance();
+    }
+
+    // MOD4: detect optional "abstract" context-sensitive prefix before "definition".
+    bool is_abstract = false;
+    if (check(K::Identifier) && peek().lexeme == "abstract") {
+        is_abstract = true;
+        advance();
+    }
+
+    std::optional<ast::DeclPtr> result;
+    if (check(K::KwAxiom))         result = parseAxiom();
+    else if (check(K::KwDefinition)) result = parseDefinition();
+    else if (check(K::KwTheorem))  result = parseTheorem(ast::DeclKind::Theorem);
+    else if (check(K::KwLemma))    result = parseTheorem(ast::DeclKind::Lemma);
+    else if (check(K::KwImport))   result = parseImport();
+    else if (check(K::KwInstance)) result = parseInstance();
+    else if (check(K::KwStructure)) result = parseStructure();
+    else if (check(K::KwQuotient)) result = parseQuotient();
+    else if (check(K::KwNamespace)) result = parseNamespace();
+    else if (check(K::KwOpen))     result = parseOpen();
+    else {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', "
+                    "'structure', 'quotient', 'namespace', or 'open'; got '"
+                    + peek().lexeme + "'"});
+        advance();
+        return std::nullopt;
+    }
+
+    // Apply visibility and abstract flags to the parsed declaration.
+    if (result) {
+        (*result)->visibility = vis;
+        (*result)->is_abstract = is_abstract;
+    }
+    return result;
 }
 
 void Parser::syncToDeclaration() {
@@ -2554,7 +2643,11 @@ void Parser::syncToDeclaration() {
            && !check(K::KwAxiom) && !check(K::KwDefinition)
            && !check(K::KwTheorem) && !check(K::KwLemma)
            && !check(K::KwImport) && !check(K::KwInstance)
-           && !check(K::KwStructure) && !check(K::KwQuotient)) {
+           && !check(K::KwStructure) && !check(K::KwQuotient)
+           && !check(K::KwNamespace) && !check(K::KwOpen)
+           && !(check(K::Identifier) && (peek().lexeme == "private"
+                                         || peek().lexeme == "protected"
+                                         || peek().lexeme == "abstract"))) {
         advance();
     }
 }

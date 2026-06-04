@@ -29,6 +29,8 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseInstance();
     [[nodiscard]] std::optional<ast::DeclPtr> parseStructure();
     [[nodiscard]] std::optional<ast::DeclPtr> parseQuotient();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseNamespace(); // MOD2
+    [[nodiscard]] std::optional<ast::DeclPtr> parseOpen();      // MOD2
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();
