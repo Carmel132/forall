@@ -11,6 +11,8 @@
 //              look up identifier intro location, return LSP Location
 //   Phase 4: textDocument/completion ->
 //              context-aware completions: step keywords, tactic keywords, hyp names
+//   Phase 5: textDocument/inlayHints ->
+//              show type annotations inline for take/have steps
 //
 // No external JSON library required -- we do minimal hand-rolled JSON
 // parsing and generation for the small subset needed.
@@ -29,6 +31,11 @@
 // Request:  textDocument/completion  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { isIncomplete: false, items: [ {label, kind}, ... ] } }
 //   CompletionItemKind: 6 = Variable (hyp names), 14 = Keyword (step/tactic keywords)
+//
+// -- Inlay hints protocol (LSP5) ----------------------------------------------
+// Request:  textDocument/inlayHints  { textDocument: {uri}, range: {...} }
+// Response: { result: [ {position: {line,char}, label, kind} ] }
+//   InlayHintKind: 1 = Type
 // -----------------------------------------------------------------------------
 
 #include <forall/checker/checker.hpp>
@@ -325,6 +332,61 @@ static CompletionContext detect_completion_context(const std::string& source,
     return CompletionContext::General;
 }
 
+// -- Inlay hint computation ---------------------------------------------------
+//
+// Re-lexes the source to find take/have tokens and emits inline type hints:
+//   "take x : T"    -> hint " : T" positioned right after x (annotation already present)
+//   "have _ : P..." -> hint "__anon__" at the "_" position (anonymous step label)
+
+struct InlayHint {
+    uint32_t    line;   // 0-based
+    uint32_t    col;    // 0-based
+    std::string label;
+};
+
+static std::vector<InlayHint> compute_inlay_hints(const std::string& source,
+                                                   const std::string& filename)
+{
+    std::vector<InlayHint> hints;
+    forall::diag::DiagnosticEngine dummy_diag;
+    forall::lexer::Lexer lex{source, filename, dummy_diag};
+    const auto tokens = lex.tokenize();
+
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        const auto& tok = tokens[i];
+
+        // "take x : T" -- emit " : T" after x when the annotation is explicit.
+        // Token sequence: KwTake  Identifier  Colon  Identifier(type)
+        if (tok.kind == forall::lexer::TokenKind::KwTake
+            && i + 3 < tokens.size()
+            && tokens[i + 1].kind == forall::lexer::TokenKind::Identifier
+            && tokens[i + 2].kind == forall::lexer::TokenKind::Colon
+            && tokens[i + 3].kind == forall::lexer::TokenKind::Identifier)
+        {
+            const auto& var_tok  = tokens[i + 1];
+            const auto& type_tok = tokens[i + 3];
+            // Position right after the variable name (0-based col).
+            uint32_t hint_col = var_tok.loc.col - 1 +
+                                static_cast<uint32_t>(var_tok.lexeme.size());
+            hints.push_back({var_tok.loc.line - 1, hint_col,
+                             " : " + type_tok.lexeme});
+        }
+
+        // "have _ : P by ..." -- emit "__anon__" at the underscore's position
+        // to show the generated internal name for anonymous steps.
+        if (tok.kind == forall::lexer::TokenKind::KwHave
+            && i + 1 < tokens.size()
+            && tokens[i + 1].lexeme == "_")
+        {
+            const auto& underscore = tokens[i + 1];
+            hints.push_back({underscore.loc.line - 1,
+                             underscore.loc.col - 1,
+                             "__anon__"});
+        }
+    }
+    return hints;
+}
+
 // -- Document state -----------------------------------------------------------
 
 struct DocState {
@@ -369,7 +431,8 @@ int main() {
                  << R"("textDocumentSync":1,)"
                  << R"("hoverProvider":true,)"
                  << R"("definitionProvider":true,)"
-                 << R"("completionProvider":{"triggerCharacters":[" "]})"
+                 << R"("completionProvider":{"triggerCharacters":[" "]},)"
+                 << R"("inlayHintsProvider":true)"
                  << R"(},"serverInfo":{"name":"forall-lsp","version":"0.2.0"}}})";
             write_message(resp.str());
 
@@ -528,6 +591,32 @@ int main() {
             }
 
             resp << "]}}";
+            write_message(resp.str());
+
+        } else if (method == "textDocument/inlayHints") {
+            // LSP5: emit inlay hints for take/have type annotations.
+            const std::string uri = extract_uri(json);
+
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id << R"(,"result":[)";
+
+            auto it = documents.find(uri);
+            if (it != documents.end()) {
+                const auto hints = compute_inlay_hints(it->second.source,
+                                                        uri_to_path(uri));
+                bool first_hint = true;
+                for (const auto& h : hints) {
+                    if (!first_hint) resp << ",";
+                    first_hint = false;
+                    // InlayHintKind 1 = Type
+                    resp << R"({"position":{"line":)" << h.line
+                         << R"(,"character":)" << h.col
+                         << R"(},"label":")" << json_escape(h.label)
+                         << R"(","kind":1})";
+                }
+            }
+
+            resp << "]}";
             write_message(resp.str());
 
         } else if (id >= 0) {
