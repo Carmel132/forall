@@ -30,8 +30,10 @@ namespace {
 enum class EntryKind { Assumption, Derived };
 
 struct HypEntry {
-    kernel::Judgment judgment;
-    EntryKind        kind;
+    kernel::Judgment   judgment;
+    EntryKind          kind;
+    // MOD3: visibility — Private entries are not exported across import boundaries.
+    ast::Visibility    visibility{ast::Visibility::Public};
 };
 
 // Module-level flat map: axioms + proved lemmas/definitions accumulate here.
@@ -3903,7 +3905,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                             "invalid axiom: " + r.error().message});
             else
                 module_env.insert_or_assign(decl->name,
-                                            HypEntry{std::move(*r), EntryKind::Derived});
+                                            HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
             break;
         }
 
@@ -3923,7 +3925,7 @@ ModuleResult check_module(const std::filesystem::path& path,
             if (no_new_errors) {
                 if (auto r = kernel.introduce_axiom(decl->statement))
                     module_env.insert_or_assign(decl->name,
-                                                HypEntry{std::move(*r), EntryKind::Derived});
+                                                HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
             }
             break;
         }
@@ -3941,8 +3943,10 @@ ModuleResult check_module(const std::filesystem::path& path,
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag, visited, stdlib_root);
                 // MOD1: also insert entries under the qualified prefix "ModName.entry".
+                // MOD3: skip Private entries — they are not exported across import boundaries.
                 const std::string mod_prefix = module_name_from_path(import_name) + ".";
                 for (auto& [name, entry] : imported.env) {
+                    if (entry.visibility == ast::Visibility::Private) continue;
                     module_env.insert_or_assign(name, entry);
                     module_env.insert_or_assign(mod_prefix + name, entry);
                 }
@@ -4017,7 +4021,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                             "invalid definition: " + r.error().message});
             else
                 module_env.insert_or_assign(decl->name,
-                                            HypEntry{std::move(*r), EntryKind::Derived});
+                                            HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
             // Build signature table entry: params[0].type -> ... -> Prop (curried).
             if (!decl->params.empty()) {
                 ast::TypeNode ret{ast::TypeProp{}};
@@ -4110,6 +4114,86 @@ ModuleResult check_module(const std::filesystem::path& path,
                             "quotient '" + decl->name + "' is missing a transitivity axiom (name should contain 'trans')"});
             break;
         }
+
+        // MOD2: namespace block — process inner decls with "NsName." prefix
+        case ast::DeclKind::Namespace: {
+            const std::string& ns_name = decl->name;
+            const std::string prefix = ns_name + ".";
+            // Process each inner declaration independently; collect their entries
+            // under both unqualified and qualified names.
+            for (const auto& inner : decl->ns_decls) {
+                // Temporarily insert what's already in module_env so inner decls
+                // can reference earlier sibling declarations.
+                // We reuse check_module by processing inline here.
+                switch (inner->kind) {
+                case ast::DeclKind::Axiom: {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag);
+                    auto r = kernel.introduce_axiom(inner->statement);
+                    if (!r)
+                        diag.emit({diag::Severity::Error, inner->loc,
+                                   "invalid axiom: " + r.error().message});
+                    else {
+                        const std::string qname = prefix + inner->name;
+                        module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
+                        module_env.insert_or_assign(qname,       HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                    break;
+                }
+                case ast::DeclKind::Definition: {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag);
+                    auto r = kernel.introduce_axiom(inner->statement);
+                    if (!r)
+                        diag.emit({diag::Severity::Error, inner->loc,
+                                   "invalid definition: " + r.error().message});
+                    else {
+                        const std::string qname = prefix + inner->name;
+                        module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
+                        module_env.insert_or_assign(qname,       HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                    break;
+                }
+                case ast::DeclKind::Theorem:
+                case ast::DeclKind::Lemma: {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag);
+                    const auto snap = diag.diagnostics().size();
+                    check_proof(*inner, module_env, kernel, diag, sig_table, instance_table, &struct_env);
+                    const auto& all_diags = diag.diagnostics();
+                    bool ok = true;
+                    for (auto i = snap; i < all_diags.size(); ++i)
+                        if (all_diags[i].severity == diag::Severity::Error) { ok = false; break; }
+                    if (ok) {
+                        if (auto r = kernel.introduce_axiom(inner->statement)) {
+                            const std::string qname = prefix + inner->name;
+                            module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
+                            module_env.insert_or_assign(qname,       HypEntry{std::move(*r), EntryKind::Derived});
+                        }
+                    }
+                    break;
+                }
+                default:
+                    // Other kinds (imports, structures, etc.) inside a namespace
+                    // are not yet supported; ignore silently.
+                    break;
+                }
+            }
+            break;
+        }
+
+        // MOD2: open directive — bring all "NsName.x" entries into unqualified scope
+        case ast::DeclKind::Open: {
+            const std::string prefix = decl->name + ".";
+            // Collect entries to add (can't insert while iterating the same map).
+            std::vector<std::pair<std::string, HypEntry>> to_add;
+            for (const auto& [name, entry] : module_env) {
+                if (name.size() > prefix.size()
+                        && name.substr(0, prefix.size()) == prefix) {
+                    to_add.emplace_back(name.substr(prefix.size()), entry);
+                }
+            }
+            for (auto& [uname, entry] : to_add)
+                module_env.insert_or_assign(uname, std::move(entry));
+            break;
+        }
         }
     }
     return ModuleResult{std::move(module_env), std::move(instance_table)};
@@ -4163,8 +4247,10 @@ void Checker::check_content(const std::string& source, const std::string& filena
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
                 // MOD1: also insert under the qualified prefix "ModName.entry".
+                // MOD3: skip Private entries.
                 const std::string mod_prefix = module_name_from_path(iname) + ".";
                 for (auto& [n, e] : imported.env) {
+                    if (e.visibility == ast::Visibility::Private) continue;
                     module_env.insert_or_assign(n, e);
                     module_env.insert_or_assign(mod_prefix + n, e);
                 }
@@ -4222,6 +4308,41 @@ void Checker::check_content(const std::string& source, const std::string& filena
             if (!has_trans)
                 diag_.emit({diag::Severity::Warning, decl->loc,
                             "quotient '" + decl->name + "' is missing a transitivity axiom (name should contain 'trans')"});
+            break;
+        }
+        // MOD2: namespace block in check_content
+        case ast::DeclKind::Namespace: {
+            const std::string prefix = decl->name + ".";
+            for (const auto& inner : decl->ns_decls) {
+                if (inner->kind == ast::DeclKind::Axiom || inner->kind == ast::DeclKind::Definition) {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag_);
+                    auto r = kernel.introduce_axiom(inner->statement);
+                    if (r) {
+                        module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
+                        module_env.insert_or_assign(prefix + inner->name, HypEntry{std::move(*r), EntryKind::Derived});
+                    }
+                } else if (inner->kind == ast::DeclKind::Theorem || inner->kind == ast::DeclKind::Lemma) {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag_);
+                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
+                    if (!diag_.hasErrors()) {
+                        if (auto r = kernel.introduce_axiom(inner->statement)) {
+                            module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
+                            module_env.insert_or_assign(prefix + inner->name, HypEntry{std::move(*r), EntryKind::Derived});
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        // MOD2: open directive in check_content
+        case ast::DeclKind::Open: {
+            const std::string prefix = decl->name + ".";
+            std::vector<std::pair<std::string, HypEntry>> to_add;
+            for (const auto& [name, entry] : module_env)
+                if (name.size() > prefix.size() && name.substr(0, prefix.size()) == prefix)
+                    to_add.emplace_back(name.substr(prefix.size()), entry);
+            for (auto& [uname, entry] : to_add)
+                module_env.insert_or_assign(uname, std::move(entry));
             break;
         }
         case ast::DeclKind::Axiom:
