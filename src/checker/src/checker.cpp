@@ -1209,13 +1209,22 @@ bool check_step(const ast::Step& step,
                 diag::DiagnosticEngine& diag,
                 const CheckContext& ctx)
 {
-    // TR3: helper to apply let-bound term definitions to a proposition.
+    // TR3: helper to apply let-bound term definitions to a proposition,
+    // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises.
     auto apply_tdefs = [&](ast::Prop p) -> ast::Prop {
         if (ctx.term_defs) {
             for (const auto& [name, expr] : *ctx.term_defs)
                 p = ast::subst(p, name, *expr);
         }
-        return p;
+        return ast::beta_reduce(p);
+    };
+    // Apply term definitions to an expression witness (for ForallElim/ExistsIntro).
+    auto apply_tdefs_expr = [&](ast::Expr e) -> ast::Expr {
+        if (ctx.term_defs) {
+            for (const auto& [name, expr] : *ctx.term_defs)
+                e = ast::subst(e, name, *expr);
+        }
+        return ast::beta_reduce(e);
     };
 
     return std::visit([&](const auto& s) -> bool {
@@ -1513,7 +1522,10 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
+            // TR3/AN5: expand any let-bound names in the witness expression and beta-reduce.
+            std::optional<ast::Expr> witness_expanded;
+            if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
+            const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
             std::optional<RuleApp> app;
             if (witness_ptr) {
                 app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
@@ -1854,7 +1866,10 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            const ast::Expr* witness_ptr = s.witness ? s.witness->get() : nullptr;
+            // TR3/AN5: expand let-bound names in the witness and beta-reduce.
+            std::optional<ast::Expr> witness_expanded;
+            if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
+            const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
             std::optional<RuleApp> app;
             if (witness_ptr) {
                 app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
@@ -2244,11 +2259,13 @@ void check_proof(const ast::Decl& decl,
     // Applied as substitution into propositions before each step is checked.
     std::map<std::string, ast::ExprPtr> term_defs;
 
-    // Apply all current term definitions to a proposition by substitution.
+    // Apply all current term definitions to a proposition by substitution,
+    // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises to
+    // a[phi(n)] before kernel comparison.
     auto apply_term_defs = [&](ast::Prop p) -> ast::Prop {
         for (const auto& [name, expr] : term_defs)
             p = ast::subst(p, name, *expr);
-        return p;
+        return ast::beta_reduce(p);
     };
 
     for (const auto& step : decl.proof->steps) {
