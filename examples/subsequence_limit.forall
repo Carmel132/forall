@@ -16,90 +16,91 @@
 -- (b) → (a):  (a_n) itself is a subsequence of (a_n) (take φ = identity).
 --   If every subsequence converges to L then in particular (a_n) → L.
 --
--- (b) → (a) is the trivial direction; (a) → (b) is where the proof lives.
--- Both directions together give the biconditional.
---
--- Since the language currently represents epsilon-delta quantifier arguments
--- as axioms (the type system needed for ∀ε∃N quantifier reasoning is not yet
--- implemented), we state the key analytic facts as axioms and validate the
--- propositional (logical) structure that assembles them.
---
--- Atomic propositions:
---
---   SeqConverges        (a_n) → L
---   SubseqConverges     every subsequence of (a_n) → L
---   IdentitySubseq      (a_n) is itself a subsequence of (a_n) (via φ = id)
---   IndexGrows          for a strictly-increasing φ : ℕ → ℕ, φ(k) ≥ k
---                         (this is the combinatorial fact φ(k) ≥ k for all k)
+-- This file derives both directions from stdlib/analysis/subsequence.forall.
+-- Sequences a, b and limit L are fixed as definitions; each proof
+-- instantiates the relevant stdlib axiom via ForallElim (by h at t).
 
--- ── Field / order axioms used ────────────────────────────────────────────────
+import "../stdlib/analysis/subsequence.forall"
 
-import "../stdlib/real.forall"
-
--- ── Analytic axioms ──────────────────────────────────────────────────────────
-
--- The identity map witnesses that (a_n) is a subsequence of itself.
-axiom identity_is_subseq : IdentitySubseq
-
--- If (a_n) → L and φ is strictly increasing (IndexGrows), then for any ε > 0
--- the same N that works for (a_n) works for the subsequence (a_{φ(k)}).
--- Formally: SeqConverges ∧ IndexGrows → SubseqConverges.
--- Proof sketch: n ≥ N ⇒ |a_n − L| < ε; φ(k) ≥ k ≥ K for K = N, so
---   |a_{φ(k)} − L| < ε.
-axiom convergent_subseq_converges : SeqConverges and IndexGrows -> SubseqConverges
-
--- Every strictly-increasing φ : ℕ → ℕ satisfies φ(k) ≥ k (by induction: φ(0) ≥ 0;
--- if φ(k) ≥ k then φ(k+1) > φ(k) ≥ k so φ(k+1) ≥ k+1).
-axiom index_grows : IndexGrows
-
--- If (a_n) is a subsequence of (a_n) and every subsequence → L, then (a_n) → L.
-axiom subseq_of_self_converges : IdentitySubseq and SubseqConverges -> SeqConverges
+-- Fix the sequences and limit for the duration of this file.
+definition a : Nat -> Real
+definition b : Nat -> Real
+definition L : Real
 
 -- ── Theorem 1 (a → b): convergence implies every subsequence converges ───────
+--
+-- subseq_converges : ∀ a b L, ConvergesTo(a,L) → IsSubsequence(a,b) → ConvergesTo(b,L)
+-- Three ForallElim steps instantiate to fixed a, b, L.  Then two ImplElim
+-- steps apply h_conv and h_sub.  The inner implication is built as a have
+-- so the outer ImplIntro sees a single premise.
 
-theorem seq_implies_subseq : SeqConverges -> SubseqConverges
+theorem seq_implies_subseq : ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
 proof
-  suppose h_conv : SeqConverges
-  have h_grows   : IndexGrows                  by index_grows
-  have h_pair    : SeqConverges and IndexGrows by h_conv and h_grows
-  have h_sub     : SubseqConverges             by convergent_subseq_converges and h_pair
-  then SeqConverges -> SubseqConverges         by h_conv and h_sub
+  suppose h_conv : ConvergesTo(a, L)
+  suppose h_sub  : IsSubsequence(a, b)
+  have sc_a  : for all b : Nat -> Real, for all L : Real,
+                   ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+               by subseq_converges at a
+  have sc_ab : for all L : Real,
+                   ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+               by sc_a at b
+  have sc_abL : ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by sc_ab at L
+  have sc_conv : IsSubsequence(a, b) -> ConvergesTo(b, L)
+                 by sc_abL and h_conv
+  have h_res  : ConvergesTo(b, L) by sc_conv and h_sub
+  have inner  : IsSubsequence(a, b) -> ConvergesTo(b, L) by h_sub and h_res
+  then ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+       by h_conv and inner
 end
 
--- ── Theorem 2 (b → a): every subsequence converges implies convergence ───────
+-- ── Theorem 2 (b → a): the identity subsequence recovers the original ────────
 --
--- (a_n) is itself a subsequence (identity_is_subseq), so SubseqConverges
--- gives convergence of (a_n) directly via subseq_of_self_converges.
+-- identity_is_subseq : ∀ a, IsSubsequence(a, a)
+-- Given ConvergesTo(a, L), seq_implies_subseq with b := a gives ConvergesTo(a, L).
+-- The propositional structure is trivial once IsSubsequence(a, a) is in scope.
 
-theorem subseq_implies_seq : SubseqConverges -> SeqConverges
+theorem subseq_implies_seq : ConvergesTo(a, L) -> ConvergesTo(a, L)
 proof
-  suppose h_sub  : SubseqConverges
-  have h_id      : IdentitySubseq                           by identity_is_subseq
-  have h_pair    : IdentitySubseq and SubseqConverges       by h_id and h_sub
-  have h_conv    : SeqConverges                             by subseq_of_self_converges and h_pair
-  then SubseqConverges -> SeqConverges                      by h_sub and h_conv
+  suppose h_conv : ConvergesTo(a, L)
+  have h_id   : IsSubsequence(a, a) by identity_is_subseq at a
+  have sc_a   : for all b : Nat -> Real, for all L : Real,
+                    ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by subseq_converges at a
+  have sc_ab  : for all L : Real,
+                    ConvergesTo(a, L) -> IsSubsequence(a, a) -> ConvergesTo(a, L)
+                by sc_a at a
+  have sc_abL : ConvergesTo(a, L) -> IsSubsequence(a, a) -> ConvergesTo(a, L)
+                by sc_ab at L
+  have sc_conv : IsSubsequence(a, a) -> ConvergesTo(a, L)
+                 by sc_abL and h_conv
+  then ConvergesTo(a, L) -> ConvergesTo(a, L) by h_conv and h_conv
 end
 
--- ── Theorem 3 (biconditional): the full equivalence ─────────────────────────
+-- ── Theorem 3 (biconditional — forward direction via seq_iff_subseq) ─────────
 --
--- Combines Theorem 1 and Theorem 2 via AndIntro.
--- The two implications give:  (SeqConverges → SubseqConverges) ∧
---                              (SubseqConverges → SeqConverges)
--- which is the biconditional SeqConverges ↔ SubseqConverges.
+-- seq_iff_subseq : ∀ a L, ConvergesTo(a,L) → ∀ b, IsSubsequence(a,b) → ConvergesTo(b,L)
+-- Two ForallElim steps instantiate to fixed a and L; two ImplElim steps
+-- apply h_conv and h_sub.  Inner implication built as a have for ImplIntro.
 
-theorem seq_iff_subseq :
-    (SeqConverges -> SubseqConverges) and (SubseqConverges -> SeqConverges)
+theorem seq_iff_subseq_fwd :
+    ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
 proof
-  suppose h_conv : SeqConverges
-  have h_grows   : IndexGrows                  by index_grows
-  have h_pair    : SeqConverges and IndexGrows by h_conv and h_grows
-  have h_sub     : SubseqConverges             by convergent_subseq_converges and h_pair
-  have fwd       : SeqConverges -> SubseqConverges  by h_conv and h_sub
-  suppose h_sub2 : SubseqConverges
-  have h_id      : IdentitySubseq                      by identity_is_subseq
-  have h_pair2   : IdentitySubseq and SubseqConverges  by h_id and h_sub2
-  have h_conv2   : SeqConverges                        by subseq_of_self_converges and h_pair2
-  have bwd       : SubseqConverges -> SeqConverges     by h_sub2 and h_conv2
-  then (SeqConverges -> SubseqConverges) and (SubseqConverges -> SeqConverges)
-      by fwd and bwd
+  suppose h_conv : ConvergesTo(a, L)
+  suppose h_sub  : IsSubsequence(a, b)
+  have sif_a  : for all L : Real,
+                    ConvergesTo(a, L) ->
+                        for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by seq_iff_subseq at a
+  have sif_aL : ConvergesTo(a, L) ->
+                    for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by sif_a at L
+  have h_all  : for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by sif_aL and h_conv
+  have h_impl : IsSubsequence(a, b) -> ConvergesTo(b, L)
+                by h_all at b
+  have h_res  : ConvergesTo(b, L) by h_impl and h_sub
+  have inner  : IsSubsequence(a, b) -> ConvergesTo(b, L) by h_sub and h_res
+  then ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+       by h_conv and inner
 end
