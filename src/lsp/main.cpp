@@ -9,6 +9,8 @@
 //              look up identifier in module-level LspEnv, return proposition
 //   Phase 3: textDocument/definition ->
 //              look up identifier intro location, return LSP Location
+//   Phase 4: textDocument/completion ->
+//              context-aware completions: step keywords, tactic keywords, hyp names
 //
 // No external JSON library required -- we do minimal hand-rolled JSON
 // parsing and generation for the small subset needed.
@@ -22,6 +24,11 @@
 // Request:  textDocument/definition  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { uri, range: { start: {line,char}, end: {line,char} } } }
 //           or { result: null } if not found.
+//
+// -- Completion protocol (LSP4) -----------------------------------------------
+// Request:  textDocument/completion  { textDocument: {uri}, position: {line, character} }
+// Response: { result: { isIncomplete: false, items: [ {label, kind}, ... ] } }
+//   CompletionItemKind: 6 = Variable (hyp names), 14 = Keyword (step/tactic keywords)
 // -----------------------------------------------------------------------------
 
 #include <forall/checker/checker.hpp>
@@ -277,6 +284,47 @@ static std::string find_name_at(const std::string& source,
     return {};
 }
 
+// -- Completion context detection ---------------------------------------------
+//
+// Determines what kind of completion to offer based on the text up to the
+// cursor on the current line:
+//   AfterBy      -- line (trimmed) starts with "by " or "from " -> tactic + hyp names
+//   StartOfLine  -- only whitespace before cursor -> proof step keywords
+//   General      -- anything else -> module-level names
+
+enum class CompletionContext { AfterBy, StartOfLine, General };
+
+static CompletionContext detect_completion_context(const std::string& source,
+                                                   uint32_t line1,
+                                                   uint32_t col1)
+{
+    std::vector<std::string> lines;
+    std::istringstream iss(source);
+    std::string ln;
+    while (std::getline(iss, ln)) lines.push_back(ln);
+
+    if (line1 < 1 || line1 > static_cast<uint32_t>(lines.size()))
+        return CompletionContext::General;
+
+    const std::string& current = lines[line1 - 1];
+    uint32_t char_idx = col1 > 0 ? col1 - 1 : 0;
+    const std::string prefix = current.substr(0, std::min(static_cast<std::size_t>(char_idx),
+                                                          current.size()));
+
+    std::string trimmed = prefix;
+    trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+
+    if (trimmed.size() >= 3 &&
+        (trimmed.substr(0, 3) == "by " ||
+         (trimmed.size() >= 5 && trimmed.substr(0, 5) == "from ")))
+        return CompletionContext::AfterBy;
+
+    if (trimmed.empty())
+        return CompletionContext::StartOfLine;
+
+    return CompletionContext::General;
+}
+
 // -- Document state -----------------------------------------------------------
 
 struct DocState {
@@ -320,7 +368,8 @@ int main() {
                  << R"(,"result":{"capabilities":{)"
                  << R"("textDocumentSync":1,)"
                  << R"("hoverProvider":true,)"
-                 << R"("definitionProvider":true)"
+                 << R"("definitionProvider":true,)"
+                 << R"("completionProvider":{"triggerCharacters":[" "]})"
                  << R"(},"serverInfo":{"name":"forall-lsp","version":"0.2.0"}}})";
             write_message(resp.str());
 
@@ -426,6 +475,59 @@ int main() {
                 resp << R"(,"result":null)";
             }
             resp << "}";
+            write_message(resp.str());
+
+        } else if (method == "textDocument/completion") {
+            // LSP4: context-aware completions.
+            const std::string uri = extract_uri(json);
+            auto [line1, col1] = extract_position(json);
+
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id
+                 << R"(,"result":{"isIncomplete":false,"items":[)";
+
+            auto it = documents.find(uri);
+            bool first_item = true;
+
+            auto emit_item = [&](const std::string& label, int kind) {
+                if (!first_item) resp << ",";
+                first_item = false;
+                resp << R"({"label":")" << json_escape(label)
+                     << R"(","kind":)" << kind << "}";
+            };
+
+            if (it != documents.end()) {
+                const CompletionContext ctx =
+                    detect_completion_context(it->second.source, line1, col1);
+
+                if (ctx == CompletionContext::AfterBy) {
+                    // Tactic keywords (kind 14 = Keyword)
+                    for (const char* kw : {"linarith", "ring", "norm_num", "decide",
+                                           "omega", "simp", "field_simp", "positivity",
+                                           "gcongr", "contrapositive"}) {
+                        emit_item(kw, 14);
+                    }
+                    // All in-scope hypothesis names (kind 6 = Variable)
+                    for (const auto& [name, entry] : it->second.lsp_env)
+                        emit_item(name, 6);
+
+                } else if (ctx == CompletionContext::StartOfLine) {
+                    // Proof step keywords (kind 14 = Keyword)
+                    for (const char* kw : {"have", "suppose", "assume", "take",
+                                           "cases", "obtain", "induction", "calc",
+                                           "then", "therefore", "thus",
+                                           "contradiction", "split", "push neg"}) {
+                        emit_item(kw, 14);
+                    }
+
+                } else {
+                    // General: all module-level names (kind 6 = Variable)
+                    for (const auto& [name, entry] : it->second.lsp_env)
+                        emit_item(name, 6);
+                }
+            }
+
+            resp << "]}}";
             write_message(resp.str());
 
         } else if (id >= 0) {
