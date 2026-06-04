@@ -307,9 +307,14 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
             if (!r.empty() && r.back() == '\n') r.pop_back();
             return r;
         }
-        return "definition " + decl.name
-               + format_params(decl.params)
-               + " : " + to_string(decl.statement);
+        {
+            std::string r = "definition " + decl.name
+                            + format_params(decl.params)
+                            + " : " + to_string(decl.statement);
+            if (decl.def_body)
+                r += " := " + to_string(**decl.def_body);
+            return r;
+        }
 
     case ast::DeclKind::Lemma:
     case ast::DeclKind::Theorem: {
