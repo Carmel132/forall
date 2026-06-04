@@ -2210,9 +2210,18 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
 
     expect(K::Colon, "expected ':' after definition name");
     auto prop = parseProp();
+
+    // AN8: optional predicate body  ":= prop_body"
+    std::optional<ast::PropPtr> def_body;
+    if (check(K::ColonEquals)) {
+        advance(); // consume ':='
+        def_body = ast::make_prop(parseProp());
+    }
+
     auto decl = std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
                                             std::move(prop), std::nullopt);
-    decl->params = std::move(params);
+    decl->params  = std::move(params);
+    decl->def_body = std::move(def_body);
     return decl;
 }
 
