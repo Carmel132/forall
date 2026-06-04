@@ -13,6 +13,7 @@ enum class TokenKind {
     // Declaration keywords
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
     KwProof, KwEnd, KwImport, KwInstance, KwStructure, KwQuotient,
+    KwNamespace, KwOpen,            // MOD2: namespace blocks and open directives
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,
