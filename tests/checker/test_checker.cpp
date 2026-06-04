@@ -3430,3 +3430,65 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── MOD1: Qualified names ──────────────────────────────────────────────────────
+
+// MOD1-1: qualified name "Lib.base" works after importing "lib.forall"
+TEST(CheckerTest, QualifiedName_Works) {
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_mod1_lib.forall";
+    auto main = dir / "forall_mod1_main.forall";
+
+    std::ofstream{lib} << "axiom base : P -> Q\n";
+    std::ofstream{main} << R"(
+import "forall_mod1_lib.forall"
+theorem use_qualified : P -> Q
+proof
+  suppose h : P
+  have hq : Q by Forall_mod1_lib.base and h
+  then P -> Q by h and hq
+end
+)";
+    // The module name is derived from "forall_mod1_lib.forall" → "Forall_mod1_lib"
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// MOD1-2: unqualified name still works after import (backward-compatible)
+TEST(CheckerTest, QualifiedName_UnqualifiedStillWorks) {
+    namespace fs = std::filesystem;
+    auto dir = fs::temp_directory_path();
+    auto lib  = dir / "forall_mod1b_lib.forall";
+    auto main = dir / "forall_mod1b_main.forall";
+
+    std::ofstream{lib} << "axiom base2 : P -> Q\n";
+    std::ofstream{main} << R"(
+import "forall_mod1b_lib.forall"
+theorem use_unqualified : P -> Q
+proof
+  suppose h : P
+  have hq : Q by base2 and h
+  then P -> Q by h and hq
+end
+)";
+    diag::DiagnosticEngine diag;
+    checker::Checker c{diag};
+    c.check(main);
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// MOD1-3: a completely unknown qualified name fails with a clear error
+TEST(CheckerTest, QualifiedName_UnknownFails) {
+    auto diag = run_checker("qualified_unknown", R"(
+axiom base3 : P
+theorem use_unknown : P
+proof
+  then P by Nonexistent.foo
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "Nonexistent.foo"));
+}
