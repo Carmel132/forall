@@ -522,12 +522,16 @@ TEST(BetaReduce, CurriedApp_TwoArgs) {
 }
 
 TEST(BetaReduce, NoRedex_ExprApp_NonLambdaFunc) {
-    // ExprApp{x, [42]}  — x is not a lambda; leave as ExprApp
+    // ExprApp{x, [42]} where x is a plain variable — collapse to ExprCall{"x",[42]}.
+    // This normalisation ensures ForallElim witnesses of function type produce the
+    // canonical ExprCall form rather than a stuck ExprApp.
     Expr app = eapp(evar("x"), {elit("42")});
     Expr reduced = beta_reduce(app);
-    const auto* a = std::get_if<ExprApp>(&reduced.node);
-    ASSERT_NE(a, nullptr);
-    EXPECT_EQ(*a->func, evar("x"));
+    const auto* c = std::get_if<ExprCall>(&reduced.node);
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->name, "x");
+    ASSERT_EQ(c->args.size(), 1u);
+    EXPECT_EQ(*c->args[0], elit("42"));
 }
 
 TEST(BetaReduce, NestedRedex_ReducesBoth) {

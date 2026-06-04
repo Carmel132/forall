@@ -3609,14 +3609,14 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
-// ── AN5: beta-reduce after apply_term_defs ─────────────────────────────────────
+// ── Beta-reduction after let-def substitution ─────────────────────────────────────
 // These tests verify that propositions involving lambda terms are beta-reduced
 // before kernel comparison, enabling ForallElim witnesses to normalise correctly.
 
-// AN5-1: ForallElim with a lambda witness whose body reduces to the stated conclusion.
+// ForallElim with a lambda witness whose body reduces to the stated conclusion.
 // ∀ f : Nat -> Nat, P(f(0))  instantiated at  fun x => x + 1  should give P(0 + 1).
 // After beta-reduction: f[0] = (fun x => x+1)(0) = 0+1, so conclusion is P(0+1).
-TEST(CheckerTest, AN5_BetaReduceAfterForallElim) {
+TEST(CheckerTest, BetaReduceAfterForallElim) {
     auto diag = run_checker("an5_beta_forallelim", R"(
 axiom all_f : for all f : Nat -> Nat, P(f(0))
 theorem inst_at_succ : P(0 + 1)
@@ -3633,9 +3633,9 @@ end
     }();
 }
 
-// AN5-2: let x = expr substitution followed by beta-reduction in a ForallElim step.
+// let x = expr substitution followed by beta-reduction in a ForallElim step.
 // The let-bound term is used as a witness; the resulting proposition must normalise.
-TEST(CheckerTest, AN5_LetTermAsForallElimWitness) {
+TEST(CheckerTest, LetTermAsForallElimWitness) {
     auto diag = run_checker("an5_let_witness", R"(
 axiom all_n : for all n : Nat, n >= 0
 theorem zero_ge_zero : 0 >= 0
@@ -3645,4 +3645,67 @@ proof
 end
 )");
     EXPECT_FALSE(diag.hasErrors());
+}
+
+// ── Expression-level rewrite and induction fixes ──────────
+
+// rewrite with a non-variable lhs (expression-level find-and-replace).
+// h : b[k] = a[phi(k)] rewrites b[k] inside |b[k] - L| < eps.
+TEST(CheckerTest, ExprLevelRewrite) {
+    auto diag = run_checker("an6_expr_rewrite", R"(
+axiom match_ax : b[k] = a[phi(k)]
+theorem rewrite_in_abs : |a[phi(k)] - L| < eps -> |b[k] - L| < eps
+proof
+  suppose h_conv : |a[phi(k)] - L| < eps
+  rewrite match_ax
+  then |a[phi(k)] - L| < eps -> |a[phi(k)] - L| < eps by h_conv and h_conv
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Expression-level rewrite with a compound lhs: h : a + b = c rewrites a + b → c
+// inside an absolute value goal.  After rewrite, goal changes from |a+b|<eps to |c|<eps.
+TEST(CheckerTest, ExprLevelRewriteCompound) {
+    auto diag = run_checker("expr_rewrite_compound", R"(
+axiom sum_ax : a + b = c
+axiom h_conv : |c| < eps
+theorem use_rewrite : |a + b| < eps
+proof
+  rewrite sum_ax
+  then |c| < eps by h_conv
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// induction with a preceding suppose closes the implication automatically.
+TEST(CheckerTest, InductionAfterSuppose) {
+    auto diag = run_checker("an6_induction_after_suppose", R"(
+axiom step_ax : for all n : Nat, P(n) -> P(succ(n))
+axiom base_ax : P(0)
+theorem all_p : Q -> for all n : Nat, P(n)
+proof
+  suppose h_q : Q
+  induction result on n : P(n)
+    base:
+      then P(0) by base_ax
+    inductive:
+      have step_n : P(n) -> P(succ(n)) by step_ax at n
+      then P(succ(n)) by step_n and ih
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
 }
