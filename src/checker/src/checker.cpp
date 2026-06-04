@@ -39,6 +39,16 @@ struct HypEntry {
 // Module-level flat map: axioms + proved lemmas/definitions accumulate here.
 using HypEnv = std::map<std::string, HypEntry>;
 
+// AN8: predicate definition unfolding table.
+// Maps predicate name → { ordered param names, body proposition }.
+// Populated from `definition P(x : T) := body` declarations.
+// Used by unfold_preds() to expand PropPred/Atomic nodes before kernel calls.
+struct PredDefEntry {
+    std::vector<std::string> params;
+    ast::PropPtr             body;
+};
+using PredDefTable = std::map<std::string, PredDefEntry>;
+
 // Maps type_name → set of class names it has been declared to implement.
 // Forward-declared here so CheckContext can reference it; full definition
 // and class_axioms table live in the typeclass section further below.
@@ -509,7 +519,120 @@ struct CheckContext {
     const ast::Prop*                             goal;         // theorem statement (for RL4 __qed__ sentinel)
     const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // TR3: let x = expr bindings
     const ast::StructEnv*                        struct_env{nullptr}; // NL11: for sub-proof injection
+    const PredDefTable*                          pred_defs{nullptr};  // AN8: predicate definition bodies
 };
+
+// ── unfold_preds ──────────────────────────────────────────────────────────────
+//
+// AN8: Recursively expand PropPred nodes whose name appears in pred_defs by
+// substituting the definition's body with the call's arguments.  Recurses into
+// all PropNode and ExprNode variants.  No-op when pred_defs is null.
+static ast::Prop unfold_preds(const ast::Prop& p, const PredDefTable& defs);
+static ast::Expr unfold_preds_expr(const ast::Expr& e, const PredDefTable& defs);
+
+static ast::Expr unfold_preds_expr(const ast::Expr& e, const PredDefTable& defs) {
+    return std::visit([&](const auto& n) -> ast::Expr {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            return ast::Expr{e.loc, ast::ExprBinary{n.op,
+                ast::make_expr(unfold_preds_expr(*n.lhs, defs)),
+                ast::make_expr(unfold_preds_expr(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            return ast::Expr{e.loc, ast::ExprUnary{n.op,
+                ast::make_expr(unfold_preds_expr(*n.operand, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprAbs>) {
+            return ast::Expr{e.loc, ast::ExprAbs{
+                ast::make_expr(unfold_preds_expr(*n.operand, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            std::vector<ast::ExprPtr> args;
+            for (const auto& a : n.args)
+                args.push_back(ast::make_expr(unfold_preds_expr(*a, defs)));
+            return ast::Expr{e.loc, ast::ExprCall{n.name, std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIndex>) {
+            return ast::Expr{e.loc, ast::ExprIndex{
+                ast::make_expr(unfold_preds_expr(*n.array, defs)),
+                ast::make_expr(unfold_preds_expr(*n.index, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprTuple>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements)
+                elems.push_back(ast::make_expr(unfold_preds_expr(*el, defs)));
+            return ast::Expr{e.loc, ast::ExprTuple{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprLambda>) {
+            return ast::Expr{e.loc, ast::ExprLambda{n.var, n.type,
+                ast::make_expr(unfold_preds_expr(*n.body, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIf>) {
+            return ast::Expr{e.loc, ast::ExprIf{
+                ast::make_prop(unfold_preds(*n.cond, defs)),
+                ast::make_expr(unfold_preds_expr(*n.then_, defs)),
+                ast::make_expr(unfold_preds_expr(*n.else_, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprAgg>) {
+            return ast::Expr{e.loc, ast::ExprAgg{n.op, n.var, n.type, n.rel, n.bound,
+                ast::make_expr(unfold_preds_expr(*n.body, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprApp>) {
+            std::vector<ast::ExprPtr> args;
+            for (const auto& a : n.args)
+                args.push_back(ast::make_expr(unfold_preds_expr(*a, defs)));
+            return ast::Expr{e.loc, ast::ExprApp{
+                ast::make_expr(unfold_preds_expr(*n.func, defs)), std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprSetLit>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements)
+                elems.push_back(ast::make_expr(unfold_preds_expr(*el, defs)));
+            return ast::Expr{e.loc, ast::ExprSetLit{std::move(elems)}};
+        } else {
+            return e; // ExprLit, ExprVar, ExprField, ExprSetCompr — no sub-props
+        }
+    }, e.node);
+}
+
+static ast::Prop unfold_preds(const ast::Prop& p, const PredDefTable& defs) {
+    return std::visit([&](const auto& n) -> ast::Prop {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::PropPred>) {
+            auto it = defs.find(n.name);
+            if (it == defs.end()) return p;
+            const auto& entry = it->second;
+            if (entry.params.size() != n.args.size()) return p;
+            // Substitute each argument into the body.
+            ast::Prop result = *entry.body;
+            for (std::size_t i = 0; i < entry.params.size(); ++i)
+                result = ast::subst(result, entry.params[i], *n.args[i]);
+            return ast::beta_reduce(result);
+        } else if constexpr (std::is_same_v<T, ast::Atomic>) {
+            // Nullary predicate: check if it has a zero-param definition.
+            auto it = defs.find(n.name);
+            if (it == defs.end() || !it->second.params.empty()) return p;
+            return ast::beta_reduce(*it->second.body);
+        } else if constexpr (std::is_same_v<T, ast::PropNot>) {
+            return ast::Prop{p.loc, ast::PropNot{
+                ast::make_prop(unfold_preds(*n.inner, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropAnd>) {
+            return ast::Prop{p.loc, ast::PropAnd{
+                ast::make_prop(unfold_preds(*n.lhs, defs)),
+                ast::make_prop(unfold_preds(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropOr>) {
+            return ast::Prop{p.loc, ast::PropOr{
+                ast::make_prop(unfold_preds(*n.lhs, defs)),
+                ast::make_prop(unfold_preds(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropImpl>) {
+            return ast::Prop{p.loc, ast::PropImpl{
+                ast::make_prop(unfold_preds(*n.lhs, defs)),
+                ast::make_prop(unfold_preds(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropForall>) {
+            return ast::Prop{p.loc, ast::PropForall{n.var, n.type,
+                ast::make_prop(unfold_preds(*n.body, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropExists>) {
+            return ast::Prop{p.loc, ast::PropExists{n.var, n.type,
+                ast::make_prop(unfold_preds(*n.body, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropRel>) {
+            return ast::Prop{p.loc, ast::PropRel{
+                ast::make_expr(unfold_preds_expr(*n.lhs, defs)),
+                ast::make_expr(unfold_preds_expr(*n.rhs, defs)), n.op}};
+        } else {
+            return p; // PropFalse, PropTrue — no sub-structure
+        }
+    }, p.node);
+}
 
 // ── check_step (forward declaration for mutual recursion with CasesStep) ───────
 bool check_step(const ast::Step& step,
@@ -1211,12 +1334,16 @@ bool check_step(const ast::Step& step,
 {
     // TR3: helper to apply let-bound term definitions to a proposition,
     // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises.
+    // AN8: also unfolds predicate definitions (PropPred → body).
     auto apply_tdefs = [&](ast::Prop p) -> ast::Prop {
         if (ctx.term_defs) {
             for (const auto& [name, expr] : *ctx.term_defs)
                 p = ast::subst(p, name, *expr);
         }
-        return ast::beta_reduce(p);
+        p = ast::beta_reduce(p);
+        if (ctx.pred_defs && !ctx.pred_defs->empty())
+            p = unfold_preds(p, *ctx.pred_defs);
+        return p;
     };
     // Apply term definitions to an expression witness (for ForallElim/ExistsIntro).
     auto apply_tdefs_expr = [&](ast::Expr e) -> ast::Expr {
@@ -2189,7 +2316,8 @@ void check_proof(const ast::Decl& decl,
                  diag::DiagnosticEngine& diag,
                  const ast::FuncSigTable& sigs = {},
                  const InstanceTable& instances = {},
-                 const ast::StructEnv* struct_env = nullptr)
+                 const ast::StructEnv* struct_env = nullptr,
+                 const PredDefTable* pred_defs = nullptr)
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -2246,10 +2374,19 @@ void check_proof(const ast::Decl& decl,
     LastKind         last_kind       = LastKind::None;
     bool             had_step_errors = false;
 
-    // Current proof goal — starts as decl.statement, may be transformed by RewriteStep
-    // or ApplyStep. Allocations live in this vector so pointers remain valid.
+    // AN8: unfold predicate definitions in the theorem statement so that the goal
+    // presented to the proof is the definitionally-expanded form.  This allows
+    // proofs to work in terms of the definition body rather than the predicate name.
+    // The original decl.statement is preserved for error messages; we work against
+    // the unfolded version internally.
+    ast::Prop unfolded_statement = (pred_defs && !pred_defs->empty())
+                                   ? unfold_preds(decl.statement, *pred_defs)
+                                   : decl.statement;
+
+    // Current proof goal — starts as the unfolded statement, may be transformed
+    // by RewriteStep or ApplyStep. Allocations live in this vector so pointers remain valid.
     std::vector<ast::Prop> goal_history;
-    const ast::Prop* current_goal = &decl.statement;
+    const ast::Prop* current_goal = &unfolded_statement;
 
     // Stack of apply hypotheses — each ApplyStep pushes h:A→B so the conclusion
     // validator can chain ImplElim(h, proof_of_A) → B after the subproof of A.
@@ -2262,10 +2399,14 @@ void check_proof(const ast::Decl& decl,
     // Apply all current term definitions to a proposition by substitution,
     // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises to
     // a[phi(n)] before kernel comparison.
+    // AN8: also unfold predicate definitions.
     auto apply_term_defs = [&](ast::Prop p) -> ast::Prop {
         for (const auto& [name, expr] : term_defs)
             p = ast::subst(p, name, *expr);
-        return ast::beta_reduce(p);
+        p = ast::beta_reduce(p);
+        if (pred_defs && !pred_defs->empty())
+            p = unfold_preds(p, *pred_defs);
+        return p;
     };
 
     for (const auto& step : decl.proof->steps) {
@@ -2438,7 +2579,7 @@ void check_proof(const ast::Decl& decl,
             continue;
         }
 
-        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env};
+        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env, pred_defs};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -2580,20 +2721,20 @@ void check_proof(const ast::Decl& decl,
                     if (!impl || !(*impl->lhs == *chain_goal)) { chain_ok = false; break; }
                     chain_goal = impl->rhs.get();
                 }
-                if (chain_ok && chain_goal && !(*chain_goal == decl.statement))
+                if (chain_ok && chain_goal && !(*chain_goal == unfolded_statement))
                     diag.emit({diag::Severity::Error, last_concluding->loc,
                                "apply chain does not prove the theorem statement"});
             }
         } else if (last_kind == LastKind::Cases) {
             const auto& cs = std::get<ast::CasesStep>(last_concluding->node);
             const auto* it = env.find(cs.name);
-            if (it && !(it->judgment.prop() == decl.statement))
+            if (it && !(it->judgment.prop() == unfolded_statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
         } else if (last_kind == LastKind::Obtain) {
             const auto& os = std::get<ast::ObtainStep>(last_concluding->node);
             const auto* it = env.find(os.name);
-            if (it && !(it->judgment.prop() == decl.statement))
+            if (it && !(it->judgment.prop() == unfolded_statement))
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
         } else if (last_kind == LastKind::Induction) {
@@ -2607,7 +2748,7 @@ void check_proof(const ast::Decl& decl,
                 // Assumption-kind hypotheses in scope (introduced via suppose).
                 // Each one wraps the result in one layer of ImplIntro:
                 //   A₁ → A₂ → ... → (induction result)
-                // must equal decl.statement.
+                // must equal unfolded_statement (pred-def-unfolded theorem statement).
                 ast::Prop wrapped = it->judgment.prop();
                 std::vector<ast::Prop> assumptions;
                 env.for_each_assumption([&](const std::string&, const HypEntry& e) {
@@ -2618,7 +2759,7 @@ void check_proof(const ast::Decl& decl,
                     wrapped = ast::Prop{last_concluding->loc,
                         ast::PropImpl{ast::make_prop(*rit), ast::make_prop(wrapped)}};
                 }
-                if (!(wrapped == decl.statement))
+                if (!(wrapped == unfolded_statement))
                     diag.emit({diag::Severity::Error, last_concluding->loc,
                                "proof concludes with wrong proposition"});
             }
@@ -2629,7 +2770,7 @@ void check_proof(const ast::Decl& decl,
             // Anonymous splits are verified inside check_split_step directly.
             if (!result_name.empty()) {
                 const auto* it = env.find(result_name);
-                if (it && !(it->judgment.prop() == decl.statement))
+                if (it && !(it->judgment.prop() == unfolded_statement))
                     diag.emit({diag::Severity::Error, last_concluding->loc,
                                "proof concludes with wrong proposition"});
             }
@@ -3895,6 +4036,7 @@ static ast::Prop push_neg(const ast::Prop& p)
 struct ModuleResult {
     HypEnv         env;
     InstanceTable  instances;
+    PredDefTable   pred_defs; // AN8: predicate definition bodies from this module
 };
 
 ModuleResult check_module(const std::filesystem::path& path,
@@ -3929,14 +4071,20 @@ ModuleResult check_module(const std::filesystem::path& path,
     ast::FuncSigTable sig_table; // built from definition declarations with params
     InstanceTable instance_table; // populated from instance declarations
     ast::StructEnv struct_env;    // populated from structure declarations (DT3)
+    PredDefTable pred_def_table;  // AN8: predicate definitions with bodies
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
         switch (decl->kind) {
 
         case ast::DeclKind::Axiom: {
-            check_prop_types_deep(decl->statement, {}, sig_table, diag);
-            auto r = kernel.introduce_axiom(decl->statement);
+            // AN8: unfold predicate definitions in the axiom statement so that
+            // hypotheses stored in module_env carry the expanded form.
+            const ast::Prop eff_stmt = pred_def_table.empty()
+                                       ? decl->statement
+                                       : unfold_preds(decl->statement, pred_def_table);
+            check_prop_types_deep(eff_stmt, {}, sig_table, diag);
+            auto r = kernel.introduce_axiom(eff_stmt);
             if (!r)
                 diag.emit({diag::Severity::Error, decl->loc,
                             "invalid axiom: " + r.error().message});
@@ -3950,7 +4098,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -3960,7 +4108,11 @@ ModuleResult check_module(const std::filesystem::path& path,
                 }
             }
             if (no_new_errors) {
-                if (auto r = kernel.introduce_axiom(decl->statement))
+                // AN8: also unfold predicates in the theorem statement stored in env.
+                const ast::Prop eff = pred_def_table.empty()
+                                      ? decl->statement
+                                      : unfold_preds(decl->statement, pred_def_table);
+                if (auto r = kernel.introduce_axiom(eff))
                     module_env.insert_or_assign(decl->name,
                                                 HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
             }
@@ -3990,6 +4142,9 @@ ModuleResult check_module(const std::filesystem::path& path,
                 for (auto& [tname, classes] : imported.instances)
                     for (const auto& cls : classes)
                         instance_table[tname].insert(cls);
+                // AN8: merge imported predicate definitions.
+                for (auto& [pname, pentry] : imported.pred_defs)
+                    pred_def_table.insert_or_assign(pname, pentry);
             }
             break;
         }
@@ -4066,6 +4221,14 @@ ModuleResult check_module(const std::filesystem::path& path,
                     ret = ast::type_fun(decl->params[i].type, ret);
                 if (const auto* tf = std::get_if<ast::TypeFun>(&ret.node))
                     sig_table[decl->name] = *tf;
+            }
+            // AN8: if a body is present, register in pred_def_table.
+            if (decl->def_body && !decl->is_abstract) {
+                PredDefEntry entry;
+                for (const auto& p : decl->params)
+                    entry.params.push_back(p.name);
+                entry.body = *decl->def_body;
+                pred_def_table[decl->name] = std::move(entry);
             }
             break;
         }
@@ -4193,7 +4356,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                 case ast::DeclKind::Lemma: {
                     check_prop_types_deep(inner->statement, {}, sig_table, diag);
                     const auto snap = diag.diagnostics().size();
-                    check_proof(*inner, module_env, kernel, diag, sig_table, instance_table, &struct_env);
+                    check_proof(*inner, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table);
                     const auto& all_diags = diag.diagnostics();
                     bool ok = true;
                     for (auto i = snap; i < all_diags.size(); ++i)
@@ -4233,7 +4396,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
         }
     }
-    return ModuleResult{std::move(module_env), std::move(instance_table)};
+    return ModuleResult{std::move(module_env), std::move(instance_table), std::move(pred_def_table)};
 }
 
 } // namespace
@@ -4267,6 +4430,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
     ast::FuncSigTable sig_table;
     InstanceTable instance_table;
     ast::StructEnv struct_env;
+    PredDefTable pred_def_table;
     std::set<std::filesystem::path> visited;
     if (!filename.empty())
         visited.insert(std::filesystem::weakly_canonical(file_path));
@@ -4293,6 +4457,9 @@ void Checker::check_content(const std::string& source, const std::string& filena
                 }
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
+                // AN8: merge imported predicate definitions.
+                for (auto& [pname, pentry] : imported.pred_defs)
+                    pred_def_table.insert_or_assign(pname, pentry);
             }
             break;
         }
@@ -4360,7 +4527,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                     }
                 } else if (inner->kind == ast::DeclKind::Theorem || inner->kind == ast::DeclKind::Lemma) {
                     check_prop_types_deep(inner->statement, {}, sig_table, diag_);
-                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
+                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
                     if (!diag_.hasErrors()) {
                         if (auto r = kernel.introduce_axiom(inner->statement)) {
                             module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
@@ -4389,8 +4556,11 @@ void Checker::check_content(const std::string& source, const std::string& filena
         case ast::DeclKind::Instance:
         default: {
             if (decl->kind == ast::DeclKind::Axiom) {
-                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                auto r = kernel.introduce_axiom(decl->statement);
+                const ast::Prop eff_stmt = pred_def_table.empty()
+                                           ? decl->statement
+                                           : unfold_preds(decl->statement, pred_def_table);
+                check_prop_types_deep(eff_stmt, {}, sig_table, diag_);
+                auto r = kernel.introduce_axiom(eff_stmt);
                 if (r) module_env.insert_or_assign(decl->name,
                                                     HypEntry{std::move(*r), EntryKind::Derived});
             } else if (decl->kind == ast::DeclKind::Definition) {
@@ -4434,10 +4604,18 @@ void Checker::check_content(const std::string& source, const std::string& filena
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) module_env.insert_or_assign(decl->name,
                                                         HypEntry{std::move(*r), EntryKind::Derived});
+                    // AN8: register predicate body if present.
+                    if (decl->def_body && !decl->is_abstract) {
+                        PredDefEntry entry;
+                        for (const auto& p : decl->params)
+                            entry.params.push_back(p.name);
+                        entry.body = *decl->def_body;
+                        pred_def_table[decl->name] = std::move(entry);
+                    }
                 }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
                 if (!diag_.hasErrors()) {
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) module_env.insert_or_assign(decl->name,
@@ -4476,6 +4654,7 @@ LspEnv Checker::check_content_lsp(const std::string& source,
     ast::FuncSigTable sig_table;
     InstanceTable instance_table;
     ast::StructEnv struct_env;
+    PredDefTable pred_def_table;
     std::set<std::filesystem::path> visited;
     if (!filename.empty())
         visited.insert(std::filesystem::weakly_canonical(file_path));
@@ -4509,6 +4688,9 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                 }
                 for (auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
+                // AN8: merge imported predicate definitions.
+                for (auto& [pname, pentry] : imported.pred_defs)
+                    pred_def_table.insert_or_assign(pname, pentry);
             }
             break;
         }
@@ -4552,10 +4734,13 @@ LspEnv Checker::check_content_lsp(const std::string& source,
         case ast::DeclKind::Instance:
         default: {
             if (decl->kind == ast::DeclKind::Axiom) {
-                check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                auto r = kernel.introduce_axiom(decl->statement);
+                const ast::Prop eff_stmt = pred_def_table.empty()
+                                           ? decl->statement
+                                           : unfold_preds(decl->statement, pred_def_table);
+                check_prop_types_deep(eff_stmt, {}, sig_table, diag_);
+                auto r = kernel.introduce_axiom(eff_stmt);
                 if (r) {
-                    record(decl->name, decl->statement, decl->loc);
+                    record(decl->name, eff_stmt, decl->loc);
                     module_env.insert_or_assign(decl->name,
                                                 HypEntry{std::move(*r), EntryKind::Derived});
                 }
@@ -4605,10 +4790,18 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                         module_env.insert_or_assign(decl->name,
                                                     HypEntry{std::move(*r), EntryKind::Derived});
                     }
+                    // AN8: register predicate body if present.
+                    if (decl->def_body && !decl->is_abstract) {
+                        PredDefEntry entry;
+                        for (const auto& p : decl->params)
+                            entry.params.push_back(p.name);
+                        entry.body = *decl->def_body;
+                        pred_def_table[decl->name] = std::move(entry);
+                    }
                 }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
                 if (!diag_.hasErrors()) {
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) {
