@@ -11,6 +11,11 @@ definition ConvergesTo (a : Nat -> Real) (L : Real) : Prop :=
     for all eps : Real, eps > 0 ->
         there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
 
+-- Equality reflexivity for real sequence terms: a[k] = a[k].
+-- Used to prove AllMatch(a, a, id) when constructing the identity subsequence.
+axiom seq_eq_refl :
+    for all a : Nat -> Real, for all k : Nat, a[k] = a[k]
+
 -- Every convergent sequence is bounded.
 axiom convergent_bounded :
     for all a : Nat -> Real, for all L : Real,

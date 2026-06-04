@@ -37,9 +37,42 @@ axiom subseq_converges :
     for all a : Nat -> Real, for all b : Nat -> Real, for all L : Real,
         ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
 
--- The identity sequence id_seq(n) = n witnesses that a is a subsequence of itself.
-axiom identity_is_subseq :
+-- Helper: the identity function fun k => k is strictly increasing.
+-- StrictlyIncreasing(fun k => k) unfolds to: ∀ m n, m < n → m < n.
+private lemma id_strictly_increasing : StrictlyIncreasing(fun k : Nat => k)
+proof
+  take m : Nat
+  take n : Nat
+  suppose h : m < n
+  have impl : m < n -> m < n by h and h
+  have forall_n : for all n : Nat, m < n -> m < n by impl
+  then for all m : Nat, for all n : Nat, m < n -> m < n by forall_n
+end
+
+-- Every sequence is a subsequence of itself (via the identity index function).
+-- The witness is phi = fun k => k; both StrictlyIncreasing and AllMatch are verified.
+theorem identity_is_subseq :
     for all a : Nat -> Real, IsSubsequence(a, a)
+proof
+  take a : Nat -> Real
+  have h_si : StrictlyIncreasing(fun k : Nat => k) by id_strictly_increasing
+  have h_am : AllMatch(a, a, fun k : Nat => k)
+    proof
+      take k : Nat
+      have hr1 : for all k : Nat, a[k] = a[k] by seq_eq_refl at a
+      have hr : a[k] = a[k] by hr1 at k
+      then for all k : Nat, a[k] = a[k] by hr
+    end
+  have h_both : StrictlyIncreasing(fun k : Nat => k) and AllMatch(a, a, fun k : Nat => k)
+                by h_si and h_am
+  have h_sub : IsSubsequence(a, a)
+    proof
+      then there exists phi : Nat -> Nat,
+               StrictlyIncreasing(phi) and AllMatch(a, a, phi)
+           by h_both at fun k : Nat => k
+    end
+  then for all a : Nat -> Real, IsSubsequence(a, a) by h_sub
+end
 
 -- Biconditional: a_n -> L iff every subsequence of a converges to L.
 -- Forward: subseq_converges above.
