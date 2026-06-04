@@ -32,10 +32,83 @@ definition IsSubsequence (a : Nat -> Real) (b : Nat -> Real) : Prop :=
         StrictlyIncreasing(phi) and AllMatch(a, b, phi)
 
 -- Forward direction: if a_n -> L and b is a subsequence of a, then b_k -> L.
--- Uses the index growth lemma: phi(k) >= k >= N whenever k >= N.
-axiom subseq_converges :
+-- Proof: extract phi via ExistsElim on IsSubsequence; use index_grows to get phi(n)>=N
+-- when n>=N; apply AllMatch to rewrite |b[n]-L| = |a[phi(n)]-L| < eps via linarith.
+theorem subseq_converges :
     for all a : Nat -> Real, for all b : Nat -> Real, for all L : Real,
         ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+proof
+  take a : Nat -> Real
+  take b : Nat -> Real
+  take L : Real
+  suppose h_conv : ConvergesTo(a, L)
+  suppose h_sub  : IsSubsequence(a, b)
+  obtain phi_result from h_sub
+    case phi , h_both : (for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)) and
+                        (for all k : Nat, b[k] = a[phi(k)]) =>
+      have h_am : for all k : Nat, b[k] = a[phi(k)] by h_both
+      have h_si_raw : for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n) by h_both
+      have ig_impl : (for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)) ->
+                         for all k : Nat, phi(k) >= k
+                     by index_grows at phi
+      have ig : for all k : Nat, phi(k) >= k by ig_impl and h_si_raw
+      have conv_b :
+          for all eps : Real, eps > 0 ->
+              there exists N : Nat, for all n : Nat, n >= N -> |b[n] - L| < eps
+        proof
+          take eps : Real
+          suppose h_eps : eps > 0
+          have h_cv : eps > 0 ->
+                          there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
+                      by h_conv at eps
+          have h_Nex : there exists N : Nat, for all n : Nat, n >= N -> |a[n] - L| < eps
+                       by h_cv and h_eps
+          obtain N_res from h_Nex
+            case N , h_N : for all n : Nat, n >= N -> |a[n] - L| < eps =>
+              have inner : for all n : Nat, n >= N -> |b[n] - L| < eps
+                proof
+                  take n : Nat
+                  suppose h_n : n >= N
+                  have h_pn : phi(n) >= n by ig at n
+                  have h_pN : phi(n) >= N by linarith
+                  have h_ip : phi(n) >= N -> |a[phi(n)] - L| < eps by h_N at phi(n)
+                  have h_ap : |a[phi(n)] - L| < eps by h_ip and h_pN
+                  have h_eq : b[n] = a[phi(n)] by h_am at n
+                  have h_bn : |b[n] - L| < eps by linarith
+                  have himp : n >= N -> |b[n] - L| < eps by h_n and h_bn
+                  have hfa : for all n : Nat, n >= N -> |b[n] - L| < eps by himp
+                  then for all n : Nat, n >= N -> |b[n] - L| < eps by hfa
+                end
+              then there exists N : Nat, for all n : Nat, n >= N -> |b[n] - L| < eps
+                   by inner at N
+            done
+          have h_impl : eps > 0 ->
+                            there exists N : Nat, for all n : Nat, n >= N -> |b[n] - L| < eps
+                        by h_eps and N_res
+          have h_fa : for all eps : Real, eps > 0 ->
+                          there exists N : Nat, for all n : Nat, n >= N -> |b[n] - L| < eps
+                      by h_impl
+          then for all eps : Real, eps > 0 ->
+                   there exists N : Nat, for all n : Nat, n >= N -> |b[n] - L| < eps
+               by h_fa
+        end
+      have impl2 : IsSubsequence(a, b) -> ConvergesTo(b, L) by h_sub and conv_b
+      have impl3 : ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                   by h_conv and impl2
+      have fa_L : for all L : Real,
+                      ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                  by impl3
+      have fa_bL : for all b : Nat -> Real, for all L : Real,
+                       ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                   by fa_L
+      have fa_abL : for all a : Nat -> Real, for all b : Nat -> Real, for all L : Real,
+                        ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+                    by fa_bL
+      then for all a : Nat -> Real, for all b : Nat -> Real, for all L : Real,
+               ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+           by fa_abL
+    done
+end
 
 -- Helper: the identity function fun k => k is strictly increasing.
 -- StrictlyIncreasing(fun k => k) unfolds to: ∀ m n, m < n → m < n.
