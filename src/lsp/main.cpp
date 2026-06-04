@@ -7,6 +7,8 @@
 //              re-run checker -> emit textDocument/publishDiagnostics
 //   Phase 2: textDocument/hover ->
 //              look up identifier in module-level LspEnv, return proposition
+//   Phase 3: textDocument/definition ->
+//              look up identifier intro location, return LSP Location
 //
 // No external JSON library required -- we do minimal hand-rolled JSON
 // parsing and generation for the small subset needed.
@@ -14,6 +16,11 @@
 // -- Hover protocol (LSP2) ----------------------------------------------------
 // Request:  textDocument/hover  { textDocument: {uri}, position: {line, character} }
 // Response: { result: { contents: { kind: "markdown", value: "**name** : prop" } } }
+//           or { result: null } if not found.
+//
+// -- Definition protocol (LSP3) -----------------------------------------------
+// Request:  textDocument/definition  { textDocument: {uri}, position: {line, character} }
+// Response: { result: { uri, range: { start: {line,char}, end: {line,char} } } }
 //           or { result: null } if not found.
 // -----------------------------------------------------------------------------
 
@@ -164,6 +171,21 @@ static std::string uri_to_path(const std::string& uri) {
     return decoded;
 }
 
+// Convert a filesystem path back to a file:// URI (needed for go-to-definition
+// when the intro location is in a different file from the one being edited).
+static std::string path_to_uri(const std::string& path) {
+    std::string uri = "file://";
+#ifdef _WIN32
+    // Windows: backslash -> forward slash; prepend / for drive letter
+    uri += '/';
+    for (char c : path)
+        uri += (c == '\\') ? '/' : c;
+#else
+    uri += path;
+#endif
+    return uri;
+}
+
 // -- Diagnostic -> LSP JSON ---------------------------------------------------
 
 static std::string severity_to_lsp(forall::diag::Severity sev) {
@@ -297,7 +319,8 @@ int main() {
             resp << R"({"jsonrpc":"2.0","id":)" << id
                  << R"(,"result":{"capabilities":{)"
                  << R"("textDocumentSync":1,)"
-                 << R"("hoverProvider":true)"
+                 << R"("hoverProvider":true,)"
+                 << R"("definitionProvider":true)"
                  << R"(},"serverInfo":{"name":"forall-lsp","version":"0.2.0"}}})";
             write_message(resp.str());
 
@@ -356,6 +379,46 @@ int main() {
                          << json_escape(name) << "** : "
                          << json_escape(eit->second.prop_text)
                          << R"("}})";
+                } else {
+                    resp << R"(,"result":null)";
+                }
+            } else {
+                resp << R"(,"result":null)";
+            }
+            resp << "}";
+            write_message(resp.str());
+
+        } else if (method == "textDocument/definition") {
+            // LSP3: go-to-definition -> return the intro location for the identifier.
+            const std::string uri = extract_uri(json);
+            auto [line1, col1] = extract_position(json);
+
+            std::ostringstream resp;
+            resp << R"({"jsonrpc":"2.0","id":)" << id;
+
+            auto it = documents.find(uri);
+            if (it != documents.end() && line1 > 0 && col1 > 0) {
+                const std::string name = find_name_at(it->second.source,
+                                                       uri_to_path(uri),
+                                                       line1, col1);
+                auto eit = it->second.lsp_env.find(name);
+                if (!name.empty() && eit != it->second.lsp_env.end()) {
+                    const auto& loc = eit->second.intro_loc;
+                    if (loc.line > 0) {
+                        // Convert 1-based SourceLocation to 0-based LSP range.
+                        uint32_t def_line = loc.line - 1;
+                        uint32_t def_col  = loc.col  > 0 ? loc.col - 1 : 0;
+                        const std::string def_uri = loc.file.empty() ? uri
+                                                  : path_to_uri(loc.file);
+                        resp << R"(,"result":{"uri":")" << json_escape(def_uri)
+                             << R"(","range":{"start":{"line":)" << def_line
+                             << R"(,"character":)" << def_col
+                             << R"(},"end":{"line":)" << def_line
+                             << R"(,"character":)" << (def_col + static_cast<uint32_t>(name.size()))
+                             << R"(}}})";
+                    } else {
+                        resp << R"(,"result":null)";
+                    }
                 } else {
                     resp << R"(,"result":null)";
                 }
