@@ -359,7 +359,7 @@ infer_rule(const ast::Prop& conc,
 std::optional<RuleApp>
 infer_quantifier_rule(const ast::Prop& conc,
                       const std::vector<const HypEntry*>& es,
-                      const ast::Expr* /*witness*/,
+                      const ast::Expr* witness,
                       diag::DiagnosticEngine& diag,
                       const diag::SourceLocation& loc)
 {
@@ -372,13 +372,30 @@ infer_quantifier_rule(const ast::Prop& conc,
     }
     const auto& p0 = es[0]->judgment.prop();
 
-    // Check conclusion first: if the conclusion is ∃x.P, this is ExistsIntro regardless
-    // of whether the premise is also universal.
+    // Resolve the ambiguity when both ForallElim and ExistsIntro could apply:
+    // premise is ∀x.P  AND  conclusion is ∃y.Q.
+    // Try ForallElim first: if subst(body, var, witness) == conclusion, use ForallElim.
+    // Otherwise fall through to ExistsIntro.
+    if (const auto* fa = std::get_if<ast::PropForall>(&p0.node)) {
+        if (witness) {
+            const ast::Prop forall_conc = ast::beta_reduce(ast::subst(*fa->body, fa->var, *witness));
+            if (ast::defn_eq(forall_conc, conc))
+                return RuleApp{R::ForallElim, {es[0]->judgment}};
+        } else {
+            return RuleApp{R::ForallElim, {es[0]->judgment}};
+        }
+    }
+
     if (std::get_if<ast::PropExists>(&conc.node))
         return RuleApp{R::ExistsIntro, {es[0]->judgment}};
 
-    if (std::get_if<ast::PropForall>(&p0.node))
-        return RuleApp{R::ForallElim, {es[0]->judgment}};
+    // Final fallback: premise is ∀ but the ForallElim subst didn't match the conclusion.
+    // Emit a helpful error.
+    if (std::get_if<ast::PropForall>(&p0.node)) {
+        diag.emit({diag::Severity::Error, loc,
+                   "ForallElim: conclusion does not match the body of ∀ after substitution"});
+        return std::nullopt;
+    }
 
     diag.emit({diag::Severity::Error, loc,
                "'at' witness is only valid when the hypothesis is ∀x.P (ForallElim) "
@@ -1075,7 +1092,12 @@ bool check_obtain_step(const ast::ObtainStep& s,
         return false;
     }
 
-    const auto& Q = std::get<ast::ThenStep>(arm_last_then->node).prop;
+    const auto& Q_raw = std::get<ast::ThenStep>(arm_last_then->node).prop;
+    // Normalise Q: apply predicate unfolding so the stored result matches the
+    // unfolded goal that the outer proof validator compares against.
+    const ast::Prop Q = (ctx.pred_defs && !ctx.pred_defs->empty())
+                        ? unfold_preds(ast::beta_reduce(Q_raw), *ctx.pred_defs)
+                        : ast::beta_reduce(Q_raw);
 
     // 5. ∃-elim side condition: s.var must not appear free in Q
     if (ast::free_vars(Q).count(s.var)) {
