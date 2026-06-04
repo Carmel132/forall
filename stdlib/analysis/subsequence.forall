@@ -1,0 +1,47 @@
+import "sequence.forall"
+
+-- A strictly increasing function phi : Nat -> Nat.
+-- phi(m) < phi(n) whenever m < n.
+axiom StrictlyIncreasing_def :
+    for all phi : Nat -> Nat,
+        StrictlyIncreasing(phi) ->
+            for all m : Nat, for all n : Nat, m < n -> phi(m) < phi(n)
+
+-- Index growth lemma: a strictly increasing phi satisfies phi(k) >= k.
+-- Proof by induction: phi(0) >= 0; if phi(k) >= k then phi(k+1) > phi(k) >= k,
+-- so phi(k+1) >= k+1.
+axiom index_grows :
+    for all phi : Nat -> Nat,
+        StrictlyIncreasing(phi) -> for all k : Nat, phi(k) >= k
+
+-- IsSubsequence(a, b): b is a subsequence of a.
+-- There exists a strictly increasing phi such that b[k] = a[phi(k)] for all k.
+axiom IsSubsequence_def :
+    for all a : Nat -> Real, for all b : Nat -> Real,
+        IsSubsequence(a, b) ->
+            there exists phi : Nat -> Nat,
+                StrictlyIncreasing(phi) and AllMatch(a, b, phi)
+
+-- AllMatch(a, b, phi): b[k] = a[phi(k)] for every k.
+axiom AllMatch_def :
+    for all a : Nat -> Real, for all b : Nat -> Real, for all phi : Nat -> Nat,
+        AllMatch(a, b, phi) -> for all k : Nat, b[k] = a[phi(k)]
+
+-- Forward direction: if a_n -> L and b is a subsequence of a, then b_k -> L.
+-- Uses the index growth lemma: phi(k) >= k >= N whenever k >= N.
+axiom subseq_converges :
+    for all a : Nat -> Real, for all b : Nat -> Real, for all L : Real,
+        ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+
+-- The identity sequence id_seq(n) = n witnesses that a is a subsequence of itself.
+axiom identity_is_subseq :
+    for all a : Nat -> Real, IsSubsequence(a, a)
+
+-- Biconditional: a_n -> L iff every subsequence of a converges to L.
+-- Forward: subseq_converges above.
+-- Backward: a itself is a subsequence (identity_is_subseq), so SubseqConverges -> SeqConverges.
+axiom seq_iff_subseq :
+    for all a : Nat -> Real, for all L : Real,
+        ConvergesTo(a, L) ->
+            for all b : Nat -> Real,
+                IsSubsequence(a, b) -> ConvergesTo(b, L)
