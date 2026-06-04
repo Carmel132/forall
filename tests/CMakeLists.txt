@@ -42,3 +42,19 @@ add_test(NAME e2e_algebra_real
         --stdlib "${CMAKE_SOURCE_DIR}/stdlib/algebra"
         "${CMAKE_SOURCE_DIR}/stdlib/algebra/real.forall"
 )
+add_test(NAME e2e_analysis_sequence
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/analysis/sequence.forall"
+)
+add_test(NAME e2e_analysis_subsequence
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/analysis/subsequence.forall"
+)
+add_test(NAME e2e_analysis_limits
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/analysis/limits.forall"
+)
+add_test(NAME e2e_analysis_metric_space
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/analysis/metric_space.forall"
+)
