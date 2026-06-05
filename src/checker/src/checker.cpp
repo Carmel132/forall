@@ -62,7 +62,9 @@ using InstanceTable = std::map<std::string, std::set<std::string>>;
 
 class ScopeStack {
     std::vector<std::map<std::string, HypEntry>> frames_;
-    std::set<std::string> taken_vars_; // variables introduced via TakeStep
+    // Variables introduced via TakeStep, in introduction order, with optional type.
+    // Stored as a vector (not set) to preserve order for ∀-wrapping.
+    std::vector<std::pair<std::string, std::optional<ast::TypeNode>>> taken_vars_;
 public:
     // Seed from the module-level flat environment.
     explicit ScopeStack(const HypEnv& base) : frames_{base, {}} {}
@@ -90,13 +92,25 @@ public:
         return nullptr;
     }
 
-    // Record a variable introduced via TakeStep.
-    void take_var(const std::string& var) { taken_vars_.insert(var); }
+    // Record a variable introduced via TakeStep (with its optional type annotation).
+    void take_var(const std::string& var,
+                  std::optional<ast::TypeNode> type = std::nullopt) {
+        // Only add if not already present (duplicate take is an error caught elsewhere).
+        for (const auto& [v, _] : taken_vars_)
+            if (v == var) return;
+        taken_vars_.emplace_back(var, std::move(type));
+    }
 
     // Returns true if var was introduced via TakeStep in this scope.
     [[nodiscard]] bool is_taken(const std::string& var) const {
-        return taken_vars_.count(var) > 0;
+        for (const auto& [v, _] : taken_vars_)
+            if (v == var) return true;
+        return false;
     }
+
+    // Returns the ordered list of taken variables (name, optional type).
+    [[nodiscard]] const std::vector<std::pair<std::string, std::optional<ast::TypeNode>>>&
+    taken_vars() const { return taken_vars_; }
 
     // Calls f(name, entry) for every Assumption-kind entry across all frames.
     // Used for the ∀-intro freshness check and auto-discharge.
@@ -1412,7 +1426,7 @@ bool check_step(const ast::Step& step,
                 }
             });
             if (!fresh) return false;
-            env.take_var(s.var);
+            env.take_var(s.var, s.type);
             return true;
         }
 
@@ -2783,21 +2797,33 @@ void check_proof(const ast::Decl& decl,
                 diag.emit({diag::Severity::Error, last_concluding->loc,
                            "proof concludes with wrong proposition"});
             } else {
-                // Build the wrapped conclusion by threading through all outstanding
-                // Assumption-kind hypotheses in scope (introduced via suppose).
-                // Each one wraps the result in one layer of ImplIntro:
-                //   A₁ → A₂ → ... → (induction result)
-                // must equal unfolded_statement (pred-def-unfolded theorem statement).
+                // Build the wrapped conclusion:
+                //  1. Start with the induction result ∀ var : T, body(var).
+                //  2. Wrap each outstanding Assumption (from suppose) as an implication
+                //     antecedent (innermost first, so last-assumed wraps tightest).
+                //  3. Wrap each outstanding taken variable (from take) as a ∀ binder
+                //     (outermost first, i.e. first-taken is the outermost ∀).
+                // The result must equal unfolded_statement.
                 ast::Prop wrapped = it->judgment.prop();
+
+                // Step 2: wrap Assumptions in reverse order (last-assumed → innermost).
                 std::vector<ast::Prop> assumptions;
                 env.for_each_assumption([&](const std::string&, const HypEntry& e) {
                     assumptions.push_back(e.judgment.prop());
                 });
-                // Wrap in reverse order (last assumption is innermost antecedent).
                 for (auto rit = assumptions.rbegin(); rit != assumptions.rend(); ++rit) {
                     wrapped = ast::Prop{last_concluding->loc,
                         ast::PropImpl{ast::make_prop(*rit), ast::make_prop(wrapped)}};
                 }
+
+                // Step 3: wrap taken variables in reverse order (last-taken → innermost ∀).
+                const auto& tvars = env.taken_vars();
+                for (auto rit = tvars.rbegin(); rit != tvars.rend(); ++rit) {
+                    wrapped = ast::Prop{last_concluding->loc,
+                        ast::PropForall{rit->first, rit->second,
+                                        ast::make_prop(wrapped)}};
+                }
+
                 if (!(wrapped == unfolded_statement))
                     diag.emit({diag::Severity::Error, last_concluding->loc,
                                "proof concludes with wrong proposition"});
