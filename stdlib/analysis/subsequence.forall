@@ -148,10 +148,44 @@ proof
 end
 
 -- Biconditional: a_n -> L iff every subsequence of a converges to L.
--- Forward: subseq_converges above.
--- Backward: a itself is a subsequence (identity_is_subseq), so SubseqConverges -> SeqConverges.
-axiom seq_iff_subseq :
+-- Follows directly from subseq_converges with the quantifier order rearranged.
+theorem seq_iff_subseq :
     for all a : Nat -> Real, for all L : Real,
         ConvergesTo(a, L) ->
             for all b : Nat -> Real,
                 IsSubsequence(a, b) -> ConvergesTo(b, L)
+proof
+  take a : Nat -> Real
+  take L : Real
+  suppose h_conv : ConvergesTo(a, L)
+  take b : Nat -> Real
+  suppose h_sub : IsSubsequence(a, b)
+  have sc1 : for all b : Nat -> Real, for all L : Real,
+                 ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by subseq_converges at a
+  have sc2 : for all L : Real,
+                 ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by sc1 at b
+  have sc3 : ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by sc2 at L
+  have sc4 : IsSubsequence(a, b) -> ConvergesTo(b, L) by sc3 and h_conv
+  have result : ConvergesTo(b, L) by sc4 and h_sub
+  have impl1 : IsSubsequence(a, b) -> ConvergesTo(b, L) by h_sub and result
+  have impl2 : for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L) by impl1
+  have impl3 : ConvergesTo(a, L) ->
+                   for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+               by h_conv and impl2
+  have fa_L : for all L : Real,
+                  ConvergesTo(a, L) ->
+                      for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+              by impl3
+  have fa_aL : for all a : Nat -> Real, for all L : Real,
+                   ConvergesTo(a, L) ->
+                       for all b : Nat -> Real, IsSubsequence(a, b) -> ConvergesTo(b, L)
+               by fa_L
+  then for all a : Nat -> Real, for all L : Real,
+           ConvergesTo(a, L) ->
+               for all b : Nat -> Real,
+                   IsSubsequence(a, b) -> ConvergesTo(b, L)
+       by fa_aL
+end
