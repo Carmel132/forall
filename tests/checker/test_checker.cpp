@@ -3749,6 +3749,55 @@ end
     }();
 }
 
+// take + induction closes ∀ x, ∀ k, P(x, k) automatically.
+// The conclusion validator must wrap both taken vars (∀) around the induction result.
+TEST(CheckerTest, InductionWithTake) {
+    auto diag = run_checker("induction_take", R"(
+axiom step_ax : for all x : Nat, for all n : Nat, P(x, n) -> P(x, succ(n))
+axiom base_ax : for all x : Nat, P(x, 0)
+theorem all_xn : for all x : Nat, for all n : Nat, P(x, n)
+proof
+  take x : Nat
+  induction result on n : P(x, n)
+    base:
+      then P(x, 0) by base_ax at x
+    inductive:
+      have step_x : for all n : Nat, P(x, n) -> P(x, succ(n)) by step_ax at x
+      have step : P(x, n) -> P(x, succ(n)) by step_x at n
+      then P(x, succ(n)) by step and ih
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// take + suppose + induction closes ∀ x, A → ∀ k, P(x, k) automatically.
+TEST(CheckerTest, InductionWithTakeSupposeAndForall) {
+    auto diag = run_checker("induction_take_suppose_forall", R"(
+axiom step_ax : for all n : Nat, P(n) -> P(succ(n))
+axiom base_ax : P(0)
+theorem all_p : for all x : Nat, x >= 0 -> for all n : Nat, P(n)
+proof
+  take x : Nat
+  suppose h_x : x >= 0
+  induction result on n : P(n)
+    base:
+      then P(0) by base_ax
+    inductive:
+      have step : P(n) -> P(succ(n)) by step_ax at n
+      then P(succ(n)) by step and ih
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // induction with a preceding suppose closes the implication automatically.
 TEST(CheckerTest, InductionAfterSuppose) {
     auto diag = run_checker("an6_induction_after_suppose", R"(
