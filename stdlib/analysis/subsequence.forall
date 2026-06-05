@@ -9,15 +9,25 @@ definition StrictlyIncreasing (phi : Nat -> Nat) : Prop :=
 
 -- Index growth lemma: a strictly increasing phi satisfies phi(k) >= k.
 -- Proved by induction on k.
---
--- Because the induction validator cannot yet combine ForallIntro (take) with
--- assumption-wrapping in a single concluding step, we state this as an axiom
--- that holds for any fixed phi; callers instantiate via ForallElim on this axiom.
--- A future checker improvement (InductionStep + take interaction) will allow
--- replacing this with a direct ∀-quantified theorem.
-axiom index_grows :
+-- Base: phi(0) >= 0 by omega.
+-- Inductive: phi(k) >= k and phi(k) < phi(succ(k)) (from StrictlyIncreasing)
+--            give phi(succ(k)) >= succ(k) by linarith.
+theorem index_grows :
     for all phi : Nat -> Nat,
         StrictlyIncreasing(phi) -> for all k : Nat, phi(k) >= k
+proof
+  take phi : Nat -> Nat
+  suppose h_si : StrictlyIncreasing(phi)
+  induction result on k : phi(k) >= k
+    base:
+      then phi(0) >= 0 by omega
+    inductive:
+      have h_lt : k < succ(k) by lt_succ at k
+      have si_k : for all n : Nat, k < n -> phi(k) < phi(n) by h_si at k
+      have si_kk : k < succ(k) -> phi(k) < phi(succ(k)) by si_k at succ(k)
+      have h_strict : phi(k) < phi(succ(k)) by si_kk and h_lt
+      then phi(succ(k)) >= succ(k) by linarith
+end
 
 -- AllMatch(a, b, phi): b[k] = a[phi(k)] for every k.
 -- Defined as a predicate for automatic unfolding.
