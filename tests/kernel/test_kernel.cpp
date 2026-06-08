@@ -631,3 +631,44 @@ TEST(KernelTest, Congr_FunctionApplication) {
     auto r = k.apply(kernel::Rule::Congr, prem, conc);
     EXPECT_TRUE(r.has_value());
 }
+
+TEST(KernelTest, EqSubst_BasicPropositional) {
+    kernel::Kernel k;
+    // h_eq : a = b,   h_pb : P(b)   ⊢   P(a)
+    // where P(x) = (x = x)  (reflexivity predicate, to make substitution visible)
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    // P(b) = (b = b)
+    Prop pb = prop_eq(expr_var("b"), expr_var("b"));
+    auto jpb = k.introduce_axiom(pb); ASSERT_TRUE(jpb);
+    // P(a) = (a = a)
+    Prop pa = prop_eq(expr_var("a"), expr_var("a"));
+    // EqSubst: [a=b, P(b)] ⊢ P(a)
+    std::vector<kernel::Judgment> prem{*jab, *jpb};
+    auto r = k.apply(kernel::Rule::EqSubst, prem, pa);
+    EXPECT_TRUE(r.has_value());
+}
+
+TEST(KernelTest, EqSubst_WrongArity) {
+    kernel::Kernel k;
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    Prop pa = prop_eq(expr_var("a"), expr_var("a"));
+    // Only one premise — should fail
+    std::vector<kernel::Judgment> prem{*jab};
+    auto r = k.apply(kernel::Rule::EqSubst, prem, pa);
+    EXPECT_FALSE(r.has_value());
+}
+
+TEST(KernelTest, EqSubst_ConclusionMismatch) {
+    kernel::Kernel k;
+    // h_eq : a = b,   h_pb : P(b)   but conclusion is P(c) — should fail
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    Prop pb = prop_eq(expr_var("b"), expr_var("b"));
+    auto jpb = k.introduce_axiom(pb); ASSERT_TRUE(jpb);
+    Prop pc = prop_eq(expr_var("c"), expr_var("c"));  // P(c), not P(a)
+    std::vector<kernel::Judgment> prem{*jab, *jpb};
+    auto r = k.apply(kernel::Rule::EqSubst, prem, pc);
+    EXPECT_FALSE(r.has_value());
+}

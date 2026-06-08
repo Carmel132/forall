@@ -4531,3 +4531,45 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+TEST(CheckerTest, EqSubst_HaveStep) {
+    // have h_pa : a = a  by eq_subst h_eq and h_pb
+    // where h_eq : a = b, h_pb : b = b (reflexivity for b)
+    auto diag = run_checker("eq_subst_have", R"(
+axiom h_eq : a = b
+axiom h_pb : b = b
+
+theorem t : a = a
+proof
+  have h_pa : a = a by eq_subst h_eq and h_pb
+  then a = a by h_pa
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, EqSubst_ThenStep) {
+    auto diag = run_checker("eq_subst_then", R"(
+axiom h_eq : a = b
+axiom h_pb : b = b
+
+theorem t : a = a
+proof
+  then a = a by eq_subst h_eq and h_pb
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, EqSubst_WrongPremises) {
+    // Only one premise — should error
+    auto diag = run_checker("eq_subst_wrong_premises", R"(
+axiom h_eq : a = b
+
+theorem t : a = a
+proof
+  then a = a by eq_subst h_eq
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
