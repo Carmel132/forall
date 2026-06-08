@@ -308,20 +308,25 @@ struct ContradictionStep {
 };
 
 // obtain <name> from <ref>
-//   case <var> [: <type>] , <hyp_name> : <hyp_prop> => <steps...> [ "done" ]
+//   case <var> [: <type>] , <hyp_name> : <hyp_prop> [, <hyp_name2> : <hyp_prop2> ...] => <steps...> [ "done" ]
 //
 // Desugars to ExistsElim.  <ref> must be ∃ var, P; the checker verifies:
 //   - <var> is fresh (not free in any undischarged assumption)
-//   - <hyp_prop> == subst(∃-body, ∃-var, ExprVar{var})
+//   - hyp_bindings[0].second == subst(∃-body, ∃-var, ExprVar{var})
+//   - extra bindings destructure conjuncts of the body via AndElimL/R
 //   - sub-proof concludes some Q where <var> ∉ free(Q)
 // Without "done" it must be the last step; with "done" subsequent steps may follow.
+struct ObtainHypBinding {
+    std::string name;
+    Prop        prop;
+};
+
 struct ObtainStep {
-    std::string                        name;       // label for the result in scope
-    std::string                        exists_ref; // ref to the ∃ x, P hypothesis
-    std::string                        var;        // fresh variable introduced
-    std::optional<TypeNode>            type;       // optional type annotation for var
-    std::string                        hyp_name;   // name for P(var) hypothesis
-    Prop                               hyp_prop;   // stated proposition P(var)
+    std::string                        name;         // label for the result in scope
+    std::string                        exists_ref;   // ref to the ∃ x, P hypothesis
+    std::string                        var;          // fresh variable introduced
+    std::optional<TypeNode>            type;         // optional type annotation for var
+    std::vector<ObtainHypBinding>      hyp_bindings; // ≥1 bindings; extras destructure conjuncts
     std::vector<std::unique_ptr<Step>> steps;
 };
 
