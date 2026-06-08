@@ -39,6 +39,8 @@ namespace forall::kernel {
 //   Trans : Γ ⊢ a = b,  Γ ⊢ b = c                           →  Γ ⊢ a = c
 //   Congr : Γ ⊢ a = b                                        →  Γ ⊢ f(a) = f(b)
 //           (conclusion lhs/rhs must differ exactly by replacing b with a)
+//   EqSubst : Γ ⊢ a = b,  Γ ⊢ P(b)                          →  Γ ⊢ P(a)
+//           (substitution of equals; `rewrite h` conclusion closure rule)
 //
 // Proof irrelevance:
 //   ProofIrrel : Γ ⊢ P,  Γ ⊢ P                             →  Γ ⊢ P
@@ -72,6 +74,7 @@ enum class Rule {
     ExistsElim,
     NatInduction,
     Refl, Symm, Trans, Congr,
+    EqSubst,
     ProofIrrel,
     PropExt,
 };

@@ -369,6 +369,25 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── EqSubst: substitution of equals in propositions ─────────────────────
+    // Premises: [0] h : a = b,  [1] proof_P_b : P(b)
+    // Conclusion: P(a)   (the conclusion with b replaced back by a)
+    // Verified by: replacing a with b in the conclusion yields the second premise.
+    // This is the "rewrite" closure rule: once `rewrite h` has produced a proof
+    // of the rewritten goal P(b), EqSubst certifies the original goal P(a).
+    case Rule::EqSubst: {
+        if (premises.size() != 2) return wrong_arity(2);
+        const auto* eq = std::get_if<ast::PropRel>(&premises[0].prop().node);
+        if (!eq || eq->op != ast::RelOp::Eq)
+            return mismatch("EqSubst: first premise must be a = b");
+        // Replace all occurrences of a (lhs) with b (rhs) in the conclusion.
+        // The result must equal the second premise.
+        const ast::Prop subst_check = ast::subst_expr(conclusion, *eq->lhs, *eq->rhs);
+        if (!props_eq(subst_check, premises[1].prop()))
+            return mismatch("EqSubst: substituting lhs→rhs in conclusion does not yield second premise");
+        return make(conclusion);
+    }
+
     // ── ProofIrrel: two proofs of the same proposition are interchangeable ────
     // Given two Judgments certifying the same Prop, certify that Prop.
     // In our LCF design this is already implicit (Judgment carries no proof
