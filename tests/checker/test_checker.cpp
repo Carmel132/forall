@@ -4668,3 +4668,117 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// Prove P ∩ Q ⊆ P from inter_def and subset_def axioms using ForallElim.
+TEST(CheckerTest, SetTheory_InterSubsetLeft) {
+    auto diag = run_checker("set_theory_inter_subset_left", R"(
+axiom inter_def : for all T : Type, for all A : Set T, for all B : Set T, for all x : T,
+                    x in A inter B iff (x in A and x in B)
+axiom subset_def : for all T : Type, for all A : Set T, for all B : Set T,
+                    A subseteq B iff (for all x : T, x in A implies x in B)
+
+theorem inter_subset_left :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    P inter Q subseteq P
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have id1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A inter B iff (x in A and x in B)
+             by inter_def at T
+  have id2 : for all B : Set T, for all x : T,
+               x in P inter B iff (x in P and x in B)
+             by id1 at P
+  have id3 : for all x : T,
+               x in P inter Q iff (x in P and x in Q)
+             by id2 at Q
+  have mem_dir : for all x : T, x in (P inter Q) implies x in P
+  proof
+    take x : T
+    suppose h_mem : x in P inter Q
+    have id4 : x in P inter Q iff (x in P and x in Q) by id3 at x
+    have fwd  : x in P inter Q -> (x in P and x in Q) by id4
+    have both : x in P and x in Q by fwd and h_mem
+    have h_p  : x in P by both
+    have impl : x in P inter Q -> x in P by h_mem and h_p
+    have fa   : for all x : T, x in P inter Q -> x in P by impl
+    then for all x : T, x in (P inter Q) implies x in P by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               (P inter Q) subseteq B iff (for all x : T, x in (P inter Q) implies x in B)
+             by sd1 at (P inter Q)
+  have sd3 : (P inter Q) subseteq P iff (for all x : T, x in (P inter Q) implies x in P)
+             by sd2 at P
+  have sd_back : (for all x : T, x in (P inter Q) implies x in P) ->
+                   (P inter Q) subseteq P
+                 by sd3
+  then P inter Q subseteq P by sd_back and mem_dir
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Prove P ⊆ P ∪ Q using union_def and subset_def axioms.
+TEST(CheckerTest, SetTheory_UnionSupsetLeft) {
+    auto diag = run_checker("set_theory_union_supset_left", R"(
+axiom union_def  : for all T : Type, for all A : Set T, for all B : Set T, for all x : T,
+                     x in A union B iff (x in A or x in B)
+axiom subset_def : for all T : Type, for all A : Set T, for all B : Set T,
+                     A subseteq B iff (for all x : T, x in A implies x in B)
+
+theorem union_supset_left :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    P subseteq P union Q
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have ud1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A union B iff (x in A or x in B)
+             by union_def at T
+  have ud2 : for all B : Set T, for all x : T,
+               x in P union B iff (x in P or x in B)
+             by ud1 at P
+  have ud3 : for all x : T,
+               x in P union Q iff (x in P or x in Q)
+             by ud2 at Q
+  have mem_dir : for all x : T, x in P implies x in (P union Q)
+  proof
+    take x : T
+    suppose h_p : x in P
+    have ud4  : x in P union Q iff (x in P or x in Q) by ud3 at x
+    have fwd  : (x in P or x in Q) -> x in P union Q by ud4
+    have h_or : x in P or x in Q by h_p
+    have h_pu : x in P union Q by fwd and h_or
+    have impl : x in P -> x in P union Q by h_p and h_pu
+    have fa   : for all x : T, x in P -> x in P union Q by impl
+    then for all x : T, x in P implies x in (P union Q) by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               P subseteq B iff (for all x : T, x in P implies x in B)
+             by sd1 at P
+  have sd3 : P subseteq (P union Q) iff (for all x : T, x in P implies x in (P union Q))
+             by sd2 at (P union Q)
+  have sd_back : (for all x : T, x in P implies x in (P union Q)) ->
+                   P subseteq (P union Q)
+                 by sd3
+  then P subseteq P union Q by sd_back and mem_dir
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
