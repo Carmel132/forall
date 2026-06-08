@@ -1,5 +1,7 @@
 import "ordered_field.forall"
 
+namespace Algebra
+
 -- Real numbers as an ordered field (axiomatic characterisation).
 -- Completeness is the distinguishing axiom separating R from Q.
 
@@ -33,3 +35,5 @@ axiom Real_completeness : for all S : Set Real,
 -- until the derivation machinery supports it).
 axiom Real_archimedean : for all x : Real,
     0 < x -> there exists n : Nat, n > x
+
+end Algebra

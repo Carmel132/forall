@@ -1,5 +1,7 @@
 import "field.forall"
 
+namespace Algebra
+
 structure OrderedField :=
   carrier : Type
   add     : carrier -> carrier -> carrier
@@ -37,3 +39,5 @@ structure OrderedField :=
   axiom lt_total       : for all a b : carrier,
       a < b or a = b or b < a
   axiom zero_lt_one    : zero < one
+
+end Algebra

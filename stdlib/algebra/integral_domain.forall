@@ -1,5 +1,7 @@
 import "comm_ring.forall"
 
+namespace Algebra
+
 structure IntegralDomain :=
   carrier : Type
   add     : carrier -> carrier -> carrier
@@ -25,3 +27,5 @@ structure IntegralDomain :=
   axiom no_zero_div    : for all a b : carrier,
       mul(a, b) = zero -> a = zero or b = zero
   axiom one_ne_zero    : not (one = zero)
+
+end Algebra

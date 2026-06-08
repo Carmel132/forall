@@ -1,5 +1,7 @@
 import "semigroup.forall"
 
+namespace Algebra
+
 structure Monoid :=
   carrier : Type
   mul     : carrier -> carrier -> carrier
@@ -8,3 +10,5 @@ structure Monoid :=
       mul(mul(a, b), c) = mul(a, mul(b, c))
   axiom one_mul   : for all a : carrier, mul(one, a) = a
   axiom mul_one   : for all a : carrier, mul(a, one) = a
+
+end Algebra

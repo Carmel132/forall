@@ -1,5 +1,7 @@
 import "group.forall"
 
+namespace Algebra
+
 structure AbelianGroup :=
   carrier : Type
   mul     : carrier -> carrier -> carrier
@@ -12,3 +14,5 @@ structure AbelianGroup :=
   axiom mul_inv_l : for all a : carrier, mul(inv(a), a) = one
   axiom inv_mul_r : for all a : carrier, mul(a, inv(a)) = one
   axiom mul_comm  : for all a b : carrier, mul(a, b) = mul(b, a)
+
+end Algebra

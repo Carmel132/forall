@@ -1,5 +1,7 @@
 import "abelian_group.forall"
 
+namespace Algebra
+
 structure Ring :=
   carrier : Type
   add     : carrier -> carrier -> carrier
@@ -21,3 +23,5 @@ structure Ring :=
       mul(a, add(b, c)) = add(mul(a, b), mul(a, c))
   axiom distrib_r   : for all a b c : carrier,
       mul(add(a, b), c) = add(mul(a, c), mul(b, c))
+
+end Algebra

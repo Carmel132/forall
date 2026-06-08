@@ -1,5 +1,7 @@
 import "integral_domain.forall"
 
+namespace Algebra
+
 structure Field :=
   carrier : Type
   add     : carrier -> carrier -> carrier
@@ -28,3 +30,5 @@ structure Field :=
   axiom one_ne_zero    : not (one = zero)
   axiom mul_inv        : for all a : carrier,
       not (a = zero) -> mul(inv(a), a) = one
+
+end Algebra

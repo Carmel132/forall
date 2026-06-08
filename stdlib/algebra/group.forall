@@ -1,5 +1,7 @@
 import "monoid.forall"
 
+namespace Algebra
+
 structure Group :=
   carrier : Type
   mul     : carrier -> carrier -> carrier
@@ -11,3 +13,5 @@ structure Group :=
   axiom mul_one   : for all a : carrier, mul(a, one) = a
   axiom mul_inv_l : for all a : carrier, mul(inv(a), a) = one
   axiom inv_mul_r : for all a : carrier, mul(a, inv(a)) = one
+
+end Algebra
