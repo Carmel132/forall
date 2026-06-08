@@ -2428,7 +2428,7 @@ end)");
 }
 
 TEST(ParserTest, RewriteStep_Forward) {
-    // "rewrite h" parses as RewriteStep with reverse=false
+    // "rewrite h" parses as a single-item RewriteStep with reverse=false
     auto r = parse_str(R"(
 axiom eq : x = y
 theorem t : P(x)
@@ -2439,8 +2439,28 @@ end)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* rw = get_step<ast::RewriteStep>(*r.mod.decls[1]->proof, 0);
     ASSERT_NE(rw, nullptr);
-    EXPECT_EQ(rw->hyp_ref, "eq");
-    EXPECT_FALSE(rw->reverse);
+    ASSERT_EQ(rw->rewrites.size(), 1u);
+    EXPECT_EQ(rw->rewrites[0].hyp_ref, "eq");
+    EXPECT_FALSE(rw->rewrites[0].reverse);
+}
+
+TEST(ParserTest, RewriteStep_List) {
+    // "rewrite h1, ← h2, h3" parses as a three-item RewriteStep.
+    auto r = parse_str("axiom eq1 : a = b\n"
+                       "axiom eq2 : c = d\n"
+                       "axiom eq3 : e = f\n"
+                       "theorem t : P\n"
+                       "proof\n"
+                       "  rewrite eq1, \xe2\x86\x90 eq2, eq3\n"
+                       "  then P\n"
+                       "end");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* rw = get_step<ast::RewriteStep>(*r.mod.decls[3]->proof, 0);
+    ASSERT_NE(rw, nullptr);
+    ASSERT_EQ(rw->rewrites.size(), 3u);
+    EXPECT_EQ(rw->rewrites[0].hyp_ref, "eq1");  EXPECT_FALSE(rw->rewrites[0].reverse);
+    EXPECT_EQ(rw->rewrites[1].hyp_ref, "eq2");  EXPECT_TRUE(rw->rewrites[1].reverse);
+    EXPECT_EQ(rw->rewrites[2].hyp_ref, "eq3");  EXPECT_FALSE(rw->rewrites[2].reverse);
 }
 
 // ── Structure declarations ─────────────────────────────────────────────────────

@@ -2389,6 +2389,50 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// Two rewrites in one step: rewrite h1, h2 applies h1 then h2.
+// Goal starts as P(x); eq1: x=y transforms it to P(y); eq2: y=z transforms to P(z).
+// base provides P(z) to close.
+TEST(CheckerTest, RewriteStep_List_TwoForward) {
+    auto diag = run_checker("rewrite_list_two", R"(
+axiom eq1 : x = y
+axiom eq2 : y = z
+axiom base_ax : P(z)
+theorem t : P(x)
+proof
+  have base : P(z) by base_ax
+  rewrite eq1, eq2
+  then P(z) by base
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Reverse rewrite in list: rewrite eq2 transforms goal P(c) to P(b);
+// then ← eq1 (reverse of a=b, so b→a) transforms P(b) to P(a).
+// prem provides P(a) to close.
+TEST(CheckerTest, RewriteStep_ReverseInList) {
+    // Using ordinary string so \xe2\x86\x90 is the UTF-8 left arrow ←.
+    auto diag = run_checker("rewrite_reverse_list",
+        "axiom eq1 : a = b\n"
+        "axiom eq2 : c = b\n"
+        "axiom prem_ax : P(a)\n"
+        "theorem t : P(c)\n"
+        "proof\n"
+        "  have prem : P(a) by prem_ax\n"
+        "  rewrite eq2, \xe2\x86\x90 eq1\n"
+        "  then P(a) by prem\n"
+        "end\n");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 TEST(CheckerTest, Linarith_SimpleTransitivity) {
     // MT1: x < y and y < z implies x < z
     auto diag = run_checker("linarith_trans", R"(
@@ -3819,4 +3863,92 @@ end
         for (auto& d : diag.diagnostics()) msg += d.message + "\n";
         return msg;
     }();
+}
+
+// ── LI1: take mid-proof for standalone ∀-intro ─────────────────────────────────
+
+// Simple: take n, prove body, close with explicit then ∀ n.
+TEST(CheckerTest, TakeMidProof_SimpleForallIntro) {
+    auto diag = run_checker("take_mid_simple", R"(
+axiom add_zero_ax : for all n : Nat, n + 0 = n
+theorem simple_forall : for all n : Nat, n + 0 = n
+proof
+  take n : Nat
+  then n + 0 = n by add_zero_ax at n
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Bare "then" closes after take: no need to restate the ∀.
+TEST(CheckerTest, TakeMidProof_BareThenCloses) {
+    auto diag = run_checker("take_mid_bare_then", R"(
+axiom add_zero_ax : for all n : Nat, n + 0 = n
+theorem simple_forall2 : for all n : Nat, n + 0 = n
+proof
+  take n : Nat
+  have h : n + 0 = n by add_zero_ax at n
+  then by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Nested takes: ∀ m, ∀ n, m + n = n + m.
+TEST(CheckerTest, TakeMidProof_NestedTakes) {
+    auto diag = run_checker("take_mid_nested", R"(
+axiom comm_ax : for all m : Nat, for all n : Nat, m + n = n + m
+theorem nested_forall : for all m : Nat, for all n : Nat, m + n = n + m
+proof
+  take m : Nat
+  take n : Nat
+  have comm_m : for all n : Nat, m + n = n + m by comm_ax at m
+  then m + n = n + m by comm_m at n
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Take + suppose: ∀ n, n > 0 → n + 1 > 1.
+TEST(CheckerTest, TakeMidProof_TakeAndSuppose) {
+    auto diag = run_checker("take_mid_suppose", R"(
+axiom impl_ax : for all n : Nat, n > 0 -> n + 1 > 1
+theorem take_suppose : for all n : Nat, n > 0 -> n + 1 > 1
+proof
+  take n : Nat
+  suppose h : n > 0
+  have inst : n > 0 -> n + 1 > 1 by impl_ax at n
+  then n + 1 > 1 by inst and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Wrong conclusion after take — must report an error.
+TEST(CheckerTest, TakeMidProof_WrongConclusion) {
+    auto diag = run_checker("take_mid_wrong", R"(
+axiom add_zero_ax : for all n : Nat, n + 0 = n
+theorem wrong_forall : for all n : Nat, n + 0 = n
+proof
+  take n : Nat
+  then n + 1 = n by add_zero_ax at n
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
 }
