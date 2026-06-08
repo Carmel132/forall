@@ -2094,3 +2094,28 @@ proof
       done
       then for all p : Nat, succ(n) < p or succ(n) = p or p < succ(n) by split_res
   end
+
+-- n < p iff succ(n) <= p.
+theorem lt_iff_succ_le : for all n : Nat, for all p : Nat, n < p iff succ(n) <= p
+proof
+  take n : Nat
+  take p : Nat
+  have fwd : n < p implies succ(n) <= p
+    proof
+      suppose h : n < p
+      have lsl1 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+      have lsl2 : n < p implies succ(n) <= p by lsl1 at p
+      have result : succ(n) <= p by lsl2 and h
+      then n < p implies succ(n) <= p by h and result
+    end
+  have bwd : succ(n) <= p implies n < p
+    proof
+      suppose h : succ(n) <= p
+      have sli1 : for all m : Nat, succ(n) <= m iff n < m by succ_le_iff at n
+      have sli2 : succ(n) <= p iff n < p by sli1 at p
+      have sli3 : succ(n) <= p implies n < p by sli2
+      have result : n < p by sli3 and h
+      then succ(n) <= p implies n < p by h and result
+    end
+  then n < p iff succ(n) <= p by fwd and bwd
+end
