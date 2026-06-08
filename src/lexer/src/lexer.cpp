@@ -196,6 +196,7 @@ Token Lexer::nextToken() {
             {"quotient",     TokenKind::KwQuotient},
             {"namespace",    TokenKind::KwNamespace},
             {"open",         TokenKind::KwOpen},
+            {"type",         TokenKind::KwType},
             // Proof steps (primary keywords and accessibility aliases)
             {"let",          TokenKind::KwLet},
             {"be",           TokenKind::KwBe},

@@ -14,6 +14,7 @@ enum class TokenKind {
     KwAxiom, KwDefinition, KwLemma, KwTheorem,
     KwProof, KwEnd, KwImport, KwInstance, KwStructure, KwQuotient,
     KwNamespace, KwOpen,            // namespace blocks and open directives
+    KwType,                         // "type" — type alias declaration
 
     // Proof-step keywords
     KwLet, KwBe, KwSuppose, KwHave, KwThen,
