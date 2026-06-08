@@ -567,7 +567,9 @@ int main() {
                     // Tactic keywords (kind 14 = Keyword)
                     for (const char* kw : {"linarith", "ring", "norm_num", "decide",
                                            "omega", "simp", "field_simp", "positivity",
-                                           "gcongr", "contrapositive"}) {
+                                           "gcongr", "contrapositive",
+                                           "refl", "symm", "trans", "congr", "eq_subst",
+                                           "funext", "contra", "hypothesis", "assumption"}) {
                         emit_item(kw, 14);
                     }
                     // All in-scope hypothesis names (kind 6 = Variable)
