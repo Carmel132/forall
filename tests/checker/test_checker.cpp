@@ -1320,6 +1320,49 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// obtain with two hyp bindings — destructures a conjunction body
+TEST(CheckerTest, ValidExistsElim_PairDestructure) {
+    auto diag = run_checker("obtain_pair", R"(
+axiom ax : there exists n : Nat, n > 0 and n < 10
+theorem t : there exists n : Nat, n > 0 and n < 10
+proof
+  have he : there exists n : Nat, n > 0 and n < 10 by ax
+  obtain result from he
+    case n : Nat , h_pos : n > 0 , h_small : n < 10 =>
+      then there exists n : Nat, n > 0 and n < 10 by ax
+  done
+  then there exists n : Nat, n > 0 and n < 10 by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// obtain with two bindings where the body is used in the arm sub-proof
+TEST(CheckerTest, ValidExistsElim_PairUseBothBindings) {
+    auto diag = run_checker("obtain_pair_use", R"(
+axiom ax : there exists n : Nat, n > 0 and n < 10
+theorem t : Q
+proof
+  suppose hq : Q
+  have he : there exists n : Nat, n > 0 and n < 10 by ax
+  obtain result from he
+    case n : Nat , h_pos : n > 0 , h_small : n < 10 =>
+      then Q by hq
+  done
+  then Q by result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // ── Type-mismatch warnings ─────────────────────────────────────────────────────
 
 static bool has_warning(const diag::DiagnosticEngine& diag, const std::string& fragment) {

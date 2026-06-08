@@ -1805,7 +1805,8 @@ end
     EXPECT_EQ(os->exists_ref, "he");
     EXPECT_EQ(os->var, "n");
     EXPECT_FALSE(os->type.has_value());
-    EXPECT_EQ(os->hyp_name, "hn");
+    ASSERT_EQ(os->hyp_bindings.size(), 1u);
+    EXPECT_EQ(os->hyp_bindings[0].name, "hn");
     EXPECT_EQ(os->steps.size(), 1u); // just the one then step
 }
 
@@ -1827,7 +1828,8 @@ end
     EXPECT_EQ(os->var, "n");
     ASSERT_TRUE(os->type.has_value());
     EXPECT_EQ(forall::pretty::to_string(*os->type), "Nat");
-    EXPECT_EQ(os->hyp_name, "hn");
+    ASSERT_EQ(os->hyp_bindings.size(), 1u);
+    EXPECT_EQ(os->hyp_bindings[0].name, "hn");
     EXPECT_EQ(os->steps.size(), 1u);
 }
 
@@ -1853,6 +1855,25 @@ end
     ASSERT_NE(os, nullptr);
     // arm has 1 step (the then); done was consumed
     EXPECT_EQ(os->steps.size(), 1u);
+}
+
+TEST(ParserTest, ObtainStep_MultiBinding) {
+    // Two hyp bindings — destructure a conjunction body.
+    auto r = parse_str(R"(
+theorem t : Q
+proof
+  suppose he : there exists n, P(n) and R(n)
+  obtain result from he
+    case n , h_p : P(n) , h_r : R(n) =>
+      then Q by ax
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* os = std::get_if<ObtainStep>(&r.mod.decls[0]->proof->steps[1].node);
+    ASSERT_NE(os, nullptr);
+    ASSERT_EQ(os->hyp_bindings.size(), 2u);
+    EXPECT_EQ(os->hyp_bindings[0].name, "h_p");
+    EXPECT_EQ(os->hyp_bindings[1].name, "h_r");
 }
 
 // ── Function type annotations (Nat -> Real) ───────────────────────────────────
