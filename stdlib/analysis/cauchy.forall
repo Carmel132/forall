@@ -29,4 +29,25 @@ axiom rat_not_complete :
   there exists a : Nat -> Rat,
     IsCauchy_Rat(a) and (for all L : Rat, not (ConvergesTo_Rat(a, L)))
 
+-- Cauchy equivalence: two rational sequences are equivalent when their
+-- pointwise difference converges to zero.
+-- a ~ b iff ConvergesTo_Rat(fun k => a[k] - b[k], 0).
+definition CauchyEquiv (a : Nat -> Rat) (b : Nat -> Rat) : Prop :=
+  ConvergesTo_Rat(fun k : Nat => a[k] - b[k], 0)
+
+-- CauchyEquiv is an equivalence relation.
+-- Reflexivity: a[k] - a[k] = 0 for all k, so the difference sequence is 0.
+axiom cauchy_equiv_refl :
+  for all a : Nat -> Rat, CauchyEquiv(a, a)
+
+-- Symmetry: if a - b -> 0 then b - a -> 0 (negate the sequence).
+axiom cauchy_equiv_symm :
+  for all a : Nat -> Rat, for all b : Nat -> Rat,
+    CauchyEquiv(a, b) -> CauchyEquiv(b, a)
+
+-- Transitivity: if a - b -> 0 and b - c -> 0 then a - c -> 0.
+axiom cauchy_equiv_trans :
+  for all a : Nat -> Rat, for all b : Nat -> Rat, for all c : Nat -> Rat,
+    CauchyEquiv(a, b) -> CauchyEquiv(b, c) -> CauchyEquiv(a, c)
+
 end Analysis
