@@ -163,7 +163,8 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             std::string out = indent + "rewrite ";
             for (std::size_t i = 0; i < s.rewrites.size(); ++i) {
                 if (i > 0) out += ", ";
-                if (s.rewrites[i].reverse) out += "\xe2\x86\x90 ";
+                if (s.rewrites[i].iff_rewrite) out += "\xe2\x86\x94 "; // ↔
+                if (s.rewrites[i].reverse) out += "\xe2\x86\x90 ";     // ←
                 out += s.rewrites[i].hyp_ref;
             }
             return out;
