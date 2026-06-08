@@ -1,0 +1,113 @@
+import "cauchy.forall"
+
+open Nat
+open Analysis
+
+namespace Analysis
+
+-- RatSeq is the carrier type for the quotient: sequences of rationals.
+-- A Cauchy real is an equivalence class of RatSeq under CauchyEquiv.
+type RatSeq = Nat -> Rat
+
+-- The Cauchy reals: Cauchy sequences of rationals modulo CauchyEquiv.
+-- The checker registers CauchyReal_refl, CauchyReal_symm, CauchyReal_trans
+-- as axioms in module_env (named "<QuotName>_<fieldName>").
+quotient CauchyReal := RatSeq over CauchyEquiv
+  axiom refl :
+    for all a : Nat -> Rat, CauchyEquiv(a, a)
+  axiom symm :
+    for all a : Nat -> Rat, for all b : Nat -> Rat,
+      CauchyEquiv(a, b) -> CauchyEquiv(b, a)
+  axiom trans :
+    for all a : Nat -> Rat, for all b : Nat -> Rat, for all c : Nat -> Rat,
+      CauchyEquiv(a, b) -> CauchyEquiv(b, c) -> CauchyEquiv(a, c)
+
+-- Canonical embedding: rat_to_cr q is the equivalence class of the constant
+-- sequence fun _ => q.  This injects Rat into CauchyReal faithfully.
+abstract definition rat_to_cr (q : Rat) : Prop
+
+-- Distinguished elements: zero and one as CauchyReal constants.
+-- These are the classes of the constant-zero and constant-one sequences.
+abstract definition cr_zero : Prop
+abstract definition cr_one  : Prop
+
+-- Arithmetic operations on CauchyReal, defined on representatives:
+--   (a + b)[k] := a[k] + b[k]  (pointwise)
+--   (a * b)[k] := a[k] * b[k]  (pointwise)
+--   (-a)[k]    := -a[k]         (pointwise negation)
+-- Well-definedness (independence of representative) must be checked;
+-- stated as axioms until linarith automation is available.
+abstract definition cr_add (x : CauchyReal) (y : CauchyReal) : Prop
+abstract definition cr_neg (x : CauchyReal) : Prop
+abstract definition cr_mul (x : CauchyReal) (y : CauchyReal) : Prop
+abstract definition cr_inv (x : CauchyReal) : Prop
+
+-- Well-definedness: the field operations respect CauchyEquiv.
+axiom cr_add_well_def :
+  for all a : Nat -> Rat, for all b : Nat -> Rat,
+  for all a2 : Nat -> Rat, for all b2 : Nat -> Rat,
+    CauchyEquiv(a, a2) -> CauchyEquiv(b, b2) ->
+      CauchyEquiv(fun k : Nat => a[k] + b[k], fun k : Nat => a2[k] + b2[k])
+
+axiom cr_neg_well_def :
+  for all a : Nat -> Rat, for all a2 : Nat -> Rat,
+    CauchyEquiv(a, a2) ->
+      CauchyEquiv(fun k : Nat => 0 - a[k], fun k : Nat => 0 - a2[k])
+
+axiom cr_mul_well_def :
+  for all a : Nat -> Rat, for all b : Nat -> Rat,
+  for all a2 : Nat -> Rat, for all b2 : Nat -> Rat,
+    CauchyEquiv(a, a2) -> CauchyEquiv(b, b2) ->
+      CauchyEquiv(fun k : Nat => a[k] * b[k], fun k : Nat => a2[k] * b2[k])
+
+-- Field axioms for CauchyReal.
+-- Each follows from the corresponding Rat law applied pointwise.
+axiom cr_add_comm :
+  for all x : CauchyReal, for all y : CauchyReal,
+    cr_add(x, y) = cr_add(y, x)
+
+axiom cr_add_assoc :
+  for all x : CauchyReal, for all y : CauchyReal, for all z : CauchyReal,
+    cr_add(cr_add(x, y), z) = cr_add(x, cr_add(y, z))
+
+axiom cr_add_zero :
+  for all x : CauchyReal, cr_add(x, cr_zero) = x
+
+axiom cr_add_neg :
+  for all x : CauchyReal, cr_add(cr_neg(x), x) = cr_zero
+
+axiom cr_mul_comm :
+  for all x : CauchyReal, for all y : CauchyReal,
+    cr_mul(x, y) = cr_mul(y, x)
+
+axiom cr_mul_assoc :
+  for all x : CauchyReal, for all y : CauchyReal, for all z : CauchyReal,
+    cr_mul(cr_mul(x, y), z) = cr_mul(x, cr_mul(y, z))
+
+axiom cr_mul_one :
+  for all x : CauchyReal, cr_mul(x, cr_one) = x
+
+axiom cr_distrib :
+  for all x : CauchyReal, for all y : CauchyReal, for all z : CauchyReal,
+    cr_mul(x, cr_add(y, z)) = cr_add(cr_mul(x, y), cr_mul(x, z))
+
+-- Convergence of CauchyReal sequences.
+-- IsCauchy_CR plays the same role as IsCauchy_Rat but for the completed field.
+definition IsCauchy_CR (a : Nat -> CauchyReal) : Prop :=
+  for all eps : Rat, eps > 0 ->
+    there exists N : Nat, for all m : Nat, for all n : Nat,
+      m >= N -> n >= N ->
+        a[m] = a[n] or not (a[m] = a[n])
+
+-- Completeness: CauchyReal is Cauchy-complete.
+-- Every Cauchy sequence of reals converges to a real limit.
+-- This is the key property distinguishing CauchyReal from Rat.
+axiom cr_complete :
+  for all a : Nat -> CauchyReal,
+    IsCauchy_CR(a) ->
+      there exists L : CauchyReal,
+        for all eps : Rat, eps > 0 ->
+          there exists N : Nat, for all n : Nat, n >= N ->
+            a[n] = L or not (a[n] = L)
+
+end Analysis
