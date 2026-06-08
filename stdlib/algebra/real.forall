@@ -1,4 +1,5 @@
 import "ordered_field.forall"
+import "../set_theory.forall"
 
 namespace Algebra
 
@@ -26,8 +27,25 @@ axiom Real_lt_mul_pos  : for all x y : Real, 0 < x -> 0 < y -> 0 < x * y
 axiom Real_lt_total    : for all x y : Real, x < y or x = y or y < x
 axiom Real_zero_lt_one : 0 < 1
 
--- Completeness: every nonempty set bounded above has a least upper bound.
--- The type Set Real requires the set theory stdlib; stated axiomatically here.
+-- x <= y iff x < y or x = y.
+axiom Real_le_iff_lt_or_eq : for all x y : Real, x <= y iff (x < y or x = y)
+
+-- ── Supremum definitions ──────────────────────────────────────────────────────
+
+-- An upper bound of S: every element of S is at most b.
+definition IsUpperBound (S : Set Real) (b : Real) : Prop :=
+  for all x : Real, x in S -> x <= b
+
+-- S is bounded above: it has at least one upper bound.
+definition BoundedAbove (S : Set Real) : Prop :=
+  there exists b : Real, IsUpperBound(S, b)
+
+-- s is the least upper bound (supremum) of S.
+definition IsSupremum (S : Set Real) (s : Real) : Prop :=
+  IsUpperBound(S, s) and
+  (for all b : Real, IsUpperBound(S, b) -> s <= b)
+
+-- Completeness: every nonempty bounded-above set has a least upper bound.
 axiom Real_completeness : for all S : Set Real,
     BoundedAbove(S) -> there exists sup : Real, IsSupremum(S, sup)
 
