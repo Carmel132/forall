@@ -3078,6 +3078,69 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// ── calc block: _ placeholder and mixed-relation chains ──────────────────
+
+// = then < with _ placeholder — op_final is <
+TEST(CheckerTest, CalcStep_UnderscorePlaceholder_EqLt) {
+    auto diag = run_checker("calc_us_eq_lt", R"(
+axiom h1 : a = b
+axiom h2 : b < c
+lemma chain : a < c
+proof
+  calc res : a = b by h1
+             _ < c by h2
+  then a < c by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// <= then < with _ placeholder — op_final is <
+TEST(CheckerTest, CalcStep_UnderscorePlaceholder_LeLt) {
+    auto diag = run_checker("calc_us_le_lt", R"(
+axiom h1 : a <= b
+axiom h2 : b < c
+lemma chain : a < c
+proof
+  calc res : a <= b by h1
+             _ < c by h2
+  then a < c by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// 4-step chain = <= < = with _ placeholder — op_final is <
+TEST(CheckerTest, CalcStep_UnderscorePlaceholder_FourStep) {
+    auto diag = run_checker("calc_us_four", R"(
+axiom h1 : a = b
+axiom h2 : b <= c
+axiom h3 : c < d
+axiom h4 : d = e
+lemma chain : a < e
+proof
+  calc res : a = b by h1
+             _ <= c by h2
+             _ < d by h3
+             _ = e by h4
+  then a < e by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // ── split step tests ─────────────────────────────────────────────────────
 
 // conjunction split — both arms proved, result in scope
