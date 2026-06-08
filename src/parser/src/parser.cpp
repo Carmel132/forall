@@ -891,6 +891,13 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__refl__");
         return refs;
     }
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "funext") {
+        advance();
+        refs.push_back("__funext__");
+        if (check(lexer::TokenKind::Identifier))
+            refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "symm") {
         advance();
         refs.push_back("__symm__");
