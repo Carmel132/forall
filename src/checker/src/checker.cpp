@@ -1745,10 +1745,35 @@ bool check_step(const ast::Step& step,
                                "bare 'then' (goal-close) is not valid outside a theorem proof"});
                     return false;
                 }
-                // Build a synthetic ThenStep with the real goal and remaining refs.
+                // When taken_vars_ are in scope, ctx.goal is the full ∀ x, A → P
+                // statement. Strip each taken-var ∀ and each outstanding Assumption →
+                // to get the inner body that tactics can actually prove.
+                const ast::Prop* inner = ctx.goal;
+                const bool has_taken = !env.taken_vars().empty();
+                for (const auto& [unused_v, unused_t] : env.taken_vars()) {
+                    (void)unused_v; (void)unused_t;
+                    if (const auto* fa = std::get_if<ast::PropForall>(&inner->node))
+                        inner = fa->body.get();
+                    else break;
+                }
+                // Strip implication antecedents only when take has been used.
+                // Without take, ctx.goal is the plain theorem statement; stripping
+                // would e.g. reduce P→Q to Q and break the auto-discharge step.
+                if (has_taken) {
+                    std::vector<ast::Prop> assumps;
+                    env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                        assumps.push_back(e.judgment.prop());
+                    });
+                    for (std::size_t i = 0; i < assumps.size(); ++i) {
+                        if (const auto* im = std::get_if<ast::PropImpl>(&inner->node))
+                            inner = im->rhs.get();
+                        else break;
+                    }
+                }
+                // Build a synthetic ThenStep with the inner goal and remaining refs.
                 std::vector<std::string> real_refs(s.justification.begin() + 1,
                                                    s.justification.end());
-                ast::Step synth{step.loc, ast::ThenStep{*ctx.goal, std::move(real_refs), s.witness}};
+                ast::Step synth{step.loc, ast::ThenStep{*inner, std::move(real_refs), s.witness}};
                 return check_step(synth, env, kernel, diag, ctx);
             }
 
@@ -2505,47 +2530,51 @@ void check_proof(const ast::Decl& decl,
         }
 
         // RewriteStep transforms the current goal before check_step runs.
+        // Each item in rw->rewrites is applied left-to-right to the goal.
         if (const auto* rw = std::get_if<ast::RewriteStep>(&step.node)) {
-            const HypEntry* h = env.find(rw->hyp_ref);
-            if (!h) {
-                diag.emit({diag::Severity::Error, step.loc,
-                           "rewrite: unknown hypothesis '" + rw->hyp_ref + "'"});
-                had_step_errors = true;
-                continue;
+            bool rw_error = false;
+            for (const auto& item : rw->rewrites) {
+                const HypEntry* h = env.find(item.hyp_ref);
+                if (!h) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "rewrite: unknown hypothesis '" + item.hyp_ref + "'"});
+                    rw_error = true;
+                    break;
+                }
+                const auto* eq = std::get_if<ast::PropRel>(&h->judgment.prop().node);
+                if (!eq || eq->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "rewrite: hypothesis '" + item.hyp_ref
+                               + "' must be an equality (lhs = rhs)"});
+                    rw_error = true;
+                    break;
+                }
+                // Apply the substitution to the current goal.
+                // Fast path: plain variable on the relevant side → name-based subst.
+                // General path: expression-level find-and-replace via subst_expr.
+                const auto* lhs_var = std::get_if<ast::ExprVar>(&eq->lhs->node);
+                const auto* rhs_var = std::get_if<ast::ExprVar>(&eq->rhs->node);
+                ast::Prop new_goal;
+                if (!item.reverse) {
+                    if (lhs_var)
+                        new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
+                    else
+                        new_goal = ast::subst_expr(*current_goal, *eq->lhs, *eq->rhs);
+                } else {
+                    if (rhs_var)
+                        new_goal = ast::subst(*current_goal, rhs_var->name, *eq->lhs);
+                    else
+                        new_goal = ast::subst_expr(*current_goal, *eq->rhs, *eq->lhs);
+                }
+                if (new_goal == *current_goal) {
+                    diag.emit({diag::Severity::Warning, step.loc,
+                               "rewrite '" + item.hyp_ref
+                               + "': equality does not appear in goal — no effect"});
+                }
+                goal_history.push_back(std::move(new_goal));
+                current_goal = &goal_history.back();
             }
-            const auto* eq = std::get_if<ast::PropRel>(&h->judgment.prop().node);
-            if (!eq || eq->op != ast::RelOp::Eq) {
-                diag.emit({diag::Severity::Error, step.loc,
-                           "rewrite: hypothesis '" + rw->hyp_ref
-                           + "' must be an equality (lhs = rhs)"});
-                had_step_errors = true;
-                continue;
-            }
-            // Choose which side to substitute.
-            // Fast path: if one side is a plain variable, use name-based subst.
-            // General path: expression-level find-and-replace via subst_expr.
-            const auto* lhs_var = std::get_if<ast::ExprVar>(&eq->lhs->node);
-            const auto* rhs_var = std::get_if<ast::ExprVar>(&eq->rhs->node);
-            ast::Prop new_goal;
-            if (!rw->reverse) {
-                // Forward: replace lhs with rhs.
-                if (lhs_var)
-                    new_goal = ast::subst(*current_goal, lhs_var->name, *eq->rhs);
-                else
-                    new_goal = ast::subst_expr(*current_goal, *eq->lhs, *eq->rhs);
-            } else {
-                // Reverse: replace rhs with lhs.
-                if (rhs_var)
-                    new_goal = ast::subst(*current_goal, rhs_var->name, *eq->lhs);
-                else
-                    new_goal = ast::subst_expr(*current_goal, *eq->rhs, *eq->lhs);
-            }
-            if (new_goal == *current_goal) {
-                diag.emit({diag::Severity::Warning, step.loc,
-                           "rewrite: equality does not appear in goal — no effect"});
-            }
-            goal_history.push_back(std::move(new_goal));
-            current_goal = &goal_history.back();
+            if (rw_error) had_step_errors = true;
             continue; // not a proof step, just goal transformation
         }
 
@@ -2752,12 +2781,44 @@ void check_proof(const ast::Decl& decl,
                                          && ts.justification[0] == "__qed__";
             // apply term definitions to the conclusion before comparing.
             const ast::Prop ts_prop = apply_term_defs(ts.prop);
-            if (!is_qed_sentinel && ts_prop != *current_goal) {
-                const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
-                diag.emit({diag::Severity::Error, last_concluding->loc,
-                           "proof concludes with `" + forall::pretty::to_string(ts_prop)
-                           + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
-                           end_col});
+            if (!is_qed_sentinel) {
+                const auto& tvars = env.taken_vars();
+                if (!tvars.empty() && !(ts_prop == unfolded_statement)) {
+                    // User wrote the inner body after 'take x'; wrap to reconstruct
+                    // the full ∀ statement and validate against unfolded_statement.
+                    // If the user already wrote the full ∀ statement (ts_prop ==
+                    // unfolded_statement), skip wrapping and fall through to the
+                    // normal single-goal check below.
+                    ast::Prop wrapped = ts_prop;
+                    std::vector<ast::Prop> assumptions;
+                    env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                        assumptions.push_back(e.judgment.prop());
+                    });
+                    for (auto rit = assumptions.rbegin(); rit != assumptions.rend(); ++rit) {
+                        wrapped = ast::Prop{last_concluding->loc,
+                            ast::PropImpl{ast::make_prop(*rit), ast::make_prop(wrapped)}};
+                    }
+                    for (auto rit = tvars.rbegin(); rit != tvars.rend(); ++rit) {
+                        wrapped = ast::Prop{last_concluding->loc,
+                            ast::PropForall{rit->first, rit->second,
+                                            ast::make_prop(wrapped)}};
+                    }
+                    if (!(wrapped == unfolded_statement)) {
+                        const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
+                        diag.emit({diag::Severity::Error, last_concluding->loc,
+                                   "proof concludes with `"
+                                   + forall::pretty::to_string(wrapped)
+                                   + "`, expected `"
+                                   + forall::pretty::to_string(unfolded_statement) + "`",
+                                   end_col});
+                    }
+                } else if (ts_prop != *current_goal) {
+                    const uint32_t end_col = ts.prop.end_loc ? ts.prop.end_loc->col : 0;
+                    diag.emit({diag::Severity::Error, last_concluding->loc,
+                               "proof concludes with `" + forall::pretty::to_string(ts_prop)
+                               + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
+                               end_col});
+                }
             }
             // If apply_stack is non-empty, verify the chain reaches decl.statement.
             // Each apply h:A→B requires the subproof to conclude A, then ImplElim gives B.
