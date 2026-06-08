@@ -553,6 +553,7 @@ struct CheckContext {
     const std::map<std::string, ast::ExprPtr>*   term_defs{nullptr}; // let x = expr bindings
     const ast::StructEnv*                        struct_env{nullptr}; // for sub-proof injection
     const PredDefTable*                          pred_defs{nullptr};  // predicate definition bodies
+    const ast::InductiveEnv*                     inductive_env{nullptr}; // for structural induction
 };
 
 // ── unfold_preds ──────────────────────────────────────────────────────────────
@@ -1231,23 +1232,20 @@ bool check_obtain_step(const ast::ObtainStep& s,
 
 // ── check_induction_step ──────────────────────────────────────────────────────
 //
-// Implements NatInduction.
-// Syntax:
-//   induction <name> on <var>
-//     base:       <base_steps...>        -- must conclude P[var:=0]
-//     inductive:  <inductive_steps...>   -- must conclude P[var:=succ(var)]
-//                                           with ih : P(var) in scope
+// Dispatches on s.type_name:
+//   "Nat" (or empty): Peano induction via NatInduction kernel rule.
+//   Other: structural induction over a user-defined inductive type.
 //
-// Checker responsibilities:
-//   1. There must be no ∀ quantifier to invent — the conclusion is inferred
-//      from what the base block proves: ∀ var : Nat, P(var).
-//   2. Base block: run in the current env; the last ThenStep concludes P(0)
-//      = subst(P, var, 0).  From that, conclude ∀ var : Nat, P(var) is the
-//      induction goal and P(var) == body.
-//   3. Inductive block: inject ih : P(var) as Assumption; run; last ThenStep
-//      must conclude P(succ(var)) = subst(P, var, succ(var)).
-//   4. Apply NatInduction with premises [P(0), ∀ var, P(var) → P(succ(var))].
-//   5. Store result under s.name.
+// Nat induction (unchanged):
+//   base: block proves P(0); inductive: block proves P(succ(n)) with ih:P(n).
+//
+// Structural induction:
+//   For each constructor arm, a sub-env is set up with:
+//   - the arm's argument variables (injected as Assumptions of the appropriate type)
+//   - IH hypotheses for each recursive argument
+//   Each arm must end with a ThenStep concluding the same proposition R.
+//   The result ∀ var : T, P(var) is certified via introduce_axiom (soundness
+//   guaranteed by the arm-level checks, same as NatInduction for OrElim).
 bool check_induction_step(const ast::InductionStep& s,
                           const diag::SourceLocation& loc,
                           ScopeStack& env,
@@ -1255,105 +1253,264 @@ bool check_induction_step(const ast::InductionStep& s,
                           diag::DiagnosticEngine& diag,
                           const CheckContext& ctx)
 {
-    // ── Base block ────────────────────────────────────────────────────────────
-    ScopeStack base_env = env;
-    bool base_error = false;
-    const ast::Step* base_last_then = nullptr;
+    // ── Nat induction path ────────────────────────────────────────────────────
+    if (s.arms.empty()) {
+        ScopeStack base_env = env;
+        bool base_error = false;
+        const ast::Step* base_last_then = nullptr;
 
-    for (const auto& uptr : s.base_steps) {
-        const auto snap = diag.save();
-        check_step(*uptr, base_env, kernel, diag, ctx);
-        const auto& all = diag.diagnostics();
-        for (auto i = snap.size; i < all.size(); ++i)
-            if (all[i].severity == diag::Severity::Error) { base_error = true; break; }
-        if (std::get_if<ast::ThenStep>(&uptr->node))
-            base_last_then = uptr.get();
-    }
+        for (const auto& uptr : s.base_steps) {
+            const auto snap = diag.save();
+            check_step(*uptr, base_env, kernel, diag, ctx);
+            const auto& all = diag.diagnostics();
+            for (auto i = snap.size; i < all.size(); ++i)
+                if (all[i].severity == diag::Severity::Error) { base_error = true; break; }
+            if (std::get_if<ast::ThenStep>(&uptr->node))
+                base_last_then = uptr.get();
+        }
 
-    if (base_error || !base_last_then) {
-        if (!base_error)
+        if (base_error || !base_last_then) {
+            if (!base_error)
+                diag.emit({diag::Severity::Error, loc,
+                           "induction 'base' block must end with a 'then' step"});
+            return false;
+        }
+
+        const ast::Prop& base_conc = std::get<ast::ThenStep>(base_last_then->node).prop;
+
+        const ast::Prop& ih_prop = s.body;
+        const ast::Expr succ_var{{}, ast::ExprCall{"succ",
+            {ast::make_expr(ast::Expr{{}, ast::ExprVar{s.var}})}}};
+        const ast::Prop base_expected = ast::subst(ih_prop, s.var,
+            ast::Expr{{}, ast::ExprLit{"0"}});
+        const ast::Prop ind_expected  = ast::subst(ih_prop, s.var, succ_var);
+
+        if (!(base_conc == base_expected)) {
             diag.emit({diag::Severity::Error, loc,
-                       "induction 'base' block must end with a 'then' step"});
-        return false;
-    }
+                       "induction 'base' block must conclude `"
+                       + forall::pretty::to_string(base_expected)
+                       + "` (P[" + s.var + ":=0]), but got `"
+                       + forall::pretty::to_string(base_conc) + "`"});
+            return false;
+        }
 
-    const ast::Prop& base_conc = std::get<ast::ThenStep>(base_last_then->node).prop;
+        ScopeStack ind_env = env;
+        ind_env.push();
+        auto ih_j = kernel.introduce_axiom(ih_prop);
+        ind_env.insert_or_assign("ih", HypEntry{std::move(*ih_j), EntryKind::Assumption});
 
-    // s.body is P(var) — the inductive predicate stated explicitly by the user.
-    // Verify base concludes P(0) and inductive concludes P(succ(var)).
-    const ast::Prop& ih_prop = s.body;
-    const ast::Expr succ_var{{}, ast::ExprCall{"succ",
-        {ast::make_expr(ast::Expr{{}, ast::ExprVar{s.var}})}}};
-    const ast::Prop base_expected = ast::subst(ih_prop, s.var,
-        ast::Expr{{}, ast::ExprLit{"0"}});
-    const ast::Prop ind_expected  = ast::subst(ih_prop, s.var, succ_var);
+        bool ind_error = false;
+        const ast::Step* ind_last_then = nullptr;
 
-    if (!(base_conc == base_expected)) {
-        diag.emit({diag::Severity::Error, loc,
-                   "induction 'base' block must conclude `"
-                   + forall::pretty::to_string(base_expected)
-                   + "` (P[" + s.var + ":=0]), but got `"
-                   + forall::pretty::to_string(base_conc) + "`"});
-        return false;
-    }
+        for (const auto& uptr : s.inductive_steps) {
+            const auto snap = diag.save();
+            check_step(*uptr, ind_env, kernel, diag, ctx);
+            const auto& all = diag.diagnostics();
+            for (auto i = snap.size; i < all.size(); ++i)
+                if (all[i].severity == diag::Severity::Error) { ind_error = true; break; }
+            if (std::get_if<ast::ThenStep>(&uptr->node))
+                ind_last_then = uptr.get();
+        }
 
-    // ── Inductive block ───────────────────────────────────────────────────────
-    ScopeStack ind_env = env;
-    ind_env.push();
-    auto ih_j = kernel.introduce_axiom(ih_prop);
-    ind_env.insert_or_assign("ih", HypEntry{std::move(*ih_j), EntryKind::Assumption});
+        if (ind_error || !ind_last_then) {
+            if (!ind_error)
+                diag.emit({diag::Severity::Error, loc,
+                           "induction 'inductive' block must end with a 'then' step"});
+            return false;
+        }
 
-    bool ind_error = false;
-    const ast::Step* ind_last_then = nullptr;
+        const ast::Prop& ind_conc = std::get<ast::ThenStep>(ind_last_then->node).prop;
 
-    for (const auto& uptr : s.inductive_steps) {
-        const auto snap = diag.save();
-        check_step(*uptr, ind_env, kernel, diag, ctx);
-        const auto& all = diag.diagnostics();
-        for (auto i = snap.size; i < all.size(); ++i)
-            if (all[i].severity == diag::Severity::Error) { ind_error = true; break; }
-        if (std::get_if<ast::ThenStep>(&uptr->node))
-            ind_last_then = uptr.get();
-    }
-
-    if (ind_error || !ind_last_then) {
-        if (!ind_error)
+        if (!(ind_conc == ind_expected)) {
             diag.emit({diag::Severity::Error, loc,
-                       "induction 'inductive' block must end with a 'then' step"});
-        return false;
+                       "induction 'inductive' block must conclude `"
+                       + forall::pretty::to_string(ind_expected)
+                       + "` (P[" + s.var + ":=succ(" + s.var + ")]), but got `"
+                       + forall::pretty::to_string(ind_conc) + "`"});
+            return false;
+        }
+
+        ast::TypeNode nat_type{{ast::TypeNat{}}};
+        ast::Prop conclusion{{}, ast::PropForall{s.var,
+            std::make_optional(nat_type), ast::make_prop(ih_prop)}};
+
+        const kernel::Judgment base_j = *kernel.introduce_axiom(base_conc);
+
+        ast::Prop step_body{{}, ast::PropImpl{ast::make_prop(ih_prop), ast::make_prop(ind_conc)}};
+        ast::Prop step_prop{{}, ast::PropForall{s.var,
+            std::make_optional(nat_type), ast::make_prop(step_body)}};
+        const kernel::Judgment step_j = *kernel.introduce_axiom(step_prop);
+
+        const std::array<kernel::Judgment, 2> prem = {base_j, step_j};
+        auto result = kernel.apply(kernel::Rule::NatInduction, std::span{prem}, conclusion);
+        if (!result) {
+            diag.emit({diag::Severity::Error, loc,
+                       "NatInduction kernel check failed: " + result.error().message});
+            return false;
+        }
+        env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
+        return true;
     }
 
-    const ast::Prop& ind_conc = std::get<ast::ThenStep>(ind_last_then->node).prop;
+    // ── Structural induction path ─────────────────────────────────────────────
+    //
+    // Determine the inductive type: either from s.type_name (if set by the parser)
+    // or by looking up the induction variable in the type environment.
+    std::string resolved_type = s.type_name;
+    if (resolved_type.empty()) {
+        auto tit = ctx.type_env.find(s.var);
+        if (tit != ctx.type_env.end()) {
+            if (const auto* tu = std::get_if<ast::TypeUser>(&tit->second.node))
+                resolved_type = tu->name;
+        }
+    }
 
-    if (!(ind_conc == ind_expected)) {
+    if (!ctx.inductive_env) {
         diag.emit({diag::Severity::Error, loc,
-                   "induction 'inductive' block must conclude `"
-                   + forall::pretty::to_string(ind_expected)
-                   + "` (P[" + s.var + ":=succ(" + s.var + ")]), but got `"
-                   + forall::pretty::to_string(ind_conc) + "`"});
+                   "no inductive type environment available"});
+        return false;
+    }
+    auto it = ctx.inductive_env->find(resolved_type);
+    if (it == ctx.inductive_env->end()) {
+        diag.emit({diag::Severity::Error, loc,
+                   "unknown inductive type '" + resolved_type + "'"
+                   + (resolved_type.empty()
+                       ? " (declare 'take " + s.var + " : T' before the induction step)"
+                       : "")});
+        return false;
+    }
+    const auto& ctors = it->second;
+
+    // Verify we have exactly one arm per constructor.
+    if (s.arms.size() != ctors.size()) {
+        diag.emit({diag::Severity::Error, loc,
+                   "structural induction on '" + resolved_type + "' requires "
+                   + std::to_string(ctors.size()) + " case(s), got "
+                   + std::to_string(s.arms.size())});
         return false;
     }
 
-    // ── Build kernel premises ─────────────────────────────────────────────────
-    // conclusion: ∀ var : Nat, ih_prop
-    ast::TypeNode nat_type{{ast::TypeNat{}}};
+    // Each arm must end with a ThenStep concluding subst(body, var, ctor_value),
+    // where ctor_value is ExprVar{ctor_name} for a 0-arg constructor, or
+    // ExprCall{ctor_name, arg_vars} for a constructor with arguments.
+    bool any_arm_error = false;
+
+    for (std::size_t ai = 0; ai < s.arms.size(); ++ai) {
+        const auto& arm  = s.arms[ai];
+        const auto& ctor = ctors[ai];
+
+        if (arm.ctor_name != ctor.name) {
+            diag.emit({diag::Severity::Error, loc,
+                       "case arm " + std::to_string(ai + 1) + " names constructor '"
+                       + arm.ctor_name + "' but expected '" + ctor.name + "'"});
+            any_arm_error = true;
+            continue;
+        }
+
+        // Build arm environment: inject constructor args as Assumptions,
+        // then inject IH hypotheses for recursive args.
+        ScopeStack arm_env = env;
+        arm_env.push();
+
+        // Collect all arg variable names for building the constructor expression.
+        std::vector<std::string> arg_var_names;
+        std::size_t vi = 0;
+        std::size_t rec_count = 0;
+        for (std::size_t ti = 0; ti < ctor.arg_types.size(); ++ti) {
+            if (!ctor.is_recursive[ti]) {
+                if (vi < arm.vars.size()) {
+                    // Inject var as Assumption; user's proof may reference it.
+                    ast::Prop var_hyp{{}, ast::Atomic{arm.vars[vi] + "_hyp"}};
+                    auto j = kernel.introduce_axiom(var_hyp);
+                    arm_env.insert_or_assign(arm.vars[vi],
+                                             HypEntry{std::move(*j), EntryKind::Assumption});
+                    arg_var_names.push_back(arm.vars[vi]);
+                    ++vi;
+                }
+            } else {
+                // Recursive arg: bind the variable AND an IH hypothesis P(rec_var).
+                if (vi < arm.vars.size()) {
+                    ast::Prop rec_hyp{{}, ast::Atomic{arm.vars[vi] + "_hyp"}};
+                    auto j = kernel.introduce_axiom(rec_hyp);
+                    arm_env.insert_or_assign(arm.vars[vi],
+                                             HypEntry{std::move(*j), EntryKind::Assumption});
+                    arg_var_names.push_back(arm.vars[vi]);
+
+                    // IH: P(rec_var) = subst(body, var, rec_var)
+                    const ast::Prop ih_prop = ast::subst(s.body, s.var,
+                        ast::Expr{{}, ast::ExprVar{arm.vars[vi]}});
+                    std::string ih_name = rec_count < arm.ih_names.size()
+                                          ? arm.ih_names[rec_count]
+                                          : "ih" + std::to_string(rec_count);
+                    auto ih_j = kernel.introduce_axiom(ih_prop);
+                    arm_env.insert_or_assign(ih_name,
+                                             HypEntry{std::move(*ih_j), EntryKind::Assumption});
+                    ++rec_count;
+                    ++vi;
+                }
+            }
+        }
+
+        // Build the constructor application expression for subst.
+        // 0-arg constructor → ExprVar{ctor_name}; n-arg → ExprCall{ctor_name, args}.
+        ast::Expr ctor_expr{};
+        if (arg_var_names.empty()) {
+            ctor_expr = ast::Expr{{}, ast::ExprVar{ctor.name}};
+        } else {
+            std::vector<ast::ExprPtr> arg_exprs;
+            for (const auto& vn : arg_var_names)
+                arg_exprs.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{vn}}));
+            ctor_expr = ast::Expr{{}, ast::ExprCall{ctor.name, std::move(arg_exprs)}};
+        }
+        // Expected conclusion for this arm: subst(body, var, ctor_expr)
+        const ast::Prop expected_conc = ast::subst(s.body, s.var, ctor_expr);
+
+        // Run the arm's steps.
+        bool arm_error = false;
+        const ast::Step* arm_last_then = nullptr;
+
+        for (const auto& uptr : arm.steps) {
+            const auto snap = diag.save();
+            check_step(*uptr, arm_env, kernel, diag, ctx);
+            const auto& all = diag.diagnostics();
+            for (auto i = snap.size; i < all.size(); ++i)
+                if (all[i].severity == diag::Severity::Error) { arm_error = true; break; }
+            if (std::get_if<ast::ThenStep>(&uptr->node))
+                arm_last_then = uptr.get();
+        }
+
+        if (arm_error || !arm_last_then) {
+            if (!arm_error)
+                diag.emit({diag::Severity::Error, loc,
+                           "case '" + arm.ctor_name + "' must end with a 'then' step"});
+            any_arm_error = true;
+            continue;
+        }
+
+        const ast::Prop& arm_conc = std::get<ast::ThenStep>(arm_last_then->node).prop;
+
+        // Verify the arm concludes the expected specialization of the body.
+        if (!(arm_conc == expected_conc)) {
+            diag.emit({diag::Severity::Error, loc,
+                       "case '" + arm.ctor_name + "' concludes `"
+                       + forall::pretty::to_string(arm_conc)
+                       + "` but expected `"
+                       + forall::pretty::to_string(expected_conc) + "`"});
+            any_arm_error = true;
+        }
+    }
+
+    if (any_arm_error) return false;
+
+    // Certify conclusion ∀ var : T, P(var) via introduce_axiom.
+    // Soundness: each arm verified subst(body, var, ctor_i_value) above.
+    ast::TypeNode t_type{{ast::TypeUser{resolved_type}}};
     ast::Prop conclusion{{}, ast::PropForall{s.var,
-        std::make_optional(nat_type), ast::make_prop(ih_prop)}};
-
-    // premise[0]: ih_prop with var=0, certified as a judgment
-    const kernel::Judgment base_j = *kernel.introduce_axiom(base_conc);
-
-    // premise[1]: ∀ var : Nat, ih_prop → ind_conc (= P(n) → P(succ(n)))
-    ast::Prop step_body{{}, ast::PropImpl{ast::make_prop(ih_prop), ast::make_prop(ind_conc)}};
-    ast::Prop step_prop{{}, ast::PropForall{s.var,
-        std::make_optional(nat_type), ast::make_prop(step_body)}};
-    const kernel::Judgment step_j = *kernel.introduce_axiom(step_prop);
-
-    const std::array<kernel::Judgment, 2> prem = {base_j, step_j};
-    auto result = kernel.apply(kernel::Rule::NatInduction, std::span{prem}, conclusion);
+        std::make_optional(t_type), ast::make_prop(s.body)}};
+    auto result = kernel.introduce_axiom(conclusion);
     if (!result) {
         diag.emit({diag::Severity::Error, loc,
-                   "NatInduction kernel check failed: " + result.error().message});
+                   "structural induction certification failed: " + result.error().message});
         return false;
     }
     env.insert_or_assign(s.name, HypEntry{std::move(*result), EntryKind::Derived});
@@ -1567,7 +1724,7 @@ bool check_step(const ast::Step& step,
                     }
                     CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
                                         ctx.sigs, &prop, &sub_term_defs, ctx.struct_env,
-                                        ctx.pred_defs};
+                                        ctx.pred_defs, ctx.inductive_env};
                     const auto before = diag.diagnostics().size();
                     check_step(sub_step, sub_env, kernel, diag, sub_ctx);
                     const auto& all2 = diag.diagnostics();
@@ -2493,7 +2650,8 @@ void check_proof(const ast::Decl& decl,
                  const InstanceTable& instances = {},
                  const ast::StructEnv* struct_env = nullptr,
                  const PredDefTable* pred_defs = nullptr,
-                 const ast::TypeAliasTable* aliases = nullptr)
+                 const ast::TypeAliasTable* aliases = nullptr,
+                 const ast::InductiveEnv* inductive_env = nullptr)
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -2762,7 +2920,7 @@ void check_proof(const ast::Decl& decl,
             continue;
         }
 
-        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env, pred_defs};
+        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env, pred_defs, inductive_env};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -4311,6 +4469,7 @@ ModuleResult check_module(const std::filesystem::path& path,
     ast::StructEnv struct_env;    // populated from structure declarations
     PredDefTable pred_def_table;  // predicate definitions with bodies
     ast::TypeAliasTable alias_table; // populated from type alias declarations
+    ast::InductiveEnv inductive_env; // populated from inductive declarations
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
@@ -4337,7 +4496,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table, &inductive_env);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -4644,6 +4803,36 @@ ModuleResult check_module(const std::filesystem::path& path,
                 ast::TypeNode body = ast::expand_type_aliases(*decl->type_alias_body, alias_table);
                 alias_table[decl->name] = std::move(body);
             }
+            break;
+        }
+
+        // inductive type — register constructors and auto-generate induction principle
+        case ast::DeclKind::Inductive: {
+            const std::string& type_name = decl->name;
+            inductive_env[type_name] = decl->inductive_ctors;
+
+            // Generate induction principle as an axiom:
+            //   Name_ind : ∀ var : T, P(var)
+            // from premises:
+            //   - for each base ctor c (no recursive args): ∀ a1:A1, ..., P(c(a1,...))
+            //   - for each recursive ctor (args including T): ∀ args, P(rec_args) → P(ctor(args))
+            //
+            // We encode this as a single opaque axiom: ∀ var : T, P(var)
+            // because the kernel has no dependent type rules.  The checker enforces
+            // the proof obligations by running check_induction_step.
+            // The axiom is stored under "T_ind" so users can reference it if needed.
+            ast::TypeNode t_type{{ast::TypeUser{type_name}}};
+            const std::string ind_name = type_name + "_ind";
+            // The principle is: ∀ n : T, P(n)  (symbolic; the body P is universally abstracted)
+            // We use an opaque prop so the axiom exists in module_env but is only
+            // applied structurally through check_induction_step.
+            ast::Prop ind_principle{{},
+                ast::PropForall{"_n", std::make_optional(t_type),
+                                ast::make_prop(ast::Prop{{}, ast::Atomic{"_P"}})}};
+            auto r = kernel.introduce_axiom(ind_principle);
+            if (r)
+                module_env.insert_or_assign(ind_name,
+                                            HypEntry{std::move(*r), EntryKind::Derived});
             break;
         }
         }
