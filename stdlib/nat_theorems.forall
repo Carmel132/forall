@@ -1,0 +1,95 @@
+import "nat.forall"
+open Nat
+
+-- Derived theorems about natural numbers, proved from the Peano axioms.
+
+-- 0 + n = n  (left identity of addition).
+-- The symmetric axiom "add_zero" (n + 0 = n) is in nat.forall;
+-- this direction requires induction.
+theorem zero_add : for all n : Nat, 0 + n = n
+proof
+  induction result on n : 0 + n = n
+    base:
+      have az : 0 + 0 = 0 by add_zero at 0
+      then 0 + 0 = 0 by az
+    inductive:
+      -- IH: ih : 0 + n = n
+      -- Goal: 0 + succ(n) = succ(n)
+      -- add_succ internal bound vars are 'n', 'm'; use 'm' to match after at 0
+      have as1 : for all m : Nat, 0 + succ(m) = succ(0 + m) by add_succ at 0
+      have as2 : 0 + succ(n) = succ(0 + n) by as1 at n
+      have h_refl : succ(n) = succ(n) by refl
+      have h_cong : succ(0 + n) = succ(n) by eq_subst ih and h_refl
+      have h_trans : 0 + succ(n) = succ(n) by trans as2 and h_cong
+      then 0 + succ(n) = succ(n) by h_trans
+end
+
+-- succ(n) + m = succ(n + m)  (successor distributes over left operand).
+-- Needed as a lemma for add_comm.
+theorem succ_add : for all n : Nat, for all m : Nat, succ(n) + m = succ(n + m)
+proof
+  take n : Nat
+  induction result on m : succ(n) + m = succ(n + m)
+    base:
+      -- succ(n) + 0 = succ(n) = succ(n + 0)
+      have saz  : succ(n) + 0 = succ(n) by add_zero at succ(n)
+      have naz  : n + 0 = n by add_zero at n
+      have h_rn : succ(n) = succ(n) by refl
+      have h_cn  : succ(n + 0) = succ(n) by eq_subst naz and h_rn
+      have h_scn : succ(n) = succ(n + 0) by symm h_cn
+      have h_sn0 : succ(n) + 0 = succ(n + 0) by trans saz and h_scn
+      then succ(n) + 0 = succ(n + 0) by h_sn0
+    inductive:
+      -- IH: ih : succ(n) + m = succ(n + m)
+      -- Goal: succ(n) + succ(m) = succ(n + succ(m))
+      -- add_succ internal bound vars 'n', 'm'; after at succ(n): ∀ m, succ(n)+succ(m)=succ(succ(n)+m)
+      have ss1 : for all m : Nat, succ(n) + succ(m) = succ(succ(n) + m)
+                 by add_succ at succ(n)
+      have ss2 : succ(n) + succ(m) = succ(succ(n) + m) by ss1 at m
+      have h_rsn : succ(succ(n + m)) = succ(succ(n + m)) by refl
+      have h_csn : succ(succ(n) + m) = succ(succ(n + m)) by eq_subst ih and h_rsn
+      -- n + succ(m) = succ(n + m)  by add_succ; after at n: ∀ m, n+succ(m)=succ(n+m)
+      have ns1 : for all m : Nat, n + succ(m) = succ(n + m) by add_succ at n
+      have ns2 : n + succ(m) = succ(n + m) by ns1 at m
+      have h_rnm : succ(succ(n + m)) = succ(succ(n + m)) by refl
+      have h_rhs : succ(n + succ(m)) = succ(succ(n + m)) by eq_subst ns2 and h_rnm
+      have lhs_eq : succ(n) + succ(m) = succ(succ(n + m)) by trans ss2 and h_csn
+      have h_sym  : succ(succ(n + m)) = succ(n + succ(m)) by symm h_rhs
+      have h_goal : succ(n) + succ(m) = succ(n + succ(m)) by trans lhs_eq and h_sym
+      then succ(n) + succ(m) = succ(n + succ(m)) by h_goal
+end
+
+-- a + b = b + a  (commutativity of addition).
+-- Bound vars 'a','b' avoid capture with add_succ/succ_add internal vars 'n','m'.
+-- take a first, then induction on b, so auto-conclusion is ∀ a, ∀ b, a + b = b + a.
+theorem add_comm : for all a : Nat, for all b : Nat, a + b = b + a
+proof
+  take a : Nat
+  induction result on b : a + b = b + a
+    base:
+      -- a + 0 = a = 0 + a
+      have az : a + 0 = a by add_zero at a
+      have za : 0 + a = a by zero_add at a
+      have h_sym : a = 0 + a by symm za
+      have h_goal : a + 0 = 0 + a by trans az and h_sym
+      then a + 0 = 0 + a by h_goal
+    inductive:
+      -- IH: ih : a + b = b + a
+      -- Goal: a + succ(b) = succ(b) + a
+      -- add_succ at a → ∀ m, a + succ(m) = succ(a + m)  [bound var 'm' ≠ free 'b']
+      -- at b → a + succ(b) = succ(a + b)
+      have as1 : for all m : Nat, a + succ(m) = succ(a + m) by add_succ at a
+      have as2 : a + succ(b) = succ(a + b) by as1 at b
+      -- succ(a + b) = succ(b + a)  by congruence with IH
+      have h_rba : succ(b + a) = succ(b + a) by refl
+      have h_cba : succ(a + b) = succ(b + a) by eq_subst ih and h_rba
+      -- succ_add at b → ∀ m, succ(b) + m = succ(b + m)  [bound var 'm' ≠ free 'a']
+      -- at a → succ(b) + a = succ(b + a)
+      have sb1 : for all m : Nat, succ(b) + m = succ(b + m) by succ_add at b
+      have sb2 : succ(b) + a = succ(b + a) by sb1 at a
+      have h_sym2 : succ(b + a) = succ(b) + a by symm sb2
+      -- Chain: a+succ(b) = succ(a+b) = succ(b+a) = succ(b)+a
+      have h1 : a + succ(b) = succ(b + a) by trans as2 and h_cba
+      have h2 : a + succ(b) = succ(b) + a by trans h1 and h_sym2
+      then a + succ(b) = succ(b) + a by h2
+end
