@@ -1211,3 +1211,60 @@ proof
   have h_r : a + 1 <= b by omega
   then a + 1 <= b by h_r
 end
+
+-- a ≤ b → a * k ≤ b * k  (multiplication is monotone on the right).
+theorem mul_le_mul_right : for all a : Nat, for all b : Nat, for all k : Nat,
+                            a <= b implies a * k <= b * k
+proof
+  take a : Nat
+  take b : Nat
+  induction result on k : a <= b implies a * k <= b * k
+    base:
+      -- a * 0 = 0 = b * 0
+      have az : a * 0 = 0 by mul_zero at a
+      have bz : b * 0 = 0 by mul_zero at b
+      have impl : a <= b implies a * 0 <= b * 0
+        proof
+          suppose h_ab : a <= b
+          have concl : a * 0 <= b * 0 by omega
+          have i : a <= b implies a * 0 <= b * 0 by h_ab and concl
+          then a <= b implies a * 0 <= b * 0 by i
+        end
+      then a <= b implies a * 0 <= b * 0 by impl
+    inductive:
+      -- IH: ih : a <= b implies a * k <= b * k
+      -- Goal: a <= b implies a * succ(k) <= b * succ(k)
+      suppose h_ab : a <= b
+      -- a * succ(k) = a * k + a  by mul_succ at a at k
+      have mas1 : for all m : Nat, a * succ(m) = a * m + a by mul_succ at a
+      have mas2 : a * succ(k) = a * k + a by mas1 at k
+      -- b * succ(k) = b * k + b  by mul_succ at b at k
+      have mbs1 : for all m : Nat, b * succ(m) = b * m + b by mul_succ at b
+      have mbs2 : b * succ(k) = b * k + b by mbs1 at k
+      -- a * k <= b * k  by IH
+      have ih_app : a <= b implies a * k <= b * k by ih
+      have h_mul : a * k <= b * k by ih_app and h_ab
+      -- a * k + a <= b * k + b  by add_le_add at (a*k) at (b*k) at a at b
+      -- Bound vars in add_le_add are a,b,c,d; outer free are a,b,k.
+      -- At (a*k): remaining ∀ b c d; outer b conflicts, but at (b*k) gives remaining ∀ c d.
+      -- c,d don't conflict with outer k; at a then at b gives a*k≤b*k → a≤b → a*k+a≤b*k+b.
+      have add1 : for all b : Nat, for all c : Nat, for all d : Nat,
+                  a * k <= b implies c <= d implies a * k + c <= b + d
+                  by add_le_add at (a * k)
+      have add2 : for all c : Nat, for all d : Nat,
+                  a * k <= b * k implies c <= d implies a * k + c <= b * k + d
+                  by add1 at (b * k)
+      have add3 : for all d : Nat, a * k <= b * k implies a <= d implies a * k + a <= b * k + d
+                  by add2 at a
+      have add4 : a * k <= b * k implies a <= b implies a * k + a <= b * k + b by add3 at b
+      have h_sum_impl : a <= b implies a * k + a <= b * k + b by add4 and h_mul
+      have h_sum : a * k + a <= b * k + b by h_sum_impl and h_ab
+      -- Convert: a*succ(k) = a*k+a, b*succ(k) = b*k+b.
+      -- eq_subst EQ and PREMISE: subst lhs(EQ)→rhs(EQ) in declared type; check = PREMISE.
+      -- So for h_r1 : a*succ(k) ≤ b*k+b: use eq=mas2 (a*succ(k)=a*k+a); subst in declared→a*k+a≤b*k+b=h_sum
+      have h_r1 : a * succ(k) <= b * k + b by eq_subst mas2 and h_sum
+      -- For result : a*succ(k) ≤ b*succ(k): use eq=mbs2 (b*succ(k)=b*k+b); subst in declared→a*succ(k)≤b*k+b=h_r1
+      have result : a * succ(k) <= b * succ(k) by eq_subst mbs2 and h_r1
+      have impl_step : a <= b implies a * succ(k) <= b * succ(k) by h_ab and result
+      then a <= b implies a * succ(k) <= b * succ(k) by impl_step
+end
