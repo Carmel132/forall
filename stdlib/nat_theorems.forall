@@ -470,7 +470,42 @@ proof
       then (x * y) * succ(z) = x * (y * succ(z)) by chain2
 end
 
+-- a ≤ b ∧ b ≤ a → a = b  (antisymmetry of ≤).
+theorem le_antisymm : for all p : Nat, for all q : Nat,
+                       p <= q implies q <= p implies p = q
+proof
+  take p : Nat
+  take q : Nat
+  suppose h1 : p <= q
+  suppose h2 : q <= p
+  then p = q by omega
+end
+
+-- a + b ≤ a + c → b ≤ c  (left cancellation for ≤).
+theorem add_le_cancel_left : for all p : Nat, for all q : Nat, for all r : Nat,
+                              p + q <= p + r implies q <= r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h : p + q <= p + r
+  then q <= r by omega
+end
+
+-- b + a ≤ c + a → b ≤ c  (right cancellation for ≤).
+theorem add_le_cancel_right : for all p : Nat, for all q : Nat, for all r : Nat,
+                               q + p <= r + p implies q <= r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h : q + p <= r + p
+  then q <= r by omega
+end
+
 -- a + b = a + c → b = c  (left cancellation of addition).
+-- Proof: split equality into ≤ and ≥; cancel each via add_le_cancel_left; antisymm.
+-- add_le_cancel_left uses bound vars p,q,r so 'at a at b at c' avoids capture.
 theorem add_left_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
                            a + b = a + c implies b = c
 proof
@@ -478,10 +513,28 @@ proof
   take b : Nat
   take c : Nat
   suppose h : a + b = a + c
-  then b = c by omega
+  have h_le : a + b <= a + c by omega
+  have h_ge : a + c <= a + b by omega
+  -- Forward: a+b ≤ a+c → b ≤ c.  add_le_cancel_left at a → ∀ q r, a+q ≤ a+r → q ≤ r
+  have alc0 : for all q : Nat, for all r : Nat, a + q <= a + r implies q <= r
+              by add_le_cancel_left at a
+  have alc1 : for all r : Nat, a + b <= a + r implies b <= r by alc0 at b
+  have alc2 : a + b <= a + c implies b <= c by alc1 at c
+  have bc_le : b <= c by alc2 and h_le
+  -- Reverse: a+c ≤ a+b → c ≤ b.  alc0 at c → ∀ r, a+c ≤ a+r → c ≤ r
+  have alc3 : for all r : Nat, a + c <= a + r implies c <= r by alc0 at c
+  have alc4 : a + c <= a + b implies c <= b by alc3 at b
+  have cb_le : c <= b by alc4 and h_ge
+  -- Antisymmetry: le_antisymm at b → ∀ q, b ≤ q → q ≤ b → b = q
+  have las0 : for all q : Nat, b <= q implies q <= b implies b = q
+              by le_antisymm at b
+  have las1 : b <= c implies c <= b implies b = c by las0 at c
+  have las2 : c <= b implies b = c by las1 and bc_le
+  then b = c by las2 and cb_le
 end
 
 -- b + a = c + a → b = c  (right cancellation of addition).
+-- add_le_cancel_right uses bound vars p,q,r where p is the common right addend.
 theorem add_right_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
                             b + a = c + a implies b = c
 proof
@@ -489,54 +542,84 @@ proof
   take b : Nat
   take c : Nat
   suppose h : b + a = c + a
-  then b = c by omega
+  have h_le : b + a <= c + a by omega
+  have h_ge : c + a <= b + a by omega
+  -- add_le_cancel_right : ∀ p q r, q+p ≤ r+p → q ≤ r.  at a → ∀ q r, q+a ≤ r+a → q ≤ r
+  have arc0 : for all q : Nat, for all r : Nat, q + a <= r + a implies q <= r
+              by add_le_cancel_right at a
+  have arc1 : for all r : Nat, b + a <= r + a implies b <= r by arc0 at b
+  have arc2 : b + a <= c + a implies b <= c by arc1 at c
+  have bc_le : b <= c by arc2 and h_le
+  have arc3 : for all r : Nat, c + a <= r + a implies c <= r by arc0 at c
+  have arc4 : c + a <= b + a implies c <= b by arc3 at b
+  have cb_le : c <= b by arc4 and h_ge
+  have las0 : for all q : Nat, b <= q implies q <= b implies b = q
+              by le_antisymm at b
+  have las1 : b <= c implies c <= b implies b = c by las0 at c
+  have las2 : c <= b implies b = c by las1 and bc_le
+  then b = c by las2 and cb_le
 end
 
--- a ≤ a + b  (adding is non-decreasing on the right).
-theorem le_add_right : for all a : Nat, for all b : Nat, a <= a + b
+-- a < b → a + c < b + c  (addition is strictly monotone on the right).
+theorem add_lt_add_right : for all a : Nat, for all b : Nat, for all c : Nat,
+                            a < b implies a + c < b + c
 proof
   take a : Nat
   take b : Nat
-  then a <= a + b by omega
+  take c : Nat
+  suppose h : a < b
+  then a + c < b + c by omega
 end
 
--- b ≤ a + b  (adding is non-decreasing on the left).
-theorem le_add_left : for all a : Nat, for all b : Nat, b <= a + b
+-- a < b → c + a < c + b  (addition is strictly monotone on the left).
+theorem add_lt_add_left : for all a : Nat, for all b : Nat, for all c : Nat,
+                           a < b implies c + a < c + b
 proof
   take a : Nat
   take b : Nat
-  then b <= a + b by omega
+  take c : Nat
+  suppose h : a < b
+  then c + a < c + b by omega
 end
 
--- a ≤ b ∧ b ≤ a → a = b  (antisymmetry of ≤).
-theorem le_antisymm : for all a : Nat, for all b : Nat,
-                       a <= b implies b <= a implies a = b
+-- a ≤ b → a + c ≤ b + c  (addition is monotone on the right).
+theorem add_le_add_right : for all a : Nat, for all b : Nat, for all c : Nat,
+                            a <= b implies a + c <= b + c
 proof
   take a : Nat
   take b : Nat
+  take c : Nat
+  suppose h : a <= b
+  then a + c <= b + c by omega
+end
+
+-- a ≤ b → c + a ≤ c + b  (addition is monotone on the left).
+theorem add_le_add_left : for all a : Nat, for all b : Nat, for all c : Nat,
+                           a <= b implies c + a <= c + b
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a <= b
+  then c + a <= c + b by omega
+end
+
+-- a ≤ b ∧ c ≤ d → a + c ≤ b + d  (addition preserves ≤ in both arguments).
+theorem add_le_add : for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+                     a <= b implies c <= d implies a + c <= b + d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
   suppose h1 : a <= b
-  suppose h2 : b <= a
-  then a = b by omega
+  suppose h2 : c <= d
+  then a + c <= b + d by omega
 end
 
--- a + b ≤ a + c → b ≤ c  (left cancellation for ≤).
-theorem add_le_cancel_left : for all a : Nat, for all b : Nat, for all c : Nat,
-                              a + b <= a + c implies b <= c
+-- n < succ(n)  (restatement of the lt_succ axiom as a proved theorem).
+theorem lt_succ_self : for all n : Nat, n < succ(n)
 proof
-  take a : Nat
-  take b : Nat
-  take c : Nat
-  suppose h : a + b <= a + c
-  then b <= c by omega
-end
-
--- b + a ≤ c + a → b ≤ c  (right cancellation for ≤).
-theorem add_le_cancel_right : for all a : Nat, for all b : Nat, for all c : Nat,
-                               b + a <= c + a implies b <= c
-proof
-  take a : Nat
-  take b : Nat
-  take c : Nat
-  suppose h : b + a <= c + a
-  then b <= c by omega
+  take n : Nat
+  then n < succ(n) by lt_succ at n
 end
