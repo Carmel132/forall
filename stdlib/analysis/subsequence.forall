@@ -1,5 +1,6 @@
 import "sequence.forall"
 import "../nat.forall"
+open Nat
 
 -- A strictly increasing function phi : Nat -> Nat.
 -- phi(m) < phi(n) whenever m < n.

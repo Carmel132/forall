@@ -3,8 +3,9 @@
 -- verifying that imported axioms are visible in scope.
 
 import "../stdlib/nat.forall"
+open Nat
 
--- add_zero is available after the import; this theorem is identical to it.
+-- Nat.add_zero is available after the import; this theorem is identical to it.
 theorem add_zero_demo : for all n : Nat, n + 0 = n
 proof
   then for all n : Nat, n + 0 = n by add_zero
