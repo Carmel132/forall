@@ -4198,3 +4198,31 @@ end
     EXPECT_FALSE(diag.hasErrors());
     EXPECT_TRUE(has_warning(diag, "type mismatch"));
 }
+
+// take T : Type is accepted as a valid annotation; proves a universally
+// quantified tautology parameterised by an abstract type variable.
+TEST(CheckerTest, TakeTypeAnnotation_Valid) {
+    auto diag = run_checker("take_type_annotation", R"(
+theorem gen_trivial : for all T : Type, for all P : Prop, P implies P
+proof
+  take T : Type
+  take P : Prop
+  suppose h : P
+  then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// take T : Type followed by a step that uses T only in a type annotation —
+// the inner proof body is independent of T but the theorem still closes correctly.
+TEST(CheckerTest, TakeTypeAnnotation_IndependentBody) {
+    auto diag = run_checker("take_type_independent_body", R"(
+theorem type_body_indep : for all T : Type, 1 = 1
+proof
+  take T : Type
+  then 1 = 1 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
