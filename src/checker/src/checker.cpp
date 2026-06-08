@@ -1055,7 +1055,12 @@ bool check_obtain_step(const ast::ObtainStep& s,
     });
     if (!fresh) return false;
 
-    // 3. Verify hyp_prop == subst(body, exists_var, ExprVar{s.var})
+    if (s.hyp_bindings.empty()) {
+        diag.emit({diag::Severity::Error, loc, "'obtain' case arm has no hypothesis bindings"});
+        return false;
+    }
+
+    // 3. Verify hyp_bindings[0].prop == subst(body, exists_var, ExprVar{s.var})
     // Beta-reduce after substitution so ExprApp{ExprVar{v}, args} → ExprCall{v, args}.
     // Also unfold any predicate definitions in both sides before comparing.
     const ast::Prop expected_hyp_raw =
@@ -1064,24 +1069,110 @@ bool check_obtain_step(const ast::ObtainStep& s,
     const ast::Prop expected_hyp = (ctx.pred_defs && !ctx.pred_defs->empty())
         ? unfold_preds(ast::beta_reduce(expected_hyp_raw), *ctx.pred_defs)
         : ast::beta_reduce(expected_hyp_raw);
-    const ast::Prop user_hyp = (ctx.pred_defs && !ctx.pred_defs->empty())
-        ? unfold_preds(ast::beta_reduce(s.hyp_prop), *ctx.pred_defs)
-        : ast::beta_reduce(s.hyp_prop);
-    if (!(user_hyp == expected_hyp)) {
+    const ast::Prop user_hyp0 = (ctx.pred_defs && !ctx.pred_defs->empty())
+        ? unfold_preds(ast::beta_reduce(s.hyp_bindings[0].prop), *ctx.pred_defs)
+        : ast::beta_reduce(s.hyp_bindings[0].prop);
+
+    // When multiple bindings are present, the full existential body must be a conjunction
+    // whose left spine matches the declared props.  The first binding may itself be a
+    // conjunction — only the entire body need match.
+    const bool multi = s.hyp_bindings.size() > 1;
+    if (!multi && !(user_hyp0 == expected_hyp)) {
         diag.emit({diag::Severity::Error, loc,
                    "obtain arm hypothesis does not match the existential body; "
                    "expected `" + forall::pretty::to_string(expected_hyp) + "`"});
         return false;
     }
+    if (multi && !(expected_hyp == expected_hyp)) {
+        // placeholder — multi-binding check happens after sub_env setup below
+    }
 
-    // 4. Build sub-environment with s.var taken and s.hyp_name : s.hyp_prop
+    // 4. Build sub-environment with s.var taken and the hyp bindings inserted.
     // Use the normalised/unfolded hyp form so steps inside the arm see the expanded props.
     ScopeStack sub_env = env;
     sub_env.push();
     sub_env.take_var(s.var);
-    auto hyp_j = kernel.introduce_axiom(user_hyp);
-    sub_env.insert_or_assign(s.hyp_name,
-                             HypEntry{std::move(*hyp_j), EntryKind::Assumption});
+
+    if (!multi) {
+        // Single binding — straightforward.
+        auto hyp_j = kernel.introduce_axiom(user_hyp0);
+        sub_env.insert_or_assign(s.hyp_bindings[0].name,
+                                 HypEntry{std::move(*hyp_j), EntryKind::Assumption});
+    } else {
+        // Multiple bindings — peel conjuncts off the existential body left-to-right.
+        // The body must be a right-associated conjunction of N components.
+        // For N bindings [h0:P0, h1:P1, ..., hN-1:P_{N-1}]:
+        //   h0 = AndElimL(body)              if N == 2:  body = P0 ∧ P1
+        //   h1 = AndElimR(body)              ...
+        //   hk = AndElimL(right-spine at k)  for k < N-1
+        //   hN-1 = AndElimR(right-spine)
+        // Each user-stated prop is verified against the corresponding component.
+        auto body_j = kernel.introduce_axiom(expected_hyp);
+        ast::Prop remaining = expected_hyp; // tracks the unpeeled conjunction
+        kernel::Judgment remaining_j = std::move(*body_j);
+
+        for (std::size_t i = 0; i < s.hyp_bindings.size(); ++i) {
+            const auto& binding = s.hyp_bindings[i];
+            const bool is_last = (i + 1 == s.hyp_bindings.size());
+
+            if (is_last) {
+                // Last binding: use remaining directly (no more peel needed).
+                const ast::Prop user_prop = (ctx.pred_defs && !ctx.pred_defs->empty())
+                    ? unfold_preds(ast::beta_reduce(binding.prop), *ctx.pred_defs)
+                    : ast::beta_reduce(binding.prop);
+                if (!(user_prop == remaining)) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "obtain binding '" + binding.name
+                               + "' does not match expected `"
+                               + forall::pretty::to_string(remaining) + "`"});
+                    return false;
+                }
+                sub_env.insert_or_assign(binding.name,
+                    HypEntry{std::move(remaining_j), EntryKind::Assumption});
+            } else {
+                // Non-last: remaining must be a conjunction; peel with AndElimL/R.
+                const auto* conj = std::get_if<ast::PropAnd>(&remaining.node);
+                if (!conj) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "obtain: expected a conjunction to destructure for binding '"
+                               + binding.name + "'"});
+                    return false;
+                }
+                // Left conjunct → this binding.
+                const ast::Prop left = *conj->lhs;
+                const ast::Prop user_prop = (ctx.pred_defs && !ctx.pred_defs->empty())
+                    ? unfold_preds(ast::beta_reduce(binding.prop), *ctx.pred_defs)
+                    : ast::beta_reduce(binding.prop);
+                if (!(user_prop == left)) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "obtain binding '" + binding.name
+                               + "' does not match expected `"
+                               + forall::pretty::to_string(left) + "`"});
+                    return false;
+                }
+                auto left_j = kernel.apply(kernel::Rule::AndElimL,
+                                           std::span{&remaining_j, 1}, left);
+                if (!left_j) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "AndElimL failed: " + left_j.error().message});
+                    return false;
+                }
+                sub_env.insert_or_assign(binding.name,
+                    HypEntry{std::move(*left_j), EntryKind::Assumption});
+                // Right conjunct → continues as new remaining.
+                const ast::Prop right = *conj->rhs;
+                auto right_j = kernel.apply(kernel::Rule::AndElimR,
+                                            std::span{&remaining_j, 1}, right);
+                if (!right_j) {
+                    diag.emit({diag::Severity::Error, loc,
+                               "AndElimR failed: " + right_j.error().message});
+                    return false;
+                }
+                remaining = right;
+                remaining_j = std::move(*right_j);
+            }
+        }
+    }
 
     // Check sub-proof steps
     const ast::Step* arm_last_then = nullptr;
