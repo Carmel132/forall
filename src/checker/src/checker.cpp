@@ -687,9 +687,11 @@ static bool fourier_motzkin(std::vector<LinConstraint> cs);
 static std::vector<LinConstraint> collect_linear_hypotheses(const ScopeStack& env);
 
 // Forward declaration for simp_tactic (defined in the tactics section below).
+// lemma_set: if non-empty, restricts the search to only those named hypotheses.
 static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStack& env,
                                            diag::DiagnosticEngine& diag,
-                                           const diag::SourceLocation& loc);
+                                           const diag::SourceLocation& loc,
+                                           const std::vector<std::string>& lemma_set = {});
 
 // Forward declarations for tactics defined in the tactics section below.
 static bool field_simp_tactic(const ast::Prop& goal, ScopeStack& env,
@@ -1633,9 +1635,11 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
-            // "by simp" — propositional simplification (MT2)
-            if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
-                auto app = simp_tactic(prop, env, diag, step.loc);
+            // "by simp" / "by simp [h1, h2]" — propositional simplification (MT2)
+            if (!s.justification.empty() && s.justification[0] == "__simp__") {
+                std::vector<std::string> lemma_set(s.justification.begin() + 1,
+                                                   s.justification.end());
+                auto app = simp_tactic(prop, env, diag, step.loc, lemma_set);
                 if (!app) return false;
                 auto r = kernel.apply(app->rule, std::span{app->premises}, prop);
                 if (!r) {
@@ -2004,9 +2008,11 @@ bool check_step(const ast::Step& step,
                 }
                 return true;
             }
-            // "by simp" — propositional simplification (ThenStep variant)
-            if (s.justification.size() == 1 && s.justification[0] == "__simp__") {
-                auto app = simp_tactic(prop, env, diag, step.loc);
+            // "by simp" / "by simp [h1, h2]" — propositional simplification (ThenStep variant)
+            if (!s.justification.empty() && s.justification[0] == "__simp__") {
+                std::vector<std::string> lemma_set(s.justification.begin() + 1,
+                                                   s.justification.end());
+                auto app = simp_tactic(prop, env, diag, step.loc, lemma_set);
                 if (!app) return false;
                 auto r = kernel.apply(app->rule, std::span{app->premises}, prop);
                 if (!r) {
@@ -3436,11 +3442,22 @@ static std::optional<LinConstraint> negate_linear(const LinConstraint& c) {
 // Returns the first matching RuleApp, or nullopt with a diagnostic on failure.
 static std::optional<RuleApp> simp_tactic(const ast::Prop& goal, const ScopeStack& env,
                                            diag::DiagnosticEngine& diag,
-                                           const diag::SourceLocation& loc)
+                                           const diag::SourceLocation& loc,
+                                           const std::vector<std::string>& lemma_set)
 {
-    // Collect all hypotheses into a vector.
+    // Collect hypotheses: all in scope, or only the named subset if a lemma set was given.
     std::vector<const HypEntry*> all;
-    env.for_each([&](const std::string&, const HypEntry& e) { all.push_back(&e); });
+    if (lemma_set.empty()) {
+        env.for_each([&](const std::string&, const HypEntry& e) { all.push_back(&e); });
+    } else {
+        for (const auto& name : lemma_set) {
+            if (const HypEntry* e = env.find(name))
+                all.push_back(e);
+            else
+                diag.emit({diag::Severity::Warning, loc,
+                           "'by simp': lemma '" + name + "' not found in scope"});
+        }
+    }
 
     // Create a muted diagnostic engine for probe calls.
     diag::DiagnosticEngine probe_diag;
