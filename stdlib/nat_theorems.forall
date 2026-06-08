@@ -1791,3 +1791,118 @@ proof
       have impl : succ(n) <= p implies succ(n) < p or succ(n) = p by h_le and split_res
       then for all p : Nat, succ(n) <= p implies succ(n) < p or succ(n) = p by impl
 end
+
+
+-- n <= p implies n = p or n < p (symmetric form of lt_or_eq_of_le).
+theorem eq_or_lt_of_le : for all n : Nat, for all p : Nat, n <= p implies n = p or n < p
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_le : n <= p
+  have loe1 : for all p : Nat, n <= p implies n < p or n = p by lt_or_eq_of_le at n
+  have loe2 : n <= p implies n < p or n = p by loe1 at p
+  have loe3 : n < p or n = p by loe2 and h_le
+  cases res : loe3
+    case h_lt : n < p =>
+      have disj : n = p or n < p by h_lt
+      then n = p or n < p by disj
+    case h_eq : n = p =>
+      have disj : n = p or n < p by h_eq
+      then n = p or n < p by disj
+  done
+  then n = p or n < p by res
+end
+
+-- n < p or p <= n (from le_total and lt_or_eq_of_le).
+theorem lt_or_ge : for all n : Nat, for all p : Nat, n < p or p <= n
+proof
+  take n : Nat
+  take p : Nat
+  have tot1 : for all p : Nat, n <= p or p <= n by le_total at n
+  have tot2 : n <= p or p <= n by tot1 at p
+  cases res : tot2
+    case h_le : n <= p =>
+      have loe1 : for all p : Nat, n <= p implies n < p or n = p by lt_or_eq_of_le at n
+      have loe2 : n <= p implies n < p or n = p by loe1 at p
+      have loe3 : n < p or n = p by loe2 and h_le
+      cases loe_res : loe3
+        case h_lt : n < p =>
+          have disj : n < p or p <= n by h_lt
+          then n < p or p <= n by disj
+        case h_eq : n = p =>
+          have h_plen : p <= n by omega
+          have disj : n < p or p <= n by h_plen
+          then n < p or p <= n by disj
+      done
+      then n < p or p <= n by loe_res
+    case h_ge : p <= n =>
+      have disj : n < p or p <= n by h_ge
+      then n < p or p <= n by disj
+  done
+  then n < p or p <= n by res
+end
+
+-- n < p implies not (p < n).
+theorem lt_asymm : for all n : Nat, for all p : Nat, n < p implies not (p < n)
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_np : n < p
+  have result : not (p < n)
+    proof
+      suppose h_pn : p < n
+      have llt1 : for all q : Nat, for all r : Nat, n < q implies q < r implies n < r
+                  by lt_trans at n
+      have llt2 : for all r : Nat, n < p implies p < r implies n < r by llt1 at p
+      have llt3 : n < p implies p < n implies n < n by llt2 at n
+      have llt4 : p < n implies n < n by llt3 and h_np
+      have h_nn : n < n by llt4 and h_pn
+      have h_irr : not (n < n) by lt_irrefl at n
+      have bot : false by h_irr and h_nn
+      then not (p < n) by h_pn and bot
+    end
+  then not (p < n) by result
+end
+
+-- n < p implies not (p <= n).
+theorem not_le_of_gt : for all n : Nat, for all p : Nat, n < p implies not (p <= n)
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_np : n < p
+  have result : not (p <= n)
+    proof
+      suppose h_pn : p <= n
+      have llt1 : for all q : Nat, for all r : Nat, n < q implies q <= r implies n < r
+                  by lt_le_trans at n
+      have llt2 : for all r : Nat, n < p implies p <= r implies n < r by llt1 at p
+      have llt3 : n < p implies p <= n implies n < n by llt2 at n
+      have llt4 : p <= n implies n < n by llt3 and h_np
+      have h_nn : n < n by llt4 and h_pn
+      have h_irr : not (n < n) by lt_irrefl at n
+      have bot : false by h_irr and h_nn
+      then not (p <= n) by h_pn and bot
+    end
+  then not (p <= n) by result
+end
+
+-- n <= p and not (n = p) implies n < p.
+theorem lt_of_le_of_ne : for all n : Nat, for all p : Nat, n <= p implies not (n = p) implies n < p
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_le : n <= p
+  suppose h_ne : not (n = p)
+  have loe1 : for all p : Nat, n <= p implies n < p or n = p by lt_or_eq_of_le at n
+  have loe2 : n <= p implies n < p or n = p by loe1 at p
+  have loe3 : n < p or n = p by loe2 and h_le
+  cases res : loe3
+    case h_lt : n < p =>
+      then n < p by h_lt
+    case h_eq : n = p =>
+      have bot : false by h_ne and h_eq
+      have concl : n < p by bot
+      then n < p by concl
+  done
+  then n < p by res
+end
