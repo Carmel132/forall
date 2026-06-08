@@ -1958,14 +1958,21 @@ ast::Step Parser::parseStep() {
     if (check(K::KwInduction))    return parseInductionStep();
     if (check(K::KwWlog))         return parseWlogStep();
 
-    // rewrite [←/<-] h — equality rewriting step
+    // rewrite [↔] [←/<-] h — equality or biconditional rewriting step
     if (check(K::KwRewrite)) {
         const auto loc = peek().loc;
         advance(); // consume "rewrite"
-        // Parse a comma-separated list of [←] ref items.
+        // Parse a comma-separated list of [↔] [←] ref items.
         std::vector<ast::RewriteItem> rewrites;
         do {
+            bool iff = false;
             bool rev = false;
+            // ↔ / iff prefix: rewrite using a biconditional (propositional rewrite)
+            if (check(K::Iff)) {
+                iff = true; advance();
+            } else if (check(K::Identifier) && peek().lexeme == "iff") {
+                iff = true; advance();
+            }
             if (check(K::LeftArrow)) {
                 rev = true; advance(); // ← U+2190
             } else if (check(K::Less) && pos_ + 1 < tokens_.size()
@@ -1978,7 +1985,7 @@ ast::Step Parser::parseStep() {
             else
                 diag_.emit({diag::Severity::Error, peek().loc,
                             "expected hypothesis name after 'rewrite'"});
-            rewrites.push_back({std::move(ref), rev});
+            rewrites.push_back({std::move(ref), rev, iff});
         } while (check(K::Comma) && (advance(), true));
         return {loc, ast::RewriteStep{std::move(rewrites)}};
     }
