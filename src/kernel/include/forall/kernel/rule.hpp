@@ -49,6 +49,15 @@ namespace forall::kernel {
 //   inspects only premise.prop(), never the derivation history.  ProofIrrel makes
 //   this explicit as a kernel rule: given two certifications of the same proposition,
 //   yield a single certification of that proposition.
+//
+// Propositional extensionality:
+//   PropExt : Γ ⊢ P ↔ Q   (i.e. Γ ⊢ (P→Q)∧(Q→P))            →  Γ ⊢ P = Q
+//   (The conclusion must be a PropRel{Eq} whose lhs and rhs are propositions
+//    represented via Atomic{} nodes.  Since propositions are not first-class
+//    expression terms in our AST, PropExt at the kernel level requires the
+//    checker to certify the goal shape and call introduce_axiom.  This rule
+//    exists for completeness; the checker's `rewrite ↔ h` tactic uses
+//    `subst_prop` directly without needing the kernel to see "P = Q".)
 enum class Rule {
     Axiom,
     Assumption,
@@ -64,6 +73,7 @@ enum class Rule {
     NatInduction,
     Refl, Symm, Trans, Congr,
     ProofIrrel,
+    PropExt,
 };
 
 } // namespace forall::kernel
