@@ -26,3 +26,8 @@ axiom bijective_def : Bijective(f) iff (Injective(f) and Surjective(f))
 -- ── Inverse ──────────────────────────────────────────────────────────────────
 axiom inverse_left  : Bijective(f) implies (inv f) compose f = id
 axiom inverse_right : Bijective(f) implies f compose (inv f) = id
+
+-- Function extensionality: two functions agreeing on all inputs are equal.
+axiom funext :
+    for all f : Nat -> Nat, for all g : Nat -> Nat,
+        (for all x : Nat, f(x) = g(x)) implies f = g
