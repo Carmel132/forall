@@ -4159,6 +4159,101 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── IsUpperBound / BoundedAbove / IsSupremum predicate definitions ────────────
+
+// IsUpperBound(S, b) unfolds to: ∀ x : Real, x ∈ S → x ≤ b.
+// Verify the definition is usable in a basic proof: if b is an upper bound of S
+// and x ∈ S, then x ≤ b.
+TEST(CheckerTest, IsUpperBound_UnfoldsCorrectly) {
+    auto diag = run_checker("upper_bound_unfold", R"(
+definition IsUpperBound (S : Set Real) (b : Real) : Prop :=
+  for all x : Real, x in S -> x <= b
+
+-- Alphabetical order of hypothesis names determines discharge order:
+-- h_in < h_ub, so h_in wraps outermost in the conclusion.
+theorem use_upper_bound :
+  for all S : Set Real, for all b : Real, for all x : Real,
+    x in S -> (for all y : Real, y in S -> y <= b) -> x <= b
+proof
+  take S : Set Real
+  take b : Real
+  take x : Real
+  suppose h_in : x in S
+  suppose h_ub : for all y : Real, y in S -> y <= b
+  have h_impl : x in S -> x <= b by h_ub at x
+  then x <= b by h_impl and h_in
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// BoundedAbove(S) unfolds to: ∃ b : Real, IsUpperBound(S, b).
+// After unfolding, the existential can be extracted via obtain.
+// Verify we can extract the bound and use the upper bound property.
+TEST(CheckerTest, BoundedAbove_UnfoldsAndExtractsBound) {
+    auto diag = run_checker("bounded_above_obtain", R"(
+definition IsUpperBound (S : Set Real) (b : Real) : Prop :=
+  for all x : Real, x in S -> x <= b
+
+definition BoundedAbove (S : Set Real) : Prop :=
+  there exists b : Real, IsUpperBound(S, b)
+
+theorem bounded_has_bound :
+  for all S : Set Real, for all x : Real,
+    BoundedAbove(S) -> x in S ->
+      there exists b : Real, x <= b
+proof
+  take S : Set Real
+  take x : Real
+  suppose h_ba : BoundedAbove(S)
+  suppose h_in : x in S
+  obtain b_result from h_ba
+    case b , h_ub : IsUpperBound(S, b) =>
+      have h_impl : x in S -> x <= b by h_ub at x
+      have h_le   : x <= b by h_impl and h_in
+      then there exists b : Real, x <= b by h_le at b
+    done
+  then there exists b : Real, x <= b by b_result
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// IsSupremum(S, s) unfolds to: IsUpperBound(S, s) ∧ (∀ b, IsUpperBound(S, b) → s ≤ b).
+// Verify we can extract both components.
+TEST(CheckerTest, IsSupremum_UnfoldsAndExtractsComponents) {
+    auto diag = run_checker("supremum_unfold", R"(
+definition IsUpperBound (S : Set Real) (b : Real) : Prop :=
+  for all x : Real, x in S -> x <= b
+
+definition IsSupremum (S : Set Real) (s : Real) : Prop :=
+  IsUpperBound(S, s) and (for all b : Real, IsUpperBound(S, b) -> s <= b)
+
+theorem sup_is_upper_bound :
+  for all S : Set Real, for all s : Real,
+    IsSupremum(S, s) -> IsUpperBound(S, s)
+proof
+  take S : Set Real
+  take s : Real
+  suppose h_sup : IsSupremum(S, s)
+  then IsUpperBound(S, s) by h_sup
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // When an arm concludes a different proposition the checker must report an error.
 TEST(CheckerTest, StructuralInduction_MismatchedArms_Error) {
     auto diag = run_checker("struct_ind_mismatch", R"(
