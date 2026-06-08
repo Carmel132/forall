@@ -2534,6 +2534,36 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// simp [h] — restricted lemma set succeeds when the named hypothesis closes the goal
+TEST(CheckerTest, Simp_LemmaSet_Succeeds) {
+    auto diag = run_checker("simp_lemma_set_ok", R"(
+axiom hp : P
+axiom hq : Q
+theorem t : P
+proof
+  then P by simp [hp]
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// simp [wrong_h] — restricted lemma set fails when named hypothesis cannot close goal
+TEST(CheckerTest, Simp_LemmaSet_WrongHyp_Fails) {
+    auto diag = run_checker("simp_lemma_set_fail", R"(
+axiom hp : P
+axiom hq : Q
+theorem t : P
+proof
+  then P by simp [hq]
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
+
 TEST(CheckerTest, ApplyStep_Basic) {
     // "apply h" where h : A → B transforms goal B to A
     auto diag = run_checker("apply_basic", R"(
