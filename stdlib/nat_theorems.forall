@@ -754,3 +754,55 @@ proof
       have ac2 : succ(m) + n = n + succ(m) by symm ac1
       then n <= succ(m) + n by eq_subst ac2 and lar1
 end
+
+-- n + 1 = succ(n)  (bridges between arithmetic +1 and the succ constructor).
+-- Proof: add_succ gives n+succ(0)=succ(n+0); add_zero gives n+0=n; combine via
+-- eq_subst to get n+succ(0)=succ(n); then one_eq_succ_zero rewrites 1→succ(0).
+theorem succ_eq_add_one : for all n : Nat, n + 1 = succ(n)
+proof
+  take n : Nat
+  have as0 : for all m : Nat, n + succ(m) = succ(n + m) by add_succ at n
+  have as1 : n + succ(0) = succ(n + 0) by as0 at 0
+  have az : n + 0 = n by add_zero at n
+  have refl_succ : succ(n) = succ(n) by refl
+  have succ_n0_eq : succ(n + 0) = succ(n) by eq_subst az and refl_succ
+  have succ_n0_sym : succ(n) = succ(n + 0) by symm succ_n0_eq
+  have h1 : n + succ(0) = succ(n) by eq_subst succ_n0_sym and as1
+  then n + 1 = succ(n) by eq_subst one_eq_succ_zero and h1
+end
+
+-- n < m → succ(n) ≤ m  (strict inequality implies successor is still bounded).
+-- Proved by induction on m.  P(m) = n < m → succ(n) ≤ m, so each arm concludes
+-- an implication; sub-proof blocks build the implication via suppose/then.
+-- Base: n < 0 contradicts nat_le_zero, omega handles it.
+-- Inductive: le_of_lt_succ gives n ≤ m; succ_eq_add_one + add_le_add_right lift
+-- n ≤ m to n+1 ≤ m+1; eq_subst then converts n+1 = succ(n), m+1 = succ(m).
+theorem lt_succ_le : for all n : Nat, for all m : Nat, n < m implies succ(n) <= m
+proof
+  take n : Nat
+  induction result on m : n < m implies succ(n) <= m
+    base:
+      suppose h : n < 0
+      have nle : 0 <= n by nat_le_zero at n
+      have concl : succ(n) <= 0 by omega
+      have vac : n < 0 implies succ(n) <= 0 by h and concl
+      then n < 0 implies succ(n) <= 0 by vac
+    inductive:
+      suppose h : n < succ(m)
+      have lofs0 : for all m : Nat, n < succ(m) implies n <= m by le_of_lt_succ at n
+      have lofs1 : n < succ(m) implies n <= m by lofs0 at m
+      have hle : n <= m by lofs1 and h
+      have sn_eq : n + 1 = succ(n) by succ_eq_add_one at n
+      have sm_eq : m + 1 = succ(m) by succ_eq_add_one at m
+      have alar0 : for all b : Nat, for all c : Nat, n <= b implies n + c <= b + c
+                   by add_le_add_right at n
+      have alar1 : for all c : Nat, n <= m implies n + c <= m + c by alar0 at m
+      have alar2 : n <= m implies n + 1 <= m + 1 by alar1 at 1
+      have nm1 : n + 1 <= m + 1 by alar2 and hle
+      have sn_sym : succ(n) = n + 1 by symm sn_eq
+      have step1 : succ(n) <= m + 1 by eq_subst sn_sym and nm1
+      have sm_sym : succ(m) = m + 1 by symm sm_eq
+      have step_conc : succ(n) <= succ(m) by eq_subst sm_sym and step1
+      have step : n < succ(m) implies succ(n) <= succ(m) by h and step_conc
+      then n < succ(m) implies succ(n) <= succ(m) by step
+end
