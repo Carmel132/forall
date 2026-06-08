@@ -66,8 +66,9 @@ Token Lexer::nextToken() {
         const auto b1 = static_cast<unsigned char>(source_[pos_ + 1]);
         const auto b2 = static_cast<unsigned char>(source_[pos_ + 2]);
         if (b1 == 0x86) {
-            if (b2 == 0x92) { consume(3); return make(TokenKind::Arrow);  }
-            if (b2 == 0x94) { consume(3); return make(TokenKind::Iff);    }
+            if (b2 == 0x90) { consume(3); return make(TokenKind::LeftArrow); } // ← U+2190
+            if (b2 == 0x92) { consume(3); return make(TokenKind::Arrow);     } // → U+2192
+            if (b2 == 0x94) { consume(3); return make(TokenKind::Iff);       } // ↔ U+2194
         }
         if (b1 == 0x88) {
             if (b2 == 0x80) { consume(3); return make(TokenKind::Forall);      } // ∀ U+2200

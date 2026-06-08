@@ -80,6 +80,7 @@ enum class TokenKind {
     NotEq,                      // /=
 
     // Math symbols — Unicode and ASCII alternatives both produce these
+    LeftArrow,                  // ←  U+2190  (reverse rewrite marker)
     Arrow,                      // →  (or ->  or "implies")
     Iff,                        // ↔
     Forall,                     // ∀  (or "for all")
