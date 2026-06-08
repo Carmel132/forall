@@ -1386,3 +1386,38 @@ proof
   then for all a : Nat, for all b : Nat, 0 < a implies 0 < b implies 0 < a * b
        by fa_b
 end
+
+-- a < b → 0 < k → k * a < k * b  (strict monotonicity of left multiplication).
+-- Derived from mul_lt_mul_of_pos_right via mul_comm.
+theorem mul_lt_mul_of_pos_left : for all a : Nat, for all b : Nat, for all k : Nat,
+                                  a < b implies 0 < k implies k * a < k * b
+proof
+  take a : Nat
+  take b : Nat
+  take k : Nat
+  suppose h_lt : a < b
+  suppose h_pk : 0 < k
+  -- mul_lt_mul_of_pos_right: a < b → 0 < k → a*k < b*k
+  have mlt1 : for all b : Nat, for all k : Nat, a < b implies 0 < k implies a * k < b * k
+              by mul_lt_mul_of_pos_right at a
+  have mlt2 : for all k : Nat, a < b implies 0 < k implies a * k < b * k by mlt1 at b
+  have mlt3 : a < b implies 0 < k implies a * k < b * k by mlt2 at k
+  have mlt4 : 0 < k implies a * k < b * k by mlt3 and h_lt
+  have h_rk : a * k < b * k by mlt4 and h_pk
+  -- k * a = a * k  and  k * b = b * k  via mul_comm at k
+  have mc1 : for all b : Nat, k * b = b * k by mul_comm at k
+  have mc_ka : k * a = a * k by mc1 at a
+  have mc_kb : k * b = b * k by mc1 at b
+  -- a*k < b*k, rewrite to k*a < b*k via mc_ka (LHS k*a → a*k in declared type)
+  have h_r1 : k * a < b * k by eq_subst mc_ka and h_rk
+  -- k*a < b*k, rewrite to k*a < k*b via mc_kb (LHS k*b → b*k in declared type)
+  have result : k * a < k * b by eq_subst mc_kb and h_r1
+  have impl1 : 0 < k implies k * a < k * b by h_pk and result
+  have impl2 : a < b implies 0 < k implies k * a < k * b by h_lt and impl1
+  have fa_k : for all k : Nat, a < b implies 0 < k implies k * a < k * b by impl2
+  have fa_bk : for all b : Nat, for all k : Nat, a < b implies 0 < k implies k * a < k * b
+               by fa_k
+  then for all a : Nat, for all b : Nat, for all k : Nat,
+           a < b implies 0 < k implies k * a < k * b
+       by fa_bk
+end
