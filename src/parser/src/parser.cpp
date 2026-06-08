@@ -1595,14 +1595,16 @@ ast::Step Parser::parseSplitStep() {
     return {loc, ast::SplitStep{std::move(name), std::move(arms)}};
 }
 
-// induction <result_name> on <var>
-//   base:
-//     <base_steps...>
-//   inductive:
-//     <inductive_steps...>
+// induction <result_name> on <var> : <body>
+//   base:       <steps...>            -- Nat induction: proves P(0)
+//   inductive:  <steps...>            -- Nat induction: proves P(succ(n)), ih in scope
 //
-// Sub-blocks terminate at `base` / `inductive` / `end` / `qed` / EOF.
-// The induction step may appear anywhere in a proof (does not need to be last).
+// OR for a user-defined inductive type T:
+//   induction <result_name> on <var> : <body>
+//     case nil:  <steps...>
+//     case cons head tail ih:  <steps...>
+//
+// Dispatches on whether the first sub-block keyword is "base" (Nat) or "case" (structural).
 ast::Step Parser::parseInductionStep() {
     using K = lexer::TokenKind;
     const auto loc = peek().loc;
@@ -1624,47 +1626,119 @@ ast::Step Parser::parseInductionStep() {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected variable name after 'induction <name> on'"});
 
+    // type_name is set to "Nat" for the Nat path (base/inductive blocks) or left
+    // empty for the structural path (case arms); checker fills it in from env.
+    std::string type_name;
+
     expect(K::Colon, "expected ':' after induction variable to introduce predicate P(n)");
     auto body = parseProp();
 
-    // "base" and "inductive" are lexed as identifiers (context-sensitive).
     auto is_ident = [&](std::string_view s) {
         return check(K::Identifier) && peek().lexeme == s;
     };
 
-    // Helper: is the current token a block terminator for induction sub-blocks?
-    auto is_block_end = [&]() {
-        return isAtEnd()
-            || is_ident("base") || is_ident("inductive")
-            || check(K::KwEnd);
+    // ── Nat induction: "base:" / "inductive:" ────────────────────────────────
+    if (is_ident("base")) {
+        auto is_nat_block_end = [&]() {
+            return isAtEnd()
+                || is_ident("base") || is_ident("inductive")
+                || check(K::KwEnd);
+        };
+
+        advance(); // consume "base"
+        expect(K::Colon, "expected ':' after 'base'");
+        std::vector<std::unique_ptr<ast::Step>> base_steps;
+        while (!is_nat_block_end())
+            base_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+
+        if (!is_ident("inductive")) {
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected 'inductive:' after base block"});
+        } else {
+            advance(); // consume "inductive"
+        }
+        expect(K::Colon, "expected ':' after 'inductive'");
+        std::vector<std::unique_ptr<ast::Step>> ind_steps;
+        while (!is_nat_block_end())
+            ind_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+
+        ast::InductionStep s;
+        s.name            = std::move(name);
+        s.var             = std::move(var);
+        s.type_name       = "Nat";
+        s.body            = std::move(body);
+        s.base_steps      = std::move(base_steps);
+        s.inductive_steps = std::move(ind_steps);
+        return {loc, std::move(s)};
+    }
+
+    // ── Structural induction: "case <ctor> [vars...] [ih_names...] :" ────────
+    auto is_arm_end = [&]() {
+        return isAtEnd() || check(K::KwCase) || check(K::KwEnd);
     };
 
-    // base: block
-    if (!is_ident("base")) {
-        diag_.emit({diag::Severity::Error, peek().loc,
-                    "expected 'base:' after induction header"});
-    } else {
-        advance(); // consume "base"
-    }
-    expect(K::Colon, "expected ':' after 'base'");
-    std::vector<std::unique_ptr<ast::Step>> base_steps;
-    while (!is_block_end())
-        base_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+    std::vector<ast::InductionArm> arms;
+    while (check(K::KwCase)) {
+        advance(); // consume "case"
 
-    // inductive: block
-    if (!is_ident("inductive")) {
-        diag_.emit({diag::Severity::Error, peek().loc,
-                    "expected 'inductive:' after base block"});
-    } else {
-        advance(); // consume "inductive"
-    }
-    expect(K::Colon, "expected ':' after 'inductive'");
-    std::vector<std::unique_ptr<ast::Step>> ind_steps;
-    while (!is_block_end())
-        ind_steps.push_back(std::make_unique<ast::Step>(parseStep()));
+        std::string ctor_name;
+        if (check(K::Identifier))
+            ctor_name = std::string{advance().lexeme};
+        else
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected constructor name after 'case'"});
 
-    return {loc, ast::InductionStep{std::move(name), std::move(var), std::move(body),
-                                    std::move(base_steps), std::move(ind_steps)}};
+        // Consume optional variable/IH names until ":"
+        // Convention: identifiers before ":" are: first the constructor arg vars,
+        // then IH names (prefixed with "ih" by convention — we store all as vars
+        // and let the checker separate them by matching against the ctor's is_recursive).
+        std::vector<std::string> vars_list;
+        std::vector<std::string> ih_names;
+        // Collect all identifiers before the colon; checker will split them.
+        while (check(K::Identifier)) {
+            auto tok = std::string{advance().lexeme};
+            // Treat identifiers starting with "ih" (case-insensitive prefix) as IH names;
+            // all others as constructor arg vars.
+            if (tok.size() >= 2
+                    && (tok[0] == 'i' || tok[0] == 'I')
+                    && (tok[1] == 'h' || tok[1] == 'H'))
+                ih_names.push_back(std::move(tok));
+            else
+                vars_list.push_back(std::move(tok));
+        }
+        expect(K::Colon, "expected ':' after constructor name in 'case'");
+
+        // Parse arm steps.  Each arm concludes with a ThenStep; once we see
+        // one, stop so the outer "then ... by h" is not consumed into this arm.
+        std::vector<std::unique_ptr<ast::Step>> arm_steps;
+        bool saw_then = false;
+        while (!is_arm_end() && !saw_then) {
+            auto step = parseStep();
+            if (std::get_if<ast::ThenStep>(&step.node))
+                saw_then = true;
+            arm_steps.push_back(std::make_unique<ast::Step>(std::move(step)));
+        }
+
+        ast::InductionArm arm;
+        arm.ctor_name = std::move(ctor_name);
+        arm.vars      = std::move(vars_list);
+        arm.ih_names  = std::move(ih_names);
+        arm.steps     = std::move(arm_steps);
+        arms.push_back(std::move(arm));
+    }
+
+    if (arms.empty()) {
+        diag_.emit({diag::Severity::Error, loc,
+                    "induction step requires 'base:' (for Nat) or 'case' arms (for other types)"});
+    }
+
+    ast::InductionStep s;
+    s.name      = std::move(name);
+    s.var       = std::move(var);
+    s.type_name = std::move(type_name);
+    s.body      = std::move(body);
+    s.arms      = std::move(arms);
+    return {loc, std::move(s)};
 }
 
 // Helper: is the current token a relational operator that can start a calc link?
@@ -2665,6 +2739,84 @@ std::optional<ast::DeclPtr> Parser::parseTypeAlias() {
     return decl;
 }
 
+// ── parseInductive ─────────────────────────────────────────────────────────────
+// inductive <Name> :=
+//   <ctor_name> : [ <arg_type> -> ... -> ] <Name>
+//   ...
+//
+// "inductive" is a context-sensitive identifier.  Constructors are one per line;
+// the section ends at a new top-level keyword or EOF.
+std::optional<ast::DeclPtr> Parser::parseInductive() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "inductive" identifier token
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected type name after 'inductive'"});
+        return std::nullopt;
+    }
+    std::string type_name = std::string{advance().lexeme};
+
+    if (!expect(K::ColonEquals, "expected ':=' after inductive type name")) return std::nullopt;
+
+    // Helper: is the current token the start of a new top-level declaration?
+    auto is_toplevel_kw = [&]() {
+        switch (peek().kind) {
+            case K::KwAxiom: case K::KwDefinition:
+            case K::KwTheorem: case K::KwLemma:
+            case K::KwImport: case K::KwInstance:
+            case K::KwStructure: case K::KwType:
+            case K::Eof: return true;
+            default: break;
+        }
+        if (check(K::Identifier)) {
+            auto lx = peek().lexeme;
+            if (lx == "inductive" || lx == "namespace" || lx == "open"
+                    || lx == "private" || lx == "protected" || lx == "abstract")
+                return true;
+        }
+        return false;
+    };
+
+    std::vector<ast::InductiveConstructor> ctors;
+    while (!isAtEnd() && !is_toplevel_kw()) {
+        if (!check(K::Identifier)) { advance(); continue; } // skip unexpected tokens
+        std::string ctor_name = std::string{advance().lexeme};
+        if (!expect(K::Colon, "expected ':' after constructor name '" + ctor_name + "'"))
+            break;
+
+        // Parse argument types: zero or more TypeName separated by "->"
+        // The final identifier in the chain is the inductive type itself (return type).
+        std::vector<std::string> arg_types;
+        while (check(K::Identifier)) {
+            std::string t = std::string{advance().lexeme};
+            // peek: if followed by "->" this is an arg type; otherwise it's the return type
+            if (check(K::Arrow) || (check(K::Identifier) && peek().lexeme == "->")) {
+                arg_types.push_back(std::move(t));
+                advance(); // consume "->"
+            } else {
+                // This is the return type (should be type_name); don't store as arg
+                break;
+            }
+        }
+
+        ast::InductiveConstructor ctor;
+        ctor.name = std::move(ctor_name);
+        ctor.arg_types = std::move(arg_types);
+        // Mark which args are recursive (type == type_name)
+        for (const auto& at : ctor.arg_types)
+            ctor.is_recursive.push_back(at == type_name);
+        ctors.push_back(std::move(ctor));
+    }
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::Inductive, type_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->inductive_ctors = std::move(ctors);
+    return decl;
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
 
@@ -2697,10 +2849,11 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     else if (check(K::KwNamespace)) result = parseNamespace();
     else if (check(K::KwOpen))     result = parseOpen();
     else if (check(K::KwType))     result = parseTypeAlias();
+    else if (check(K::Identifier) && peek().lexeme == "inductive") result = parseInductive();
     else {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', "
-                    "'structure', 'quotient', 'namespace', 'open', or 'type'; got '"
+                    "'structure', 'quotient', 'namespace', 'open', 'type', or 'inductive'; got '"
                     + peek().lexeme + "'"});
         advance();
         return std::nullopt;
@@ -2724,7 +2877,8 @@ void Parser::syncToDeclaration() {
            && !check(K::KwNamespace) && !check(K::KwOpen) && !check(K::KwType)
            && !(check(K::Identifier) && (peek().lexeme == "private"
                                          || peek().lexeme == "protected"
-                                         || peek().lexeme == "abstract"))) {
+                                         || peek().lexeme == "abstract"
+                                         || peek().lexeme == "inductive"))) {
         advance();
     }
 }
