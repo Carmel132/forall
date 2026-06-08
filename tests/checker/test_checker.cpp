@@ -4303,3 +4303,31 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "funext"));
 }
+
+// ── succ_ne_self and nat_zero_or_succ axioms ─────────────────────────────
+
+// succ_ne_self axiom can be used in a proof by contradiction.
+TEST(CheckerTest, SuccNeself_UsableInProof) {
+    auto diag = run_checker("succ_ne_self_proof", R"(
+axiom succ_ne_self : for all n : Nat, not (succ(n) = n)
+theorem succ_ne : not (succ(0) = 0)
+proof
+  have h : not (succ(0) = 0) by succ_ne_self at 0
+  then not (succ(0) = 0) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// nat_zero_or_succ enables case analysis without a structural induction block.
+TEST(CheckerTest, NatZeroOrSucc_Usable) {
+    auto diag = run_checker("nat_zero_or_succ_use", R"(
+axiom nat_zero_or_succ : for all n : Nat, (n = 0) or (there exists m : Nat, n = succ(m))
+theorem zero_or_succ_holds : (1 = 0) or (there exists m : Nat, 1 = succ(m))
+proof
+  have h : (1 = 0) or (there exists m : Nat, 1 = succ(m)) by nat_zero_or_succ at 1
+  then (1 = 0) or (there exists m : Nat, 1 = succ(m)) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
