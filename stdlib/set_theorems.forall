@@ -304,6 +304,118 @@ proof
   then {} subseteq P by sd_back and mem_dir
 end
 
+-- A ∪ A = A.
+theorem union_self :
+  for all T : Type, for all P : Set T,
+    P union P = P
+proof
+  take T : Type
+  take P : Set T
+  have ud1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A union B iff (x in A or x in B)
+             by union_def at T
+  have ud2 : for all B : Set T, for all x : T,
+               x in P union B iff (x in P or x in B)
+             by ud1 at P
+  have ud3 : for all x : T,
+               x in P union P iff (x in P or x in P)
+             by ud2 at P
+  -- Build ∀ x, x ∈ P ∪ P ↔ x ∈ P
+  have mem_iff : for all x : T, x in P union P iff x in P
+  proof
+    take x : T
+    have ud4  : x in P union P iff (x in P or x in P) by ud3 at x
+    have fwd4 : x in P union P -> (x in P or x in P) by ud4
+    have bwd4 : (x in P or x in P) -> x in P union P by ud4
+    have h_id : x in P -> x in P
+    proof
+      suppose h_in : x in P
+      have h_p : x in P by h_in
+      then x in P -> x in P
+    end
+    have fwd  : x in P union P -> x in P
+    proof
+      suppose h_pu : x in P union P
+      have h_or  : x in P or x in P by fwd4 and h_pu
+      have h_p   : x in P by h_or and h_id and h_id
+      then x in P union P -> x in P
+    end
+    have bwd  : x in P -> x in P union P
+    proof
+      suppose h_p : x in P
+      have h_or  : x in P or x in P by h_p
+      have h_pu  : x in P union P by bwd4 and h_or
+      then x in P -> x in P union P
+    end
+    have iff_res : x in P union P iff x in P by fwd and bwd
+    have fa      : for all x : T, x in P union P iff x in P by iff_res
+    then for all x : T, x in P union P iff x in P by fa
+  end
+  -- Apply extensionality
+  have ext : for all A : Set T, for all B : Set T,
+               (for all x : T, x in A iff x in B) implies A = B
+             by set_ext at T
+  have ext2 : for all B : Set T,
+                (for all x : T, x in P union P iff x in B) implies P union P = B
+              by ext at (P union P)
+  have ext3 : (for all x : T, x in P union P iff x in P) implies P union P = P
+              by ext2 at P
+  then P union P = P by ext3 and mem_iff
+end
+
+-- A ∩ A = A.
+theorem inter_self :
+  for all T : Type, for all P : Set T,
+    P inter P = P
+proof
+  take T : Type
+  take P : Set T
+  have id1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A inter B iff (x in A and x in B)
+             by inter_def at T
+  have id2 : for all B : Set T, for all x : T,
+               x in P inter B iff (x in P and x in B)
+             by id1 at P
+  have id3 : for all x : T,
+               x in P inter P iff (x in P and x in P)
+             by id2 at P
+  -- Build ∀ x, x ∈ P ∩ P ↔ x ∈ P
+  have mem_iff : for all x : T, x in P inter P iff x in P
+  proof
+    take x : T
+    have id4  : x in P inter P iff (x in P and x in P) by id3 at x
+    have fwd4 : x in P inter P -> (x in P and x in P) by id4
+    have bwd4 : (x in P and x in P) -> x in P inter P by id4
+    have fwd  : x in P inter P -> x in P
+    proof
+      suppose h_pi : x in P inter P
+      have h_both : x in P and x in P by fwd4 and h_pi
+      have h_p    : x in P by h_both
+      then x in P inter P -> x in P
+    end
+    have bwd  : x in P -> x in P inter P
+    proof
+      suppose h_p : x in P
+      have h_both : x in P and x in P by h_p and h_p
+      have h_pi   : x in P inter P by bwd4 and h_both
+      then x in P -> x in P inter P
+    end
+    have iff_res : x in P inter P iff x in P by fwd and bwd
+    have fa      : for all x : T, x in P inter P iff x in P by iff_res
+    then for all x : T, x in P inter P iff x in P by fa
+  end
+  -- Apply extensionality
+  have ext : for all A : Set T, for all B : Set T,
+               (for all x : T, x in A iff x in B) implies A = B
+             by set_ext at T
+  have ext2 : for all B : Set T,
+                (for all x : T, x in P inter P iff x in B) implies P inter P = B
+              by ext at (P inter P)
+  have ext3 : (for all x : T, x in P inter P iff x in P) implies P inter P = P
+              by ext2 at P
+  then P inter P = P by ext3 and mem_iff
+end
+
 -- Q ⊆ P ∪ Q.
 theorem union_supset_right :
   for all T : Type, for all P : Set T, for all Q : Set T,
