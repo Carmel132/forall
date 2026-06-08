@@ -771,6 +771,50 @@ proof
   then n + 1 = succ(n) by eq_subst one_eq_succ_zero and h1
 end
 
+-- 0 < succ(n)  (every successor is positive).
+-- Proof: 0 ≤ n (nat_le_zero), n < succ(n) (lt_succ), so 0 < succ(n) by le_lt_trans.
+theorem succ_pos : for all n : Nat, 0 < succ(n)
+proof
+  take n : Nat
+  have h_le : 0 <= n by nat_le_zero at n
+  have h_lt : n < succ(n) by lt_succ at n
+  have llt0 : for all q : Nat, for all r : Nat, 0 <= q implies q < r implies 0 < r
+              by le_lt_trans at 0
+  have llt1 : for all r : Nat, 0 <= n implies n < r implies 0 < r by llt0 at n
+  have llt2 : 0 <= n implies n < succ(n) implies 0 < succ(n) by llt1 at succ(n)
+  have llt3 : n < succ(n) implies 0 < succ(n) by llt2 and h_le
+  then 0 < succ(n) by llt3 and h_lt
+end
+
+-- ¬(n < n)  (strict inequality is irreflexive).
+-- The sub-proof (no taken vars) allows NotIntro without conclusion-wrapper issues.
+theorem lt_irrefl : for all n : Nat, not (n < n)
+proof
+  take n : Nat
+  have result : not (n < n)
+    proof
+      suppose h : n < n
+      have f : false by omega
+      then not (n < n) by h and f
+    end
+  then not (n < n) by result
+end
+
+-- ¬(n < 0)  (no natural number is less than zero).
+-- nat_le_zero gives 0 ≤ n; combined with n < 0 this is contradictory.
+theorem not_lt_zero : for all n : Nat, not (n < 0)
+proof
+  take n : Nat
+  have result : not (n < 0)
+    proof
+      suppose h : n < 0
+      have h_le : 0 <= n by nat_le_zero at n
+      have f : false by omega
+      then not (n < 0) by h and f
+    end
+  then not (n < 0) by result
+end
+
 -- n < m → succ(n) ≤ m  (strict inequality implies successor is still bounded).
 -- Proved by induction on m.  P(m) = n < m → succ(n) ≤ m, so each arm concludes
 -- an implication; sub-proof blocks build the implication via suppose/then.
@@ -805,4 +849,39 @@ proof
       have step_conc : succ(n) <= succ(m) by eq_subst sm_sym and step1
       have step : n < succ(m) implies succ(n) <= succ(m) by h and step_conc
       then n < succ(m) implies succ(n) <= succ(m) by step
+end
+
+-- succ(n) ≤ m ↔ n < m  (successor-le and strict-lt are inter-translatable).
+-- Forward: succ(n) ≤ m and n < succ(n) give n < m by lt_le_trans.
+-- Backward: lt_succ_le above.
+theorem succ_le_iff : for all n : Nat, for all m : Nat, succ(n) <= m iff n < m
+proof
+  take n : Nat
+  take m : Nat
+  have fwd_impl : succ(n) <= m implies n < m
+    proof
+      suppose h_sle : succ(n) <= m
+      have h_lt : n < succ(n) by lt_succ at n
+      have llt0 : for all q : Nat, for all r : Nat, n < q implies q <= r implies n < r
+                  by lt_le_trans at n
+      have llt1 : for all r : Nat, n < succ(n) implies succ(n) <= r implies n < r
+                  by llt0 at succ(n)
+      have llt2 : n < succ(n) implies succ(n) <= m implies n < m by llt1 at m
+      have llt3 : succ(n) <= m implies n < m by llt2 and h_lt
+      have concl : n < m by llt3 and h_sle
+      have impl : succ(n) <= m implies n < m by h_sle and concl
+      then succ(n) <= m implies n < m by impl
+    end
+  have bwd_impl : n < m implies succ(n) <= m
+    proof
+      suppose h_lt : n < m
+      have lsl0 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+      have lsl1 : n < m implies succ(n) <= m by lsl0 at m
+      have concl : succ(n) <= m by lsl1 and h_lt
+      have impl : n < m implies succ(n) <= m by h_lt and concl
+      then n < m implies succ(n) <= m by impl
+    end
+  have both : (succ(n) <= m implies n < m) and (n < m implies succ(n) <= m)
+              by fwd_impl and bwd_impl
+  then succ(n) <= m iff n < m by both
 end
