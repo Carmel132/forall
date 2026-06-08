@@ -911,3 +911,51 @@ proof
   have lt3 : succ(n) < m implies n < m by lt2 and h_lt
   then n < m by lt3 and h
 end
+
+-- 0 < m → n < n + m  (adding a positive number increases value strictly).
+theorem lt_add_of_pos_right : for all n : Nat, for all m : Nat, 0 < m implies n < n + m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : 0 < m
+  then n < n + m by omega
+end
+
+-- succ(n) ≤ m → n ≤ m  (weaken: successor below implies original below).
+-- Proof: succ_le_iff gives n < m; le_of_lt gives n ≤ m.
+theorem le_of_succ_le : for all n : Nat, for all m : Nat, succ(n) <= m implies n <= m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : succ(n) <= m
+  have sli0 : for all m : Nat, succ(n) <= m iff n < m by succ_le_iff at n
+  have sli1 : succ(n) <= m iff n < m by sli0 at m
+  -- iff desugars to (succ(n)<=m → n<m) ∧ (n<m → succ(n)<=m); AndElimL gives forward
+  have sli_fwd : succ(n) <= m implies n < m by sli1
+  have n_lt : n < m by sli_fwd and h
+  have lol0 : for all m : Nat, n < m implies n <= m by le_of_lt at n
+  have lol1 : n < m implies n <= m by lol0 at m
+  then n <= m by lol1 and n_lt
+end
+
+-- n < m → succ(n) < succ(m)  (strict ordering preserved by successor).
+-- Proof: lt_succ_le gives succ(n) ≤ m; lt_succ at m gives m < succ(m);
+-- le_lt_trans gives succ(n) < succ(m).
+theorem succ_lt_succ : for all n : Nat, for all m : Nat, n < m implies succ(n) < succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n < m
+  have lsl0 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+  have lsl1 : n < m implies succ(n) <= m by lsl0 at m
+  have sn_le : succ(n) <= m by lsl1 and h
+  have m_lt : m < succ(m) by lt_succ at m
+  have llt0 : for all q : Nat, for all r : Nat, succ(n) <= q implies q < r implies succ(n) < r
+              by le_lt_trans at succ(n)
+  have llt1 : for all r : Nat, succ(n) <= m implies m < r implies succ(n) < r
+              by llt0 at m
+  have llt2 : succ(n) <= m implies m < succ(m) implies succ(n) < succ(m)
+              by llt1 at succ(m)
+  have llt3 : m < succ(m) implies succ(n) < succ(m) by llt2 and sn_le
+  then succ(n) < succ(m) by llt3 and m_lt
+end
