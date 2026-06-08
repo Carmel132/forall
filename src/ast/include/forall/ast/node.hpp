@@ -465,7 +465,7 @@ struct InductiveConstructor {
 // Namespace kind groups declarations under a qualified prefix.
 // Open kind brings a namespace into unqualified scope.
 enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient,
-                      Namespace, Open, TypeAlias, Inductive };
+                      Namespace, Open, TypeAlias, Inductive, NamespaceAlias };
 
 // visibility of a declaration (controls export during import).
 enum class Visibility { Public, Private, Protected };
@@ -496,6 +496,8 @@ struct Decl {
     std::vector<std::unique_ptr<Decl>> ns_decls;
     // for DeclKind::Open with "open X in <decl>" scoped form — the single inner decl
     std::unique_ptr<Decl> open_scope_decl;
+    // for DeclKind::NamespaceAlias — the dotted target (e.g. "Analysis.Sequence")
+    std::string alias_target;
     // visibility for export control
     Visibility                visibility{Visibility::Public};
     // abstract flag — definition body not unfoldable
