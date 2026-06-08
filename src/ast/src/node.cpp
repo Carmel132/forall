@@ -1030,4 +1030,36 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
     }, e.node);
 }
 
+TypeNode expand_type_aliases(TypeNode t, const TypeAliasTable& aliases) {
+    if (aliases.empty()) return t;
+    return std::visit([&](auto&& n) -> TypeNode {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, TypeUser>) {
+            auto it = aliases.find(n.name);
+            if (it != aliases.end())
+                return expand_type_aliases(it->second, aliases);
+            return t;
+        } else if constexpr (std::is_same_v<T, TypeFun>) {
+            return TypeNode{TypeFun{
+                std::make_shared<TypeNode>(expand_type_aliases(*n.domain, aliases)),
+                std::make_shared<TypeNode>(expand_type_aliases(*n.codomain, aliases))}};
+        } else if constexpr (std::is_same_v<T, TypeTuple>) {
+            TypeTuple tt;
+            for (const auto& e : n.elements)
+                tt.elements.push_back(
+                    std::make_shared<TypeNode>(expand_type_aliases(*e, aliases)));
+            return TypeNode{std::move(tt)};
+        } else if constexpr (std::is_same_v<T, TypeSet>) {
+            return TypeNode{TypeSet{
+                std::make_shared<TypeNode>(expand_type_aliases(*n.element_type, aliases))}};
+        } else if constexpr (std::is_same_v<T, TypePi>) {
+            return TypeNode{TypePi{n.var,
+                std::make_shared<TypeNode>(expand_type_aliases(*n.domain, aliases)),
+                std::make_shared<TypeNode>(expand_type_aliases(*n.codomain, aliases))}};
+        } else {
+            return t; // ground types: Nat Int Rat Real Prop
+        }
+    }, t.node);
+}
+
 } // namespace forall::ast

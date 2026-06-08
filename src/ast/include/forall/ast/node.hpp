@@ -436,7 +436,7 @@ using StructField = std::variant<FieldTerm, FieldAxiom>;
 // Namespace kind groups declarations under a qualified prefix.
 // Open kind brings a namespace into unqualified scope.
 enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient,
-                      Namespace, Open };
+                      Namespace, Open, TypeAlias };
 
 // visibility of a declaration (controls export during import).
 enum class Visibility { Public, Private, Protected };
@@ -473,6 +473,8 @@ struct Decl {
     // When present, the checker registers P as a predicate definition that
     // can be unfolded: P(t) → subst(body, param_names, args).
     std::optional<PropPtr>    def_body;
+    // for DeclKind::TypeAlias: the right-hand side type expression.
+    std::optional<TypeNode>   type_alias_body;
 };
 
 // Maps structure name → its field list.  Used by the checker to process
@@ -492,6 +494,10 @@ struct Module {
 
 // Maps term variable names to their annotated types (from binders / takes / lets).
 using TypeEnv = std::map<std::string, TypeNode>;
+
+// Maps type alias names to their expanded TypeNode bodies.
+// Populated from DeclKind::TypeAlias declarations; consulted by expand_type_aliases().
+using TypeAliasTable = std::map<std::string, TypeNode>;
 
 // Maps function names to their curried type signatures.
 // Seeded from `definition f (x : T₁) (y : T₂) : P` declarations as
@@ -516,6 +522,12 @@ struct TypeError {
 [[nodiscard]] std::expected<TypeNode, TypeError>
 infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs = {},
            const StructEnv* struct_env = nullptr);
+
+// Recursively expands TypeUser{name} nodes in t using the alias table.
+// Stops when no further expansion is possible (idempotent for closed aliases).
+// Returns t unchanged if aliases is empty.
+[[nodiscard]] TypeNode
+expand_type_aliases(TypeNode t, const TypeAliasTable& aliases);
 
 // ── Free-variable enumeration and syntactic substitution ─────────────────────
 
