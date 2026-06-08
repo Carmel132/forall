@@ -1054,6 +1054,7 @@ ast::TypeNode Parser::parseType() {
     else if (name == "Rat")  base = ast::TypeNode{ast::TypeRat{}};
     else if (name == "Real") base = ast::TypeNode{ast::TypeReal{}};
     else if (name == "Prop") base = ast::TypeNode{ast::TypeProp{}};
+    else if (name == "Type") base = ast::TypeNode{ast::TypeType{}};
     else if (name == "Set") {
         // Set T — element type is the next type (parsed recursively).
         if (!check(K::Identifier)) {
