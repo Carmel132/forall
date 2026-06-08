@@ -134,6 +134,142 @@ proof
   then P subseteq P union Q by sd_back and mem_dir
 end
 
+-- P ⊆ R → Q ⊆ R → P ∪ Q ⊆ R  (union is the join/least upper bound).
+theorem union_subset_both :
+  for all T : Type, for all P : Set T, for all Q : Set T, for all R : Set T,
+    P subseteq R -> Q subseteq R -> P union Q subseteq R
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  take R : Set T
+  suppose h_pr : P subseteq R
+  suppose h_qr : Q subseteq R
+  -- Unfold union membership
+  have ud1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A union B iff (x in A or x in B)
+             by union_def at T
+  have ud2 : for all B : Set T, for all x : T,
+               x in P union B iff (x in P or x in B)
+             by ud1 at P
+  have ud3 : for all x : T,
+               x in P union Q iff (x in P or x in Q)
+             by ud2 at Q
+  -- Unfold P ⊆ R to membership implication
+  have sd_all : for all A : Set T, for all B : Set T,
+                  A subseteq B iff (for all x : T, x in A implies x in B)
+                by subset_def at T
+  have sd_p1 : for all B : Set T,
+                 P subseteq B iff (for all x : T, x in P implies x in B)
+               by sd_all at P
+  have sd_pr : P subseteq R iff (for all x : T, x in P implies x in R)
+               by sd_p1 at R
+  have pimpl : P subseteq R -> (for all x : T, x in P implies x in R) by sd_pr
+  have p_mem : for all x : T, x in P implies x in R by pimpl and h_pr
+  -- Unfold Q ⊆ R to membership implication
+  have sd_q1 : for all B : Set T,
+                 Q subseteq B iff (for all x : T, x in Q implies x in B)
+               by sd_all at Q
+  have sd_qr : Q subseteq R iff (for all x : T, x in Q implies x in R)
+               by sd_q1 at R
+  have qimpl : Q subseteq R -> (for all x : T, x in Q implies x in R) by sd_qr
+  have q_mem : for all x : T, x in Q implies x in R by qimpl and h_qr
+  -- Prove each element of P ∪ Q is in R
+  have mem_dir : for all x : T, x in (P union Q) implies x in R
+  proof
+    take x : T
+    suppose h_pu : x in P union Q
+    have ud4      : x in P union Q iff (x in P or x in Q) by ud3 at x
+    have get      : x in P union Q -> (x in P or x in Q) by ud4
+    have h_or     : x in P or x in Q by get and h_pu
+    have h_p_impl : x in P implies x in R by p_mem at x
+    have h_q_impl : x in Q implies x in R by q_mem at x
+    have h_pr_i   : x in P -> x in R by h_p_impl
+    have h_qr_i   : x in Q -> x in R by h_q_impl
+    -- OrElim: (x in P or x in Q), (x in P -> x in R), (x in Q -> x in R) ⊢ x in R
+    have h_r      : x in R by h_or and h_pr_i and h_qr_i
+    have impl     : x in P union Q -> x in R by h_pu and h_r
+    have fa       : for all x : T, x in P union Q -> x in R by impl
+    then for all x : T, x in (P union Q) implies x in R by fa
+  end
+  -- Convert back to subset form
+  have sd_pu1 : for all B : Set T,
+                  (P union Q) subseteq B iff (for all x : T, x in (P union Q) implies x in B)
+                by sd_all at (P union Q)
+  have sd_pu : (P union Q) subseteq R iff (for all x : T, x in (P union Q) implies x in R)
+               by sd_pu1 at R
+  have sd_back : (for all x : T, x in (P union Q) implies x in R) ->
+                   (P union Q) subseteq R
+                 by sd_pu
+  then P union Q subseteq R by sd_back and mem_dir
+end
+
+-- R ⊆ P → R ⊆ Q → R ⊆ P ∩ Q  (intersection is the meet/greatest lower bound).
+theorem inter_supset_both :
+  for all T : Type, for all P : Set T, for all Q : Set T, for all R : Set T,
+    R subseteq P -> R subseteq Q -> R subseteq P inter Q
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  take R : Set T
+  suppose h_rp : R subseteq P
+  suppose h_rq : R subseteq Q
+  -- Unfold intersection membership
+  have id1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A inter B iff (x in A and x in B)
+             by inter_def at T
+  have id2 : for all B : Set T, for all x : T,
+               x in P inter B iff (x in P and x in B)
+             by id1 at P
+  have id3 : for all x : T,
+               x in P inter Q iff (x in P and x in Q)
+             by id2 at Q
+  -- Unfold R ⊆ P to membership implication
+  have sd_all : for all A : Set T, for all B : Set T,
+                  A subseteq B iff (for all x : T, x in A implies x in B)
+                by subset_def at T
+  have sd_r1 : for all B : Set T,
+                 R subseteq B iff (for all x : T, x in R implies x in B)
+               by sd_all at R
+  have sd_rp : R subseteq P iff (for all x : T, x in R implies x in P)
+               by sd_r1 at P
+  have pimpl : R subseteq P -> (for all x : T, x in R implies x in P) by sd_rp
+  have r_to_p : for all x : T, x in R implies x in P by pimpl and h_rp
+  -- Unfold R ⊆ Q to membership implication
+  have sd_rq : R subseteq Q iff (for all x : T, x in R implies x in Q)
+               by sd_r1 at Q
+  have qimpl : R subseteq Q -> (for all x : T, x in R implies x in Q) by sd_rq
+  have r_to_q : for all x : T, x in R implies x in Q by qimpl and h_rq
+  -- Prove each element of R is in P ∩ Q
+  have mem_dir : for all x : T, x in R implies x in (P inter Q)
+  proof
+    take x : T
+    suppose h_r : x in R
+    have h_p_impl : x in R implies x in P by r_to_p at x
+    have h_q_impl : x in R implies x in Q by r_to_q at x
+    have h_p      : x in P by h_p_impl and h_r
+    have h_q      : x in Q by h_q_impl and h_r
+    have h_both   : x in P and x in Q by h_p and h_q
+    have id4      : x in P inter Q iff (x in P and x in Q) by id3 at x
+    have put      : (x in P and x in Q) -> x in P inter Q by id4
+    have h_pi     : x in P inter Q by put and h_both
+    have impl     : x in R -> x in P inter Q by h_r and h_pi
+    have fa       : for all x : T, x in R -> x in P inter Q by impl
+    then for all x : T, x in R implies x in (P inter Q) by fa
+  end
+  -- Convert back to subset form
+  have sd_ri1 : for all B : Set T,
+                  R subseteq B iff (for all x : T, x in R implies x in B)
+                by sd_all at R
+  have sd_ri : R subseteq (P inter Q) iff (for all x : T, x in R implies x in (P inter Q))
+               by sd_ri1 at (P inter Q)
+  have sd_back : (for all x : T, x in R implies x in (P inter Q)) ->
+                   R subseteq (P inter Q)
+                 by sd_ri
+  then R subseteq P inter Q by sd_back and mem_dir
+end
+
 -- {} ⊆ A for any set A.
 theorem empty_subset :
   for all T : Type, for all P : Set T,
