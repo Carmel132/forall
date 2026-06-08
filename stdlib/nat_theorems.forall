@@ -1906,3 +1906,105 @@ proof
   done
   then n < p by res
 end
+
+
+-- p <= n implies not (n < p).
+theorem not_lt_of_ge : for all n : Nat, for all p : Nat, p <= n implies not (n < p)
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_ge : p <= n
+  have result : not (n < p)
+    proof
+      suppose h_lt : n < p
+      have llt1 : for all q : Nat, for all r : Nat, n < q implies q <= r implies n < r
+                  by lt_le_trans at n
+      have llt2 : for all r : Nat, n < p implies p <= r implies n < r by llt1 at p
+      have llt3 : n < p implies p <= n implies n < n by llt2 at n
+      have llt4 : p <= n implies n < n by llt3 and h_lt
+      have h_nn : n < n by llt4 and h_ge
+      have h_irr : not (n < n) by lt_irrefl at n
+      have bot : false by h_irr and h_nn
+      then not (n < p) by h_lt and bot
+    end
+  then not (n < p) by result
+end
+
+-- p <= n implies not (n < p).
+theorem not_lt_of_ge : for all n : Nat, for all p : Nat, p <= n implies not (n < p)
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_ge : p <= n
+  have result : not (n < p)
+    proof
+      suppose h_lt : n < p
+      have llt1 : for all q : Nat, for all r : Nat, n < q implies q <= r implies n < r
+                  by lt_le_trans at n
+      have llt2 : for all r : Nat, n < p implies p <= r implies n < r by llt1 at p
+      have llt3 : n < p implies p <= n implies n < n by llt2 at n
+      have llt4 : p <= n implies n < n by llt3 and h_lt
+      have h_nn : n < n by llt4 and h_ge
+      have h_irr : not (n < n) by lt_irrefl at n
+      have bot : false by h_irr and h_nn
+      then not (n < p) by h_lt and bot
+    end
+  then not (n < p) by result
+end
+
+-- not (p <= n) implies n < p.
+theorem lt_of_not_ge : for all n : Nat, for all p : Nat, not (p <= n) implies n < p
+proof
+  take n : Nat
+  take p : Nat
+  suppose h_not : not (p <= n)
+  have tog1 : for all p : Nat, n < p or p <= n by lt_or_ge at n
+  have tog2 : n < p or p <= n by tog1 at p
+  cases res : tog2
+    case h_lt : n < p =>
+      then n < p by h_lt
+    case h_ge : p <= n =>
+      have bot : false by h_not and h_ge
+      have concl : n < p by bot
+      then n < p by concl
+  done
+  then n < p by res
+end
+
+-- not (p < n) implies n <= p. Proved by induction on n.
+theorem le_of_not_lt : for all n : Nat, for all p : Nat, not (p < n) implies n <= p
+proof
+  induction result on n : for all p : Nat, not (p < n) implies n <= p
+    base:
+      take p : Nat
+      have impl : not (p < 0) implies 0 <= p
+        proof
+          suppose h_not : not (p < 0)
+          have h_le : 0 <= p by nat_le_zero at p
+          then not (p < 0) implies 0 <= p by h_not and h_le
+        end
+      then for all p : Nat, not (p < 0) implies 0 <= p by impl
+    inductive:
+      -- ih : for all p : Nat, not (p < n) implies n <= p
+      -- goal : for all p : Nat, not (p < succ(n)) implies succ(n) <= p
+      take p : Nat
+      suppose h_not : not (p < succ(n))
+      have tsil1 : for all m : Nat, p < succ(m) iff p <= m by lt_succ_iff_le at p
+      have tsil2 : p < succ(n) iff p <= n by tsil1 at n
+      have iff_rl : p <= n implies p < succ(n) by tsil2
+      have h_npn : not (p <= n)
+        proof
+          suppose h_pn : p <= n
+          have h_psn : p < succ(n) by iff_rl and h_pn
+          have bot : false by h_not and h_psn
+          then not (p <= n) by h_pn and bot
+        end
+      have lng1 : for all p : Nat, not (p <= n) implies n < p by lt_of_not_ge at n
+      have lng2 : not (p <= n) implies n < p by lng1 at p
+      have h_np : n < p by lng2 and h_npn
+      have lsl1 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+      have lsl2 : n < p implies succ(n) <= p by lsl1 at p
+      have h_snp : succ(n) <= p by lsl2 and h_np
+      have impl : not (p < succ(n)) implies succ(n) <= p by h_not and h_snp
+      then for all p : Nat, not (p < succ(n)) implies succ(n) <= p by impl
+  end
