@@ -21,6 +21,7 @@
 -- instantiates the relevant stdlib axiom via ForallElim (by h at t).
 
 import "../stdlib/analysis/subsequence.forall"
+open Analysis
 
 -- Fix the sequences and limit for the duration of this file.
 definition a : Nat -> Real
