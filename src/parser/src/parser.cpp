@@ -2601,6 +2601,31 @@ std::optional<ast::DeclPtr> Parser::parseOpen() {
         ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
 }
 
+// ── parseTypeAlias ─────────────────────────────────────────────────────────────
+// type <Alias> = <type>
+std::optional<ast::DeclPtr> Parser::parseTypeAlias() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "type"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected alias name after 'type'"});
+        return std::nullopt;
+    }
+    std::string alias_name = std::string{advance().lexeme};
+
+    if (!expect(K::Equals, "expected '=' after type alias name")) return std::nullopt;
+
+    ast::TypeNode body = parseType();
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::TypeAlias, alias_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->type_alias_body = std::move(body);
+    return decl;
+}
+
 std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     using K = lexer::TokenKind;
 
@@ -2632,10 +2657,11 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     else if (check(K::KwQuotient)) result = parseQuotient();
     else if (check(K::KwNamespace)) result = parseNamespace();
     else if (check(K::KwOpen))     result = parseOpen();
+    else if (check(K::KwType))     result = parseTypeAlias();
     else {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', "
-                    "'structure', 'quotient', 'namespace', or 'open'; got '"
+                    "'structure', 'quotient', 'namespace', 'open', or 'type'; got '"
                     + peek().lexeme + "'"});
         advance();
         return std::nullopt;
@@ -2656,7 +2682,7 @@ void Parser::syncToDeclaration() {
            && !check(K::KwTheorem) && !check(K::KwLemma)
            && !check(K::KwImport) && !check(K::KwInstance)
            && !check(K::KwStructure) && !check(K::KwQuotient)
-           && !check(K::KwNamespace) && !check(K::KwOpen)
+           && !check(K::KwNamespace) && !check(K::KwOpen) && !check(K::KwType)
            && !(check(K::Identifier) && (peek().lexeme == "private"
                                          || peek().lexeme == "protected"
                                          || peek().lexeme == "abstract"))) {

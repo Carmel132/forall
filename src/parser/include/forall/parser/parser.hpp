@@ -31,6 +31,7 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseQuotient();
     [[nodiscard]] std::optional<ast::DeclPtr> parseNamespace();
     [[nodiscard]] std::optional<ast::DeclPtr> parseOpen();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseTypeAlias();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();
