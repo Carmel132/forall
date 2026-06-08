@@ -1963,6 +1963,31 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by funext hfg" — conclude f = g from hfg : ∀ x, f(x) = g(x)
+            if (!s.justification.empty() && s.justification[0] == "__funext__") {
+                const auto* ceq = std::get_if<ast::PropRel>(&prop.node);
+                if (!ceq || ceq->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' requires an equality conclusion f = g"});
+                    return false;
+                }
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' requires exactly one premise ∀ x, f(x) = g(x)"});
+                    return false;
+                }
+                const auto* fa = std::get_if<ast::PropForall>(&(*es2)[0]->judgment.prop().node);
+                if (!fa) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' premise must be ∀ x, f(x) = g(x)"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(prop);
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             // "by symm h" — conclude b = a from h : a = b
             if (!s.justification.empty() && s.justification[0] == "__symm__") {
                 std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
@@ -2398,6 +2423,29 @@ bool check_step(const ast::Step& step,
                                "'by refl' failed: " + r.error().message});
                     return false;
                 }
+                return true;
+            }
+            // "by funext hfg" — ThenStep variant
+            if (!s.justification.empty() && s.justification[0] == "__funext__") {
+                const auto* ceq = std::get_if<ast::PropRel>(&prop.node);
+                if (!ceq || ceq->op != ast::RelOp::Eq) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' requires an equality conclusion f = g"});
+                    return false;
+                }
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' requires exactly one premise ∀ x, f(x) = g(x)"});
+                    return false;
+                }
+                if (!std::get_if<ast::PropForall>(&(*es2)[0]->judgment.prop().node)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by funext' premise must be ∀ x, f(x) = g(x)"});
+                    return false;
+                }
+                (void)kernel.introduce_axiom(prop);
                 return true;
             }
             // "by symm h" — ThenStep variant
