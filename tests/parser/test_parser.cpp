@@ -3343,3 +3343,38 @@ TEST(ParserTest, DefinitionWithoutBody_NoDefBody) {
     ASSERT_EQ(r.mod.decls.size(), 1u);
     EXPECT_FALSE(r.mod.decls[0]->def_body.has_value());
 }
+
+// ── Type alias declarations ────────────────────────────────────────────────────
+
+TEST(ParserTest, TypeAlias_Simple) {
+    // "type Sequence = Nat -> Real" parses as DeclKind::TypeAlias with TypeFun body.
+    auto r = parse_str("type Sequence = Nat -> Real");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, ast::DeclKind::TypeAlias);
+    EXPECT_EQ(d.name, "Sequence");
+    ASSERT_TRUE(d.type_alias_body.has_value());
+    const auto* tf = std::get_if<ast::TypeFun>(&d.type_alias_body->node);
+    ASSERT_NE(tf, nullptr);
+    EXPECT_TRUE(std::get_if<ast::TypeNat>(&tf->domain->node) != nullptr);
+    EXPECT_TRUE(std::get_if<ast::TypeReal>(&tf->codomain->node) != nullptr);
+}
+
+TEST(ParserTest, TypeAlias_NestedFun) {
+    // "type Matrix = Nat -> Nat -> Real" parses as a right-nested TypeFun.
+    auto r = parse_str("type Matrix = Nat -> Nat -> Real");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, ast::DeclKind::TypeAlias);
+    ASSERT_TRUE(d.type_alias_body.has_value());
+    const auto* tf = std::get_if<ast::TypeFun>(&d.type_alias_body->node);
+    ASSERT_NE(tf, nullptr);
+    EXPECT_TRUE(std::get_if<ast::TypeNat>(&tf->domain->node) != nullptr);
+    // codomain is Nat -> Real
+    const auto* tf2 = std::get_if<ast::TypeFun>(&tf->codomain->node);
+    ASSERT_NE(tf2, nullptr);
+    EXPECT_TRUE(std::get_if<ast::TypeNat>(&tf2->domain->node) != nullptr);
+    EXPECT_TRUE(std::get_if<ast::TypeReal>(&tf2->codomain->node) != nullptr);
+}

@@ -3952,3 +3952,62 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── Type alias checker tests ───────────────────────────────────────────────────
+
+// A type alias used in 'take' expands correctly — numeric ops on the alias
+// type are well-typed and produce no warning.
+TEST(CheckerTest, TypeAlias_TakeExpandsAlias) {
+    auto diag = run_checker("alias_take", R"(
+type Count = Nat
+axiom ax : x + 1 > 0
+theorem t : x + 1 > 0
+proof
+  take x : Count
+  then x + 1 > 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+    EXPECT_FALSE(has_warning(diag, "type mismatch"));
+}
+
+// A type alias used in a definition param wires into sig_table — the module
+// loads without errors, confirming alias expansion doesn't crash or corrupt.
+TEST(CheckerTest, TypeAlias_DefinitionParamExpandsAlias) {
+    auto diag = run_checker("alias_def_param", R"(
+type Index = Nat
+axiom pos_ax : for all n : Nat, n > 0
+definition is_positive (n : Index) : n > 0
+lemma use_def : for all k : Nat, k > 0
+proof
+  take k : Nat
+  have h : k > 0 by pos_ax at k
+  then k > 0 by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// A type alias that expands to a function type is non-numeric; using it in
+// arithmetic fires the type-mismatch warning.
+TEST(CheckerTest, TypeAlias_FunctionTypeTriggersWarning) {
+    auto diag = run_checker("alias_fun_warn", R"(
+type Sequence = Nat -> Real
+axiom ax : f + 1 > 0
+theorem t : f + 1 > 0
+proof
+  take f : Sequence
+  then f + 1 > 0 by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+    EXPECT_TRUE(has_warning(diag, "type mismatch"));
+}
