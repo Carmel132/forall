@@ -1637,3 +1637,56 @@ proof
   have fa_m : for all m : Nat, n < succ(n + m) by impl
   then for all n : Nat, for all m : Nat, n < succ(n + m) by fa_m
 end
+
+-- n ≤ p ∨ p ≤ n  (totality of the natural number order).
+-- Induction on n; the inductive step case-splits on nat_zero_or_succ at p.
+-- Bound var in le_total is 'p' to avoid capture with nat_zero_or_succ's ∃ m bound var.
+theorem le_total : for all n : Nat, for all p : Nat, n <= p or p <= n
+proof
+  induction result on n : for all p : Nat, n <= p or p <= n
+    base:
+      take p : Nat
+      have h : 0 <= p by nat_le_zero at p
+      have disj : 0 <= p or p <= 0 by h
+      then for all p : Nat, 0 <= p or p <= 0 by disj
+    inductive:
+      -- ih : for all p : Nat, n <= p or p <= n
+      take p : Nat
+      have h_split : p = 0 or (there exists m : Nat, p = succ(m))
+                     by nat_zero_or_succ at p
+      cases result_cases : h_split
+        case p_zero : p = 0 =>
+          have h_le : 0 <= succ(n) by nat_le_zero at succ(n)
+          have h_p_eq : p = 0 by p_zero
+          have h_0sn : p <= succ(n) by eq_subst h_p_eq and h_le
+          have disj : succ(n) <= p or p <= succ(n) by h_0sn
+          then succ(n) <= p or p <= succ(n) by disj
+        case p_succ : there exists m : Nat, p = succ(m) =>
+          obtain j_res from p_succ
+            case j , h_pj : p = succ(j) =>
+              -- IH at j: n <= j or j <= n
+              have ih_j : n <= j or j <= n by ih at j
+              cases sub_res : ih_j
+                case nj_le : n <= j =>
+                  have sss1 : for all m : Nat, n <= m implies succ(n) <= succ(m)
+                              by succ_le_succ at n
+                  have sss2 : n <= j implies succ(n) <= succ(j) by sss1 at j
+                  have h_sn_sj : succ(n) <= succ(j) by sss2 and nj_le
+                  have h_sn_p : succ(n) <= p by eq_subst h_pj and h_sn_sj
+                  have disj : succ(n) <= p or p <= succ(n) by h_sn_p
+                  then succ(n) <= p or p <= succ(n) by disj
+                case jn_le : j <= n =>
+                  have sjs1 : for all m : Nat, j <= m implies succ(j) <= succ(m)
+                              by succ_le_succ at j
+                  have sjs2 : j <= n implies succ(j) <= succ(n) by sjs1 at n
+                  have h_sj_sn : succ(j) <= succ(n) by sjs2 and jn_le
+                  have h_p_sn : p <= succ(n) by eq_subst h_pj and h_sj_sn
+                  have disj : succ(n) <= p or p <= succ(n) by h_p_sn
+                  then succ(n) <= p or p <= succ(n) by disj
+              done
+              then succ(n) <= p or p <= succ(n) by sub_res
+            done
+          then succ(n) <= p or p <= succ(n) by j_res
+      done
+      then for all p : Nat, succ(n) <= p or p <= succ(n) by result_cases
+end
