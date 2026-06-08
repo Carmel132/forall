@@ -22,3 +22,10 @@ axiom mul_succ : for all n : Nat, for all m : Nat, n * succ(m) = n * m + n
 axiom lt_succ : for all n : Nat, n < succ(n)
 axiom le_of_lt_succ : for all n : Nat, for all m : Nat, n < succ(m) -> n <= m
 axiom nat_le_zero : for all n : Nat, 0 <= n
+
+-- Successor is never equal to its argument (structural property of Peano Nat).
+axiom succ_ne_self : for all n : Nat, not (succ(n) = n)
+
+-- Every natural number is zero or a successor (case-split axiom).
+axiom nat_zero_or_succ :
+    for all n : Nat, (n = 0) or (there exists m : Nat, n = succ(m))
