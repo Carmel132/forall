@@ -1079,3 +1079,71 @@ proof
   have lofs1 : n < succ(m) implies n <= m by lofs0 at m
   then n <= m by lofs1 and n_lt
 end
+
+-- n ≤ m → m ≤ n → n = m  (antisymmetry of ≤).
+theorem le_antisymm : for all n : Nat, for all m : Nat, n <= m implies m <= n implies n = m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h1 : n <= m
+  suppose h2 : m <= n
+  then n = m by omega
+end
+
+-- n < succ(m) ↔ n ≤ m  (successor boundary).
+theorem lt_succ_iff_le : for all n : Nat, for all m : Nat, n < succ(m) iff n <= m
+proof
+  take n : Nat
+  take m : Nat
+  have fwd_impl : n < succ(m) implies n <= m
+    proof
+      suppose h : n < succ(m)
+      have lofs0 : for all m : Nat, n < succ(m) implies n <= m by le_of_lt_succ at n
+      have lofs1 : n < succ(m) implies n <= m by lofs0 at m
+      have concl : n <= m by lofs1 and h
+      have impl : n < succ(m) implies n <= m by h and concl
+      then n < succ(m) implies n <= m by impl
+    end
+  have bwd_impl : n <= m implies n < succ(m)
+    proof
+      suppose h : n <= m
+      -- n ≤ m → n < succ(m):  n ≤ m ≤ ... use le_lt_trans or le_succ + le_lt_trans
+      -- Directly: n < succ(n) ≤ succ(m) when n ≤ m.
+      -- succ(n) ≤ succ(m) from n ≤ m... but we don't have that lemma yet.
+      -- Alternative: n ≤ m, m < succ(m), so n < succ(m) by le_lt_trans.
+      have m_lt : m < succ(m) by lt_succ at m
+      have llt0 : for all q : Nat, for all r : Nat, n <= q implies q < r implies n < r
+                  by le_lt_trans at n
+      have llt1 : for all r : Nat, n <= m implies m < r implies n < r by llt0 at m
+      have llt2 : n <= m implies m < succ(m) implies n < succ(m) by llt1 at succ(m)
+      have llt3 : m < succ(m) implies n < succ(m) by llt2 and h
+      have concl : n < succ(m) by llt3 and m_lt
+      have impl : n <= m implies n < succ(m) by h and concl
+      then n <= m implies n < succ(m) by impl
+    end
+  have both : (n < succ(m) implies n <= m) and (n <= m implies n < succ(m))
+              by fwd_impl and bwd_impl
+  then n < succ(m) iff n <= m by both
+end
+
+-- a + c = b + c → a = b  (right-cancellation of addition).
+theorem add_right_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
+                            a + c = b + c implies a = b
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a + c = b + c
+  then a = b by omega
+end
+
+-- a = b → a + c = b + c  (right-congruence of addition).
+theorem add_right_cong : for all a : Nat, for all b : Nat, for all c : Nat,
+                         a = b implies a + c = b + c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a = b
+  then a + c = b + c by omega
+end
