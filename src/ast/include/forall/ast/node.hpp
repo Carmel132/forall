@@ -558,6 +558,13 @@ Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
 [[nodiscard]] Prop subst_expr(const Prop& prop, const Expr& find, const Expr& replace);
 [[nodiscard]] Expr subst_expr(const Expr& expr, const Expr& find, const Expr& replace);
 
+// subst_type: type-level substitution of a term variable.
+// Replaces every occurrence of TypeUser{var} in `t` with TypeUser{arg_name}
+// where arg_name is the variable name extracted from `arg` (if arg is ExprVar).
+// Used to compute the return type of a TypePi-typed function application:
+//   (x : A) -> B(x)  applied to  t : A  yields  subst_type(B, x, t).
+[[nodiscard]] TypeNode subst_type(const TypeNode& t, const std::string& var, const Expr& arg);
+
 // ── Beta-reduction ────────────────────────────────────────────────────────────
 //
 // Reduces ExprApp{ExprLambda{x,_,body}, [arg, ...]} → subst(body, x, arg)

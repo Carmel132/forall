@@ -958,25 +958,27 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
         }
 
         if constexpr (std::is_same_v<T, ExprApp>) {
-            // Infer the type of the function expression; expect a TypeFun.
+            // Infer the type of the function expression; expect TypeFun or TypePi.
             auto func_t = infer_type(*n.func, env, sigs, struct_env);
             if (!func_t) return func_t;
-            const TypeFun* cur = std::get_if<TypeFun>(&func_t->node);
-            if (!cur)
-                return err("ExprApp: function expression does not have a function type");
+            TypeNode cur_type = std::move(*func_t);
             for (std::size_t i = 0; i < n.args.size(); ++i) {
-                auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
-                if (!arg_t) return arg_t;
-                if (!(*arg_t == *cur->domain))
-                    return mismatch("ExprApp: argument type mismatch at position "
-                                    + std::to_string(i + 1));
-                if (i + 1 < n.args.size()) {
-                    cur = std::get_if<TypeFun>(&cur->codomain->node);
-                    if (!cur)
-                        return err("ExprApp: too many arguments");
+                if (const auto* tf = std::get_if<TypeFun>(&cur_type.node)) {
+                    auto arg_t = infer_type(*n.args[i], env, sigs, struct_env);
+                    if (!arg_t) return arg_t;
+                    if (!(*arg_t == *tf->domain))
+                        return mismatch("ExprApp: argument type mismatch at position "
+                                        + std::to_string(i + 1));
+                    cur_type = *tf->codomain;
+                } else if (const auto* tp = std::get_if<TypePi>(&cur_type.node)) {
+                    // Dependent application: substitute the argument into the codomain.
+                    cur_type = subst_type(*tp->codomain, tp->var, *n.args[i]);
+                } else {
+                    return err("ExprApp: function expression does not have a function type"
+                               " at argument " + std::to_string(i + 1));
                 }
             }
-            return n.args.empty() ? TypeNode{*cur} : *cur->codomain;
+            return cur_type;
         }
 
         if constexpr (std::is_same_v<T, ExprIndex>)
@@ -1056,6 +1058,50 @@ TypeNode expand_type_aliases(TypeNode t, const TypeAliasTable& aliases) {
             return TypeNode{TypePi{n.var,
                 std::make_shared<TypeNode>(expand_type_aliases(*n.domain, aliases)),
                 std::make_shared<TypeNode>(expand_type_aliases(*n.codomain, aliases))}};
+        } else {
+            return t; // ground types: Nat Int Rat Real Prop
+        }
+    }, t.node);
+}
+
+// ── subst_type ────────────────────────────────────────────────────────────────
+//
+// Replaces every TypeUser{var} occurrence in `t` with a type derived from `arg`.
+// When `arg` is an ExprVar{name}, TypeUser{var} → TypeUser{name}.
+// For other expression forms the substitution is left unchanged (TypeUser{var}
+// stays) — this covers the non-dependent case safely.
+TypeNode subst_type(const TypeNode& t, const std::string& var, const Expr& arg) {
+    // Extract the name to substitute in: only defined for variable expressions.
+    const std::string* new_name = nullptr;
+    if (const auto* ev = std::get_if<ExprVar>(&arg.node))
+        new_name = &ev->name;
+
+    return std::visit([&](const auto& n) -> TypeNode {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, TypeUser>) {
+            if (n.name == var && new_name)
+                return TypeNode{TypeUser{*new_name}};
+            return t;
+        } else if constexpr (std::is_same_v<T, TypeFun>) {
+            return TypeNode{TypeFun{
+                std::make_shared<TypeNode>(subst_type(*n.domain, var, arg)),
+                std::make_shared<TypeNode>(subst_type(*n.codomain, var, arg))}};
+        } else if constexpr (std::is_same_v<T, TypeTuple>) {
+            TypeTuple tt;
+            for (const auto& e : n.elements)
+                tt.elements.push_back(
+                    std::make_shared<TypeNode>(subst_type(*e, var, arg)));
+            return TypeNode{std::move(tt)};
+        } else if constexpr (std::is_same_v<T, TypeSet>) {
+            return TypeNode{TypeSet{
+                std::make_shared<TypeNode>(subst_type(*n.element_type, var, arg))}};
+        } else if constexpr (std::is_same_v<T, TypePi>) {
+            // If the inner binder shadows var, don't substitute in the codomain.
+            auto dom = std::make_shared<TypeNode>(subst_type(*n.domain, var, arg));
+            if (n.var == var)
+                return TypeNode{TypePi{n.var, std::move(dom), n.codomain}};
+            return TypeNode{TypePi{n.var, std::move(dom),
+                std::make_shared<TypeNode>(subst_type(*n.codomain, var, arg))}};
         } else {
             return t; // ground types: Nat Int Rat Real Prop
         }
