@@ -623,3 +623,134 @@ proof
   take n : Nat
   then n < succ(n) by lt_succ at n
 end
+
+-- a ≤ b → b ≤ c → a ≤ c  (transitivity of ≤).
+theorem le_trans : for all p : Nat, for all q : Nat, for all r : Nat,
+                   p <= q implies q <= r implies p <= r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h1 : p <= q
+  suppose h2 : q <= r
+  then p <= r by omega
+end
+
+-- a < b → b < c → a < c  (transitivity of <).
+theorem lt_trans : for all p : Nat, for all q : Nat, for all r : Nat,
+                   p < q implies q < r implies p < r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h1 : p < q
+  suppose h2 : q < r
+  then p < r by omega
+end
+
+-- a ≤ b → b < c → a < c  (mixed transitivity).
+theorem le_lt_trans : for all p : Nat, for all q : Nat, for all r : Nat,
+                      p <= q implies q < r implies p < r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h1 : p <= q
+  suppose h2 : q < r
+  then p < r by omega
+end
+
+-- a < b → b ≤ c → a < c  (mixed transitivity).
+theorem lt_le_trans : for all p : Nat, for all q : Nat, for all r : Nat,
+                      p < q implies q <= r implies p < r
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  suppose h1 : p < q
+  suppose h2 : q <= r
+  then p < r by omega
+end
+
+-- n ≤ n + m  (a number is no greater than itself plus anything).
+-- Proved by induction on m.  lt_succ bound var is 'n'; use fresh name to avoid capture.
+theorem le_add_right : for all n : Nat, for all m : Nat, n <= n + m
+proof
+  take n : Nat
+  induction result on m : n <= n + m
+    base:
+      -- n + 0 = n;  EqSubst [n+0=n, n≤n] ⊢ n≤n+0.
+      have h : n + 0 = n by add_zero at n
+      have hn : n <= n by omega
+      then n <= n + 0 by eq_subst h and hn
+    inductive:
+      -- IH: ih : n <= n + m.  Goal: n <= n + succ(m).
+      -- n + succ(m) = succ(n + m)  (add_succ bound vars: n, m).
+      have as0 : for all m : Nat, n + succ(m) = succ(n + m) by add_succ at n
+      have as1 : n + succ(m) = succ(n + m) by as0 at m
+      -- n + m < succ(n + m)  (lt_succ bound var: n).
+      -- Declare result with bound var 'n' to match lt_succ output.
+      have ls : n + m < succ(n + m) by lt_succ at (n + m)
+      -- n <= n+m (ih) + n+m < succ(n+m) → n < succ(n+m) via le_lt_trans.
+      -- le_lt_trans bound vars: p, q, r.  at n → ∀ q r, n≤q → q<r → n<r.
+      have llt0 : for all q : Nat, for all r : Nat,
+                   n <= q implies q < r implies n < r by le_lt_trans at n
+      have llt1 : for all r : Nat,
+                   n <= (n + m) implies (n + m) < r implies n < r by llt0 at (n + m)
+      -- at succ(n+m): n <= (n+m) → (n+m) < succ(n+m) → n < succ(n+m).
+      have llt2 : n <= (n + m) implies (n + m) < succ(n + m) implies n < succ(n + m)
+                  by llt1 at succ(n + m)
+      -- Apply ih to discharge first premise.
+      have llt3 : (n + m) < succ(n + m) implies n < succ(n + m) by llt2 and ih
+      -- Apply ls to get n < succ(n + m).
+      have n_lt : n < succ(n + m) by llt3 and ls
+      -- Rewrite succ(n+m) as n+succ(m): EqSubst [as1, n_lt] ⊢ n < n+succ(m).
+      have n_lt2 : n < n + succ(m) by eq_subst as1 and n_lt
+      then n <= n + succ(m) by omega
+end
+
+-- n ≤ m + n  (symmetric form of le_add_right).
+-- Proved by induction on m, mirroring le_add_right.
+-- add_succ bound vars: n, m.  After at m: ∀ n, m+succ(n)=succ(m+n) — wrong order.
+-- Use add_comm to convert le_add_right result.
+theorem le_add_left : for all n : Nat, for all m : Nat, n <= m + n
+proof
+  take n : Nat
+  induction result on m : n <= m + n
+    base:
+      -- m = 0: n ≤ 0 + n = n by zero_add; n ≤ n by omega; eq_subst gives n ≤ 0+n.
+      have h : 0 + n = n by zero_add at n
+      have hn : n <= n by omega
+      then n <= 0 + n by eq_subst h and hn
+    inductive:
+      -- IH: ih : n <= m + n.  Goal: n <= succ(m) + n.
+      -- succ_add: succ(m) + n = succ(m + n) — need succ_add.
+      -- succ_add bound vars: n, m.  After at m: ∀ m, succ(m)+m=succ(m+m) -- capture!
+      -- succ_add : ∀ n m, succ(n) + m = succ(n + m).  at m → ∀ m, succ(m)+m=succ(m+m).
+      -- Use fresh outer name: at m gives ∀ m, succ(m)+m ... collision.
+      -- succ_add at m at n: ∀ m (bound), succ(m)+m... still collides.
+      -- Best: use succ(m) as witness for the outer var of succ_add.
+      -- succ_add : ∀ n m, succ(n)+m = succ(n+m).  at m → ∀ m, succ(m)+m=succ(m+m). Degenerate.
+      -- Workaround: use add_comm + le_add_right result directly.
+      -- succ(m) + n = n + succ(m) by add_comm.
+      -- n + succ(m) = succ(n + m) by add_succ.
+      -- n <= n + succ(m) by le_add_right (proved above) instantiated at n at succ(m).
+      -- Wait: le_add_right is in scope now. But n and m are local; le_add_right uses n, m.
+      -- le_add_right : ∀ n m, n≤n+m.  Instantiate at n: ∀ m, n≤n+m (bound var m).
+      -- at succ(m): n ≤ n + succ(m).
+      have lar0 : for all m : Nat, n <= n + m by le_add_right at n
+      have lar1 : n <= n + succ(m) by lar0 at succ(m)
+      -- n + succ(m) = succ(n + m) by add_succ at n at m.
+      have as0 : for all m : Nat, n + succ(m) = succ(n + m) by add_succ at n
+      have as1 : n + succ(m) = succ(n + m) by as0 at m
+      -- succ(m) + n = n + succ(m) by add_comm.
+      -- add_comm : ∀ n m, n+m = m+n.  at succ(m): ∀ m, succ(m)+m = m+succ(m). Captures m!
+      -- Use add_comm at n: ∀ m, n+m=m+n.  at succ(m): n+succ(m) = succ(m)+n.
+      -- add_comm : ∀ a b, a+b=b+a.  at n → ∀ b, n+b=b+n (bound var 'b').
+      have ac0 : for all b : Nat, n + b = b + n by add_comm at n
+      have ac1 : n + succ(m) = succ(m) + n by ac0 at succ(m)
+      -- symm ac1 : succ(m)+n = n+succ(m).
+      -- EqSubst [succ(m)+n = n+succ(m), n≤n+succ(m)] ⊢ n≤succ(m)+n.
+      have ac2 : succ(m) + n = n + succ(m) by symm ac1
+      then n <= succ(m) + n by eq_subst ac2 and lar1
+end
