@@ -3477,3 +3477,26 @@ TEST(ParserTest, Inductive_RecursiveCtor) {
     EXPECT_FALSE(d.inductive_ctors[1].is_recursive[0]); // Nat is not recursive
     EXPECT_TRUE(d.inductive_ctors[1].is_recursive[1]);  // List is recursive
 }
+
+// ── Namespace alias declarations ───────────────────────────────────────────────
+
+TEST(ParserTest, NamespaceAlias_Simple) {
+    // "alias N = Foo.Bar" → DeclKind::NamespaceAlias, name="N", alias_target="Foo.Bar"
+    auto r = parse_str("alias N = Foo.Bar");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, ast::DeclKind::NamespaceAlias);
+    EXPECT_EQ(d.name, "N");
+    EXPECT_EQ(d.alias_target, "Foo.Bar");
+}
+
+TEST(ParserTest, NamespaceAlias_SingleSegment) {
+    // "alias A = Foo" — target with no dots
+    auto r = parse_str("alias A = Foo");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    EXPECT_EQ(r.mod.decls[0]->kind, ast::DeclKind::NamespaceAlias);
+    EXPECT_EQ(r.mod.decls[0]->name, "A");
+    EXPECT_EQ(r.mod.decls[0]->alias_target, "Foo");
+}

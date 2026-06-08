@@ -4432,3 +4432,59 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Namespace alias (alias N = X.Y) ───────────────────────────────────────────
+
+TEST(CheckerTest, NamespaceAlias_QualifiedAccessViaAlias) {
+    // "alias A = Foo" creates "A.bar" from "Foo.bar"
+    auto diag = run_checker("ns_alias_basic", R"(
+namespace Foo
+  axiom bar : P
+  axiom baz : Q
+end Foo
+
+alias A = Foo
+
+theorem t : P and Q
+proof
+  have hp : P by A.bar
+  have hq : Q by A.baz
+  then P and Q by hp and hq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NamespaceAlias_OriginalStillAccessible) {
+    // "alias A = Foo" does not remove the original "Foo.*" entries
+    auto diag = run_checker("ns_alias_original_kept", R"(
+namespace Foo
+  axiom bar : P
+end Foo
+
+alias A = Foo
+
+theorem t : P and P
+proof
+  have h1 : P by Foo.bar
+  have h2 : P by A.bar
+  then P and P by h1 and h2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NamespaceAlias_UnknownSourceNoEntries) {
+    // "alias A = NonExistent" with nothing to copy — the alias itself is silent
+    // (no error), but A.something will not resolve.
+    auto diag = run_checker("ns_alias_empty", R"(
+alias A = NonExistent
+
+axiom missing : P
+theorem t : P
+proof
+  then P by missing
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
