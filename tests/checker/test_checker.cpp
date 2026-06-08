@@ -4346,3 +4346,48 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── BI3: rewrite ↔ h — propositional rewriting via biconditional ──────────────
+
+TEST(CheckerTest, IffRewrite_ForwardSubstitution) {
+    // suppose h_iff : P iff Q  — desugars to (P→Q)∧(Q→P)
+    // goal initially: P and Q
+    // rewrite ↔ h_iff (forward: replace P with Q) → goal becomes Q and Q
+    auto diag = run_checker("iff_rewrite_fwd",
+        "axiom hp : P\n"
+        "axiom hq : Q\n"
+        "theorem t : P and Q\n"
+        "proof\n"
+        "  suppose h_iff : P iff Q\n"
+        "  rewrite \xe2\x86\x94 h_iff\n"   // ↔ h_iff
+        "  then Q and Q by hq and hq\n"
+        "end\n");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, IffRewrite_ReverseSubstitution) {
+    // rewrite ↔ ← h_iff: replaces Q with P in goal (reverse: Q→P direction)
+    // goal: P and Q  →  goal becomes P and P after reverse iff rewrite
+    auto diag = run_checker("iff_rewrite_rev",
+        "axiom hp : P\n"
+        "axiom hq : Q\n"
+        "theorem t : P and Q\n"
+        "proof\n"
+        "  suppose h_iff : P iff Q\n"
+        "  rewrite \xe2\x86\x94 \xe2\x86\x90 h_iff\n"  // ↔ ← h_iff
+        "  then P and P by hp and hp\n"
+        "end\n");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, IffRewrite_NonBiconditional_Errors) {
+    // rewrite ↔ h where h is not a biconditional — should error
+    auto diag = run_checker("iff_rewrite_wrong_hyp",
+        "axiom heq : n = m\n"
+        "theorem t : m = n\n"
+        "proof\n"
+        "  rewrite \xe2\x86\x94 heq\n"   // ↔ heq — heq is an equality, not biconditional
+        "  then m = n by refl\n"
+        "end\n");
+    EXPECT_TRUE(diag.hasErrors());
+}

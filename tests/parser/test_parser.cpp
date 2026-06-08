@@ -2484,6 +2484,25 @@ TEST(ParserTest, RewriteStep_List) {
     EXPECT_EQ(rw->rewrites[2].hyp_ref, "eq3");  EXPECT_FALSE(rw->rewrites[2].reverse);
 }
 
+TEST(ParserTest, RewriteStep_IffForm) {
+    // "rewrite ↔ h" parses with iff_rewrite=true, reverse=false
+    auto r = parse_str(
+        "axiom P : Prop\n"
+        "axiom Q : Prop\n"
+        "axiom hpq : P iff Q\n"
+        "theorem t : Q\n"
+        "proof\n"
+        "  rewrite \xe2\x86\x94 hpq\n"  // ↔
+        "  exact hpq\n"
+        "end\n");
+    const auto* rw = get_step<ast::RewriteStep>(*r.mod.decls[3]->proof, 0);
+    ASSERT_NE(rw, nullptr);
+    ASSERT_EQ(rw->rewrites.size(), 1u);
+    EXPECT_EQ(rw->rewrites[0].hyp_ref, "hpq");
+    EXPECT_FALSE(rw->rewrites[0].reverse);
+    EXPECT_TRUE(rw->rewrites[0].iff_rewrite);
+}
+
 // ── Structure declarations ─────────────────────────────────────────────────────
 
 TEST(ParserTest, StructureBasic) {
