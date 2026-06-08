@@ -280,3 +280,105 @@ proof
       have h2 : a * succ(b) = succ(b) * a by trans h1 and sl2_sym
       then a * succ(b) = succ(b) * a by h2
 end
+
+-- n * 1 = n  (right identity of multiplication).
+theorem mul_one_right : for all n : Nat, n * 1 = n
+proof
+  take n : Nat
+  -- Bridge: 1 = succ(0) in the AST (ExprLit vs ExprCall)
+  -- eq_subst one_eq_succ_zero: P(x) = n*x = n*succ(0), P(1) = n*1 = n*succ(0)
+  have h_one : n * succ(0) = n * succ(0) by refl
+  have one_eq : n * 1 = n * succ(0) by eq_subst one_eq_succ_zero and h_one
+  -- n * succ(0) = n * 0 + n  by mul_succ at n at 0
+  have ms1 : for all m : Nat, n * succ(m) = n * m + n by mul_succ at n
+  have ms2 : n * succ(0) = n * 0 + n by ms1 at 0
+  -- n * 0 + n = n
+  have nz  : n * 0 = 0 by mul_zero at n
+  have hr  : 0 + n = n by zero_add at n
+  have h1  : n * 0 + n = n by eq_subst nz and hr
+  -- chain: n*1 = n*succ(0) = n*0+n = n
+  have h2  : n * succ(0) = n by trans ms2 and h1
+  have h3  : n * 1 = n by trans one_eq and h2
+  then n * 1 = n by h3
+end
+
+-- 1 * n = n  (left identity of multiplication).
+theorem mul_one_left : for all n : Nat, 1 * n = n
+proof
+  take n : Nat
+  -- 1 * n = n * 1  by mul_comm; n * 1 = n  by mul_one_right
+  -- mul_comm at 1: ∀ b, 1*b = b*1; bound 'b' ≠ free 'n'
+  have mc0 : for all b : Nat, 1 * b = b * 1 by mul_comm at 1
+  have mc1 : 1 * n = n * 1 by mc0 at n
+  have mr  : n * 1 = n by mul_one_right at n
+  have h   : 1 * n = n by trans mc1 and mr
+  then 1 * n = n by h
+end
+
+-- p * (q + r) = p*q + p*r  (left distributivity of multiplication over addition).
+-- Bound vars 'p','q','r' avoid capture with add_assoc internal vars 'a','b','c'.
+theorem mul_distrib_left : for all p : Nat, for all q : Nat, for all r : Nat,
+                             p * (q + r) = p * q + p * r
+proof
+  take p : Nat
+  take q : Nat
+  induction result on r : p * (q + r) = p * q + p * r
+    base:
+      -- p*(q+0) = p*q = p*q + p*0 = p*q + 0 = p*q
+      have qz  : q + 0 = q by add_zero at q
+      have pqz : p * q = p * q by refl
+      -- eq_subst qz: p*(q+0) = p*q by congruence
+      have lhs : p * (q + 0) = p * q by eq_subst qz and pqz
+      have rz  : p * 0 = 0 by mul_zero at p
+      have pqr : p * q + 0 = p * q by add_zero at (p * q)
+      have rhs : p * q + p * 0 = p * q by eq_subst rz and pqr
+      -- p*(q+0) = p*q = p*q + p*0
+      have rhs_sym : p * q = p * q + p * 0 by symm rhs
+      have h_goal : p * (q + 0) = p * q + p * 0 by trans lhs and rhs_sym
+      then p * (q + 0) = p * q + p * 0 by h_goal
+    inductive:
+      -- IH: ih : p*(q+r) = p*q + p*r,  Goal: p*(q+succ(r)) = p*q + p*succ(r)
+      -- Step 1: q+succ(r) = succ(q+r)  by add_succ at q (bound 'm' ≠ 'p','q','r')
+      have qs0 : for all m : Nat, q + succ(m) = succ(q + m) by add_succ at q
+      have qs1 : q + succ(r) = succ(q + r) by qs0 at r
+      -- Step 2: p*(q+succ(r)) = p*succ(q+r) by congruence with qs1
+      have h_rpqr : p * succ(q + r) = p * succ(q + r) by refl
+      have lhs_eq : p * (q + succ(r)) = p * succ(q + r) by eq_subst qs1 and h_rpqr
+      -- Step 3: p*succ(q+r) = p*(q+r) + p  by mul_succ at p (bound 'm' ≠ 'p','q','r')
+      have msp0 : for all m : Nat, p * succ(m) = p * m + p by mul_succ at p
+      have msp1 : p * succ(q + r) = p * (q + r) + p by msp0 at (q + r)
+      -- Step 4: p*(q+r) + p = (p*q + p*r) + p  by congruence with IH
+      have h_rhs : (p * q + p * r) + p = (p * q + p * r) + p by refl
+      have cong  : p * (q + r) + p = (p * q + p * r) + p by eq_subst ih and h_rhs
+      -- Step 5: (p*q + p*r) + p = p*q + (p*r + p)
+      --   add_assoc at (p*q): ∀ b, ∀ c, (p*q+b)+c = p*q+(b+c)
+      --   bound 'b','c' ≠ free 'p','q','r'; p*q has no 'b' or 'c' ✓
+      have aa0 : for all b : Nat, for all c : Nat, (p * q + b) + c = p * q + (b + c)
+                 by add_assoc at (p * q)
+      have aa1 : for all c : Nat, (p * q + p * r) + c = p * q + (p * r + c)
+                 by aa0 at (p * r)
+      have aa2 : (p * q + p * r) + p = p * q + (p * r + p) by aa1 at p
+      -- Step 6: p*r + p = p*succ(r)  by symm mul_succ at p at r
+      have mrs0 : for all m : Nat, p * succ(m) = p * m + p by mul_succ at p
+      have mrs1 : p * succ(r) = p * r + p by mrs0 at r
+      have mrs_sym : p * r + p = p * succ(r) by symm mrs1
+      -- Step 7: p*q + (p*r + p) = p*q + p*succ(r)  by congruence
+      have h_rpr : p * q + p * succ(r) = p * q + p * succ(r) by refl
+      have rhs_eq : p * q + (p * r + p) = p * q + p * succ(r)
+                    by eq_subst mrs_sym and h_rpr
+      -- Step 8: chain:
+      --   p*(q+succ(r)) = p*succ(q+r)                    [lhs_eq]
+      --   = p*(q+r) + p                                   [msp1]
+      --   = (p*q + p*r) + p                               [cong]
+      --   = p*q + (p*r + p)                               [aa2]
+      --   = p*q + p*succ(r)                               [rhs_eq]
+      have chain1 : p * (q + succ(r)) = p * (q + r) + p
+                    by trans lhs_eq and msp1
+      have chain2 : p * (q + succ(r)) = (p * q + p * r) + p
+                    by trans chain1 and cong
+      have chain3 : p * (q + succ(r)) = p * q + (p * r + p)
+                    by trans chain2 and aa2
+      have chain4 : p * (q + succ(r)) = p * q + p * succ(r)
+                    by trans chain3 and rhs_eq
+      then p * (q + succ(r)) = p * q + p * succ(r) by chain4
+end
