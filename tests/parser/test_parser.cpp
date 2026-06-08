@@ -3308,6 +3308,19 @@ TEST(ParserTest, Open_ParsesNamespaceName) {
     EXPECT_EQ(r.mod.decls[0]->name, "MyNs");
 }
 
+TEST(ParserTest, Open_Scoped_ParsesInnerDecl) {
+    // "open Foo in axiom bar : P" — scoped open with one inner decl
+    auto r = parse_str("open Foo in axiom bar : P");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& open_decl = *r.mod.decls[0];
+    EXPECT_EQ(open_decl.kind, DeclKind::Open);
+    EXPECT_EQ(open_decl.name, "Foo");
+    ASSERT_NE(open_decl.open_scope_decl, nullptr);
+    EXPECT_EQ(open_decl.open_scope_decl->kind, DeclKind::Axiom);
+    EXPECT_EQ(open_decl.open_scope_decl->name, "bar");
+}
+
 // ── private/protected visibility ────────────────────────────────────────
 
 TEST(ParserTest, Private_AxiomVisibility) {

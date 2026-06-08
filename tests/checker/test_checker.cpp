@@ -4391,3 +4391,44 @@ TEST(CheckerTest, IffRewrite_NonBiconditional_Errors) {
         "end\n");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── NS2: open X in <decl> — scoped open ──────────────────────────────────────
+
+TEST(CheckerTest, ScopedOpen_TheoremUsesQualifiedName) {
+    // namespace Nat contains Nat.add_zero; open Nat in theorem makes it visible
+    auto diag = run_checker("scoped_open_basic", R"(
+namespace Nat
+  axiom add_zero : for all n : Nat, n + 0 = n
+end Nat
+
+open Nat in
+theorem my_add_zero : for all n : Nat, n + 0 = n
+proof
+  have h : for all n : Nat, n + 0 = n by add_zero
+  then for all n : Nat, n + 0 = n by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, ScopedOpen_InnerDeclAvailableAfterwards) {
+    // The declared theorem is registered in module_env and usable in a subsequent proof.
+    auto diag = run_checker("scoped_open_result", R"(
+namespace Arith
+  axiom add_zero : for all n : Nat, n + 0 = n
+end Arith
+
+open Arith in
+theorem my_add_zero : for all n : Nat, n + 0 = n
+proof
+  have h : for all n : Nat, n + 0 = n by add_zero
+  then for all n : Nat, n + 0 = n by h
+end
+
+theorem use_result : for all n : Nat, n + 0 = n
+proof
+  then for all n : Nat, n + 0 = n by my_add_zero
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
