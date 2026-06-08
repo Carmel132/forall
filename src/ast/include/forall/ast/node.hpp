@@ -371,8 +371,9 @@ struct ExactStep {
 };
 
 struct RewriteItem {
-    std::string hyp_ref;  // hypothesis name; must be PropRel{Eq}
-    bool        reverse;  // if true, rewrite rhs→lhs instead of lhs→rhs
+    std::string hyp_ref;    // hypothesis name
+    bool        reverse;    // if true, rewrite rhs→lhs (or Q→P for iff form)
+    bool        iff_rewrite;// if true, h must be P↔Q; rewrites propositions
     bool operator==(const RewriteItem&) const = default;
 };
 
@@ -586,6 +587,11 @@ Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
 // inside an absolute-value term.
 [[nodiscard]] Prop subst_expr(const Prop& prop, const Expr& find, const Expr& replace);
 [[nodiscard]] Expr subst_expr(const Expr& expr, const Expr& find, const Expr& replace);
+
+// subst_prop: proposition-level find-and-replace.
+// Replaces every structurally-equal occurrence of `find` inside `prop` with
+// `replace`.  Used to implement `rewrite ↔ h` (propositional rewriting).
+[[nodiscard]] Prop subst_prop(const Prop& prop, const Prop& find, const Prop& replace);
 
 // subst_type: type-level substitution of a term variable.
 // Replaces every occurrence of TypeUser{var} in `t` with TypeUser{arg_name}

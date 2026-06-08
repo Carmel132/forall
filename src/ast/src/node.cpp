@@ -479,6 +479,44 @@ Prop subst_expr(const Prop& prop, const Expr& find, const Expr& replace) {
     return find_replace_p(prop, find, replace);
 }
 
+// ── subst_prop: proposition-level find-and-replace ───────────────────────────
+
+static Prop find_replace_pp(const Prop& p, const Prop& find, const Prop& replace);
+
+static Prop find_replace_pp(const Prop& p, const Prop& find, const Prop& replace) {
+    if (p == find) return replace;
+    return std::visit([&](const auto& n) -> Prop {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = p.loc;
+        if constexpr (std::is_same_v<T, Atomic> || std::is_same_v<T, PropFalse>
+                   || std::is_same_v<T, PropTrue>)
+            return p;
+        else if constexpr (std::is_same_v<T, PropNot>)
+            return Prop{loc, PropNot{make_prop(find_replace_pp(*n.inner, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropAnd>)
+            return Prop{loc, PropAnd{make_prop(find_replace_pp(*n.lhs, find, replace)),
+                                     make_prop(find_replace_pp(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropOr>)
+            return Prop{loc, PropOr{make_prop(find_replace_pp(*n.lhs, find, replace)),
+                                    make_prop(find_replace_pp(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropImpl>)
+            return Prop{loc, PropImpl{make_prop(find_replace_pp(*n.lhs, find, replace)),
+                                      make_prop(find_replace_pp(*n.rhs, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropForall>)
+            return Prop{loc, PropForall{n.var, n.type,
+                make_prop(find_replace_pp(*n.body, find, replace))}};
+        else if constexpr (std::is_same_v<T, PropExists>)
+            return Prop{loc, PropExists{n.var, n.type,
+                make_prop(find_replace_pp(*n.body, find, replace))}};
+        else
+            return p; // PropRel, PropPred — no Prop sub-trees to recurse into
+    }, p.node);
+}
+
+Prop subst_prop(const Prop& prop, const Prop& find, const Prop& replace) {
+    return find_replace_pp(prop, find, replace);
+}
+
 Expr subst_expr(const Expr& expr, const Expr& find, const Expr& replace) {
     return find_replace_e(expr, find, replace);
 }
