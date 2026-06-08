@@ -248,3 +248,35 @@ proof
                     by trans chain1 and key4
       then succ(p) * succ(q) = p * succ(q) + succ(q) by final
 end
+
+-- a * b = b * a  (commutativity of multiplication).
+-- Relies on mul_succ_left (stated with bound vars 'p','q') and mul_zero_left.
+theorem mul_comm : for all a : Nat, for all b : Nat, a * b = b * a
+proof
+  take a : Nat
+  induction result on b : a * b = b * a
+    base:
+      -- a * 0 = 0 = 0 * a
+      have az : a * 0 = 0 by mul_zero at a
+      have za : 0 * a = 0 by mul_zero_left at a
+      have za_sym : 0 = 0 * a by symm za
+      have h_goal : a * 0 = 0 * a by trans az and za_sym
+      then a * 0 = 0 * a by h_goal
+    inductive:
+      -- IH: ih : a * b = b * a,  Goal: a * succ(b) = succ(b) * a
+      -- a * succ(b) = a * b + a  by mul_succ at a; bound 'm' ≠ 'b'
+      have ms1 : for all m : Nat, a * succ(m) = a * m + a by mul_succ at a
+      have ms2 : a * succ(b) = a * b + a by ms1 at b
+      -- succ(b) * a = b * a + a  by mul_succ_left at b; bound 'q' ≠ 'a'
+      have sl1 : for all q : Nat, succ(b) * q = b * q + q by mul_succ_left at b
+      have sl2 : succ(b) * a = b * a + a by sl1 at a
+      -- a * b + a = b * a + a  by congruence with IH
+      have h_rba : b * a + a = b * a + a by refl
+      have h_cba : a * b + a = b * a + a by eq_subst ih and h_rba
+      -- succ(b) * a = b * a + a  and  a * b + a = b * a + a
+      -- → a * succ(b) = succ(b) * a
+      have sl2_sym : b * a + a = succ(b) * a by symm sl2
+      have h1 : a * succ(b) = b * a + a by trans ms2 and h_cba
+      have h2 : a * succ(b) = succ(b) * a by trans h1 and sl2_sym
+      then a * succ(b) = succ(b) * a by h2
+end
