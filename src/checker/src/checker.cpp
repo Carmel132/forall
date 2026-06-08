@@ -4961,6 +4961,15 @@ ModuleResult check_module(const std::filesystem::path& path,
                         module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
                         module_env.insert_or_assign(qname,       HypEntry{std::move(*r), EntryKind::Derived});
                     }
+                    // Register predicate body under qualified name so that
+                    // "open NsName" can later inject the unqualified alias.
+                    if (inner->def_body && !inner->is_abstract) {
+                        PredDefEntry pde;
+                        for (const auto& p : inner->params)
+                            pde.params.push_back(p.name);
+                        pde.body = *inner->def_body;
+                        pred_def_table[prefix + inner->name] = std::move(pde);
+                    }
                     break;
                 }
                 case ast::DeclKind::Theorem:
@@ -5010,6 +5019,18 @@ ModuleResult check_module(const std::filesystem::path& path,
                     injected_keys.push_back(uname);
                 module_env.insert_or_assign(uname, std::move(entry));
             }
+            // Also inject predicate definitions so unfold_preds() resolves unqualified names.
+            std::vector<std::string> injected_pred_keys;
+            for (const auto& [qname, pde] : pred_def_table) {
+                if (qname.size() > prefix.size()
+                        && qname.substr(0, prefix.size()) == prefix) {
+                    std::string uname = qname.substr(prefix.size());
+                    if (!pred_def_table.count(uname)) {
+                        injected_pred_keys.push_back(uname);
+                        pred_def_table.insert_or_assign(uname, pde);
+                    }
+                }
+            }
 
             if (decl->open_scope_decl) {
                 // Scoped open: process one declaration under the opened namespace,
@@ -5053,6 +5074,8 @@ ModuleResult check_module(const std::filesystem::path& path,
                 // Remove the injected unqualified names to restore previous scope.
                 for (const auto& k : injected_keys)
                     module_env.erase(k);
+                for (const auto& k : injected_pred_keys)
+                    pred_def_table.erase(k);
             }
             break;
         }
@@ -5270,6 +5293,18 @@ void Checker::check_content(const std::string& source, const std::string& filena
                 if (!module_env.count(uname)) injected_cc.push_back(uname);
                 module_env.insert_or_assign(uname, std::move(entry));
             }
+            // Also inject predicate definitions so unfold_preds() resolves unqualified names.
+            std::vector<std::string> injected_pred_cc;
+            for (const auto& [qname, pde] : pred_def_table) {
+                if (qname.size() > prefix.size()
+                        && qname.substr(0, prefix.size()) == prefix) {
+                    std::string uname = qname.substr(prefix.size());
+                    if (!pred_def_table.count(uname)) {
+                        injected_pred_cc.push_back(uname);
+                        pred_def_table.insert_or_assign(uname, pde);
+                    }
+                }
+            }
             if (decl->open_scope_decl) {
                 const ast::DeclPtr& inner = decl->open_scope_decl;
                 if (inner->kind == ast::DeclKind::Axiom || inner->kind == ast::DeclKind::Definition) {
@@ -5283,6 +5318,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
                             module_env.insert_or_assign(inner->name, HypEntry{std::move(*r), EntryKind::Derived});
                 }
                 for (const auto& k : injected_cc) module_env.erase(k);
+                for (const auto& k : injected_pred_cc) pred_def_table.erase(k);
             }
             break;
         }
