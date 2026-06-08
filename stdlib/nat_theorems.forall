@@ -959,3 +959,35 @@ proof
   have llt3 : m < succ(m) implies succ(n) < succ(m) by llt2 and sn_le
   then succ(n) < succ(m) by llt3 and m_lt
 end
+
+-- n ≤ succ(n)  (every number is below its successor).
+theorem le_succ : for all n : Nat, n <= succ(n)
+proof
+  take n : Nat
+  have h_lt : n < succ(n) by lt_succ at n
+  have lol0 : for all m : Nat, n < m implies n <= m by le_of_lt at n
+  have lol1 : n < succ(n) implies n <= succ(n) by lol0 at succ(n)
+  then n <= succ(n) by lol1 and h_lt
+end
+
+-- a < b → c < d → a + c < b + d  (addition is strictly monotone in both arguments).
+theorem add_lt_add : for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+                     a < b implies c < d implies a + c < b + d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h1 : a < b
+  suppose h2 : c < d
+  then a + c < b + d by omega
+end
+
+-- 0 < n → m < m + n  (symmetric form of lt_add_of_pos_right).
+theorem lt_add_of_pos_left : for all n : Nat, for all m : Nat, 0 < n implies m < m + n
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : 0 < n
+  then m < m + n by omega
+end
