@@ -364,6 +364,15 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
         if (!r.empty() && r.back() == '\n') r.pop_back();
         return r;
     }
+
+    case ast::DeclKind::TypeAlias:
+        if (decl.type_alias_body.has_value())
+            return "type " + decl.name + " = " + to_string(*decl.type_alias_body);
+        return "type " + decl.name;
+
+    case ast::DeclKind::Namespace:
+    case ast::DeclKind::Open:
+        return {}; // not formatted by the single-decl formatter
     }
     return {};
 }
