@@ -4488,3 +4488,46 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Namespace qualified access and open re-export ──────────────────────────────
+
+TEST(CheckerTest, Namespace_PredDefOpenAndUnfold) {
+    // "open X" brings predicate definitions from namespace X into pred_def_table
+    // under unqualified names, so that axiom statements referencing the unqualified
+    // predicate are correctly unfolded before kernel comparison.
+    auto diag = run_checker("ns_preddef_open_and_unfold", R"(
+namespace Math
+definition IsZero (x : Nat) : Prop := x = 0
+end Math
+
+open Math
+
+axiom zero_is_zero : IsZero(0)
+
+theorem t : 0 = 0
+proof
+  then 0 = 0 by zero_is_zero
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Namespace_OpenUnfoldsPredDef) {
+    // "open X" brings predicate definitions into pred_def_table so that
+    // unfold_preds() can expand them in proofs that write unqualified names.
+    auto diag = run_checker("ns_open_unfolds_preddef", R"(
+namespace Logic
+definition IsTrue (P : Prop) : Prop := P
+end Logic
+
+open Logic
+
+axiom p_holds : IsTrue(P)
+
+theorem t : P
+proof
+  then P by p_holds
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
