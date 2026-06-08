@@ -73,3 +73,8 @@ add_test(NAME e2e_set_real
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/set_real.forall"
 )
+
+add_test(NAME e2e_set_theorems
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/set_theorems.forall"
+)
