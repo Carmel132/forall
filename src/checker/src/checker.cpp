@@ -1952,6 +1952,73 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by refl" — conclude a = a
+            if (s.justification.size() == 1 && s.justification[0] == "__refl__") {
+                auto r = kernel.apply(kernel::Rule::Refl, {}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by refl' failed: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // "by symm h" — conclude b = a from h : a = b
+            if (!s.justification.empty() && s.justification[0] == "__symm__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by symm' requires exactly one premise"});
+                    return false;
+                }
+                auto r = kernel.apply(kernel::Rule::Symm,
+                                      std::span<const kernel::Judgment>{&(*es2)[0]->judgment, 1},
+                                      prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by symm' failed: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // "by trans h1 h2" — conclude a = c from h1 : a = b and h2 : b = c
+            if (!s.justification.empty() && s.justification[0] == "__trans__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 2) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by trans' requires exactly two premises"});
+                    return false;
+                }
+                const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
+                auto r = kernel.apply(kernel::Rule::Trans, std::span{prem}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by trans' failed: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // "by congr h" — conclude f(a) = f(b) from h : a = b
+            if (!s.justification.empty() && s.justification[0] == "__congr__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by congr' requires exactly one premise"});
+                    return false;
+                }
+                auto r = kernel.apply(kernel::Rule::Congr,
+                                      std::span<const kernel::Judgment>{&(*es2)[0]->judgment, 1},
+                                      prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by congr' failed: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             // expand any let-bound names in the witness expression and beta-reduce.
@@ -2321,6 +2388,69 @@ bool check_step(const ast::Step& step,
             if (s.justification.size() == 1 && s.justification[0] == "__gcongr__") {
                 if (!gcongr_tactic(prop, env, kernel, diag, step.loc)) return false;
                 (void)kernel.introduce_axiom(prop);
+                return true;
+            }
+            // "by refl" — ThenStep variant
+            if (s.justification.size() == 1 && s.justification[0] == "__refl__") {
+                auto r = kernel.apply(kernel::Rule::Refl, {}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by refl' failed: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
+            // "by symm h" — ThenStep variant
+            if (!s.justification.empty() && s.justification[0] == "__symm__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by symm' requires exactly one premise"});
+                    return false;
+                }
+                auto r = kernel.apply(kernel::Rule::Symm,
+                                      std::span<const kernel::Judgment>{&(*es2)[0]->judgment, 1},
+                                      prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by symm' failed: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
+            // "by trans h1 h2" — ThenStep variant
+            if (!s.justification.empty() && s.justification[0] == "__trans__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 2) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by trans' requires exactly two premises"});
+                    return false;
+                }
+                const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
+                auto r = kernel.apply(kernel::Rule::Trans, std::span{prem}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by trans' failed: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
+            // "by congr h" — ThenStep variant
+            if (!s.justification.empty() && s.justification[0] == "__congr__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc, "'by congr' requires exactly one premise"});
+                    return false;
+                }
+                auto r = kernel.apply(kernel::Rule::Congr,
+                                      std::span<const kernel::Judgment>{&(*es2)[0]->judgment, 1},
+                                      prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by congr' failed: " + r.error().message});
+                    return false;
+                }
                 return true;
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
