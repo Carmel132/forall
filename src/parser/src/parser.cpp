@@ -2739,7 +2739,8 @@ std::optional<ast::DeclPtr> Parser::parseNamespace() {
 }
 
 // ── parseOpen ──────────────────────────────────────────────────────────────────
-// open <Name>
+// open <Name>           — module-level open; brings all Ns.x into scope
+// open <Name> in <decl> — scoped open; Ns visible only within that declaration
 std::optional<ast::DeclPtr> Parser::parseOpen() {
     using K = lexer::TokenKind;
     const auto loc = peek().loc;
@@ -2752,9 +2753,19 @@ std::optional<ast::DeclPtr> Parser::parseOpen() {
     }
     std::string ns_name = std::string{advance().lexeme};
 
-    return std::make_unique<ast::Decl>(
+    auto decl = std::make_unique<ast::Decl>(
         ast::DeclKind::Open, ns_name, loc,
         ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+
+    // "open X in <decl>" — scoped form; "in" is lexed as KwIn
+    if (check(K::KwIn)) {
+        advance(); // consume "in"
+        auto inner = parseDeclaration();
+        if (inner)
+            decl->open_scope_decl = std::move(*inner);
+    }
+
+    return decl;
 }
 
 // ── parseTypeAlias ─────────────────────────────────────────────────────────────
