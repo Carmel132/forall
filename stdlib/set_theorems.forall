@@ -90,3 +90,89 @@ proof
                  by sd3
   then P inter Q subseteq Q by sd_back and mem_dir
 end
+
+-- P ⊆ P ∪ Q.
+theorem union_supset_left :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    P subseteq P union Q
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have ud1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A union B iff (x in A or x in B)
+             by union_def at T
+  have ud2 : for all B : Set T, for all x : T,
+               x in P union B iff (x in P or x in B)
+             by ud1 at P
+  have ud3 : for all x : T,
+               x in P union Q iff (x in P or x in Q)
+             by ud2 at Q
+  have mem_dir : for all x : T, x in P implies x in (P union Q)
+  proof
+    take x : T
+    suppose h_p : x in P
+    have ud4 : x in P union Q iff (x in P or x in Q) by ud3 at x
+    have fwd  : (x in P or x in Q) -> x in P union Q by ud4
+    have h_or : x in P or x in Q by h_p
+    have h_pu : x in P union Q by fwd and h_or
+    have impl : x in P -> x in P union Q by h_p and h_pu
+    have fa   : for all x : T, x in P -> x in P union Q by impl
+    then for all x : T, x in P implies x in (P union Q) by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               P subseteq B iff (for all x : T, x in P implies x in B)
+             by sd1 at P
+  have sd3 : P subseteq (P union Q) iff (for all x : T, x in P implies x in (P union Q))
+             by sd2 at (P union Q)
+  have sd_back : (for all x : T, x in P implies x in (P union Q)) ->
+                   P subseteq (P union Q)
+                 by sd3
+  then P subseteq P union Q by sd_back and mem_dir
+end
+
+-- Q ⊆ P ∪ Q.
+theorem union_supset_right :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    Q subseteq P union Q
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have ud1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A union B iff (x in A or x in B)
+             by union_def at T
+  have ud2 : for all B : Set T, for all x : T,
+               x in P union B iff (x in P or x in B)
+             by ud1 at P
+  have ud3 : for all x : T,
+               x in P union Q iff (x in P or x in Q)
+             by ud2 at Q
+  have mem_dir : for all x : T, x in Q implies x in (P union Q)
+  proof
+    take x : T
+    suppose h_q : x in Q
+    have ud4 : x in P union Q iff (x in P or x in Q) by ud3 at x
+    have fwd  : (x in P or x in Q) -> x in P union Q by ud4
+    have h_or : x in P or x in Q by h_q
+    have h_pu : x in P union Q by fwd and h_or
+    have impl : x in Q -> x in P union Q by h_q and h_pu
+    have fa   : for all x : T, x in Q -> x in P union Q by impl
+    then for all x : T, x in Q implies x in (P union Q) by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               Q subseteq B iff (for all x : T, x in Q implies x in B)
+             by sd1 at Q
+  have sd3 : Q subseteq (P union Q) iff (for all x : T, x in Q implies x in (P union Q))
+             by sd2 at (P union Q)
+  have sd_back : (for all x : T, x in Q implies x in (P union Q)) ->
+                   Q subseteq (P union Q)
+                 by sd3
+  then Q subseteq P union Q by sd_back and mem_dir
+end
