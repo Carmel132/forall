@@ -823,6 +823,7 @@ static std::string type_name(const TypeNode& t) {
         if constexpr (std::is_same_v<T, TypeRat>)   return "Rat";
         if constexpr (std::is_same_v<T, TypeReal>)  return "Real";
         if constexpr (std::is_same_v<T, TypeProp>)  return "Prop";
+        if constexpr (std::is_same_v<T, TypeType>)  return "Type";
         if constexpr (std::is_same_v<T, TypeUser>)  return v.name;
         if constexpr (std::is_same_v<T, TypeFun>)   return "function type";
         if constexpr (std::is_same_v<T, TypeTuple>) return "tuple type";

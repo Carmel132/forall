@@ -26,6 +26,7 @@ struct TypeInt  { bool operator==(const TypeInt&)  const = default; };  // ℤ
 struct TypeRat  { bool operator==(const TypeRat&)  const = default; };  // ℚ
 struct TypeReal { bool operator==(const TypeReal&) const = default; };  // ℝ
 struct TypeProp { bool operator==(const TypeProp&) const = default; };  // Prop
+struct TypeType { bool operator==(const TypeType&) const = default; };  // Type (universe)
 struct TypeUser {
     std::string name;
     bool operator==(const TypeUser&) const = default;
@@ -63,7 +64,7 @@ struct TypePi {
     bool operator==(const TypePi& o) const;
 };
 
-using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeUser,
+using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeType, TypeUser,
                                  TypeFun, TypeTuple, TypeSet, TypePi>;
 
 struct TypeNode {
@@ -77,6 +78,7 @@ inline TypeNode type_int()                   { return TypeNode{TypeInt{}}; }
 inline TypeNode type_rat()                   { return TypeNode{TypeRat{}}; }
 inline TypeNode type_real()                  { return TypeNode{TypeReal{}}; }
 inline TypeNode type_prop()                  { return TypeNode{TypeProp{}}; }
+inline TypeNode type_type()                  { return TypeNode{TypeType{}}; }
 inline TypeNode type_user(std::string name)  { return TypeNode{TypeUser{std::move(name)}}; }
 inline TypeNode type_fun(TypeNode domain, TypeNode codomain) {
     return TypeNode{TypeFun{std::make_shared<TypeNode>(std::move(domain)),

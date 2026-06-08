@@ -10,6 +10,7 @@ std::string to_string(const ast::TypeNode& t) {
         if constexpr (std::is_same_v<T, ast::TypeRat>)  return "Rat";
         if constexpr (std::is_same_v<T, ast::TypeReal>) return "Real";
         if constexpr (std::is_same_v<T, ast::TypeProp>) return "Prop";
+        if constexpr (std::is_same_v<T, ast::TypeType>) return "Type";
         if constexpr (std::is_same_v<T, ast::TypeUser>) return n.name;
         if constexpr (std::is_same_v<T, ast::TypeFun>) {
             // right-associative: lhs needs parens only when it is also a TypeFun
