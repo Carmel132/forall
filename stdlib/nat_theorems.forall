@@ -93,3 +93,158 @@ proof
       have h2 : a + succ(b) = succ(b) + a by trans h1 and h_sym2
       then a + succ(b) = succ(b) + a by h2
 end
+
+-- (a + b) + c = a + (b + c)  (associativity of addition).
+-- Bound vars 'a','b','c' avoid capture with add_succ internal vars 'n','m'.
+-- take a, take b, then induction on c, so auto-conclusion is ∀ a, ∀ b, ∀ c, ...
+theorem add_assoc : for all a : Nat, for all b : Nat, for all c : Nat,
+                      (a + b) + c = a + (b + c)
+proof
+  take a : Nat
+  take b : Nat
+  induction result on c : (a + b) + c = a + (b + c)
+    base:
+      -- (a+b)+0 = a+b  and  a+(b+0) = a+b
+      have lz : (a + b) + 0 = a + b by add_zero at (a + b)
+      have rz : b + 0 = b by add_zero at b
+      -- a + (b + 0) = a + b  by congruence with rz
+      have h_rab : a + b = a + b by refl
+      have h_conj : a + (b + 0) = a + b by eq_subst rz and h_rab
+      have h_sym : a + b = a + (b + 0) by symm h_conj
+      have h_goal : (a + b) + 0 = a + (b + 0) by trans lz and h_sym
+      then (a + b) + 0 = a + (b + 0) by h_goal
+    inductive:
+      -- IH: ih : (a+b)+c = a+(b+c)
+      -- Goal: (a+b)+succ(c) = a+(b+succ(c))
+      -- Step 1: (a+b)+succ(c) = succ((a+b)+c)  by add_succ at (a+b) at c
+      have ls1 : for all m : Nat, (a + b) + succ(m) = succ((a + b) + m)
+                 by add_succ at (a + b)
+      have ls2 : (a + b) + succ(c) = succ((a + b) + c) by ls1 at c
+      -- Step 2: succ((a+b)+c) = succ(a+(b+c))  by congruence with IH
+      have h_rabc : succ(a + (b + c)) = succ(a + (b + c)) by refl
+      have h_cong : succ((a + b) + c) = succ(a + (b + c)) by eq_subst ih and h_rabc
+      -- Step 3: b+succ(c) = succ(b+c)  by add_succ at b at c
+      have bs1 : for all m : Nat, b + succ(m) = succ(b + m) by add_succ at b
+      have bs2 : b + succ(c) = succ(b + c) by bs1 at c
+      -- Step 4: a+succ(b+c) = succ(a+(b+c))  by add_succ at a at (b+c)
+      have as1 : for all m : Nat, a + succ(m) = succ(a + m) by add_succ at a
+      have as2 : a + succ(b + c) = succ(a + (b + c)) by as1 at (b + c)
+      -- Step 5: a+(b+succ(c)) = a+succ(b+c)  by congruence with bs2
+      have h_rabs : a + succ(b + c) = a + succ(b + c) by refl
+      have h_rhs  : a + (b + succ(c)) = a + succ(b + c) by eq_subst bs2 and h_rabs
+      -- Step 6: chain
+      have h1 : (a + b) + succ(c) = succ(a + (b + c)) by trans ls2 and h_cong
+      have as2_sym : succ(a + (b + c)) = a + succ(b + c) by symm as2
+      have h2 : (a + b) + succ(c) = a + succ(b + c) by trans h1 and as2_sym
+      have h_rhs_sym : a + succ(b + c) = a + (b + succ(c)) by symm h_rhs
+      have h3 : (a + b) + succ(c) = a + (b + succ(c)) by trans h2 and h_rhs_sym
+      then (a + b) + succ(c) = a + (b + succ(c)) by h3
+end
+
+-- 0 * a = 0  (zero is a left zero for multiplication).
+-- mul_zero (right: n * 0 = 0) is in nat.forall; this direction requires induction.
+theorem mul_zero_left : for all a : Nat, 0 * a = 0
+proof
+  induction result on a : 0 * a = 0
+    base:
+      have mz : 0 * 0 = 0 by mul_zero at 0
+      then 0 * 0 = 0 by mz
+    inductive:
+      -- IH: ih : 0 * a = 0,  Goal: 0 * succ(a) = 0
+      -- mul_succ at 0 → ∀ m, 0*succ(m) = 0*m + 0; bound 'm' ≠ free 'a'
+      have ms1 : for all m : Nat, 0 * succ(m) = 0 * m + 0 by mul_succ at 0
+      have ms2 : 0 * succ(a) = 0 * a + 0 by ms1 at a
+      have az  : 0 * a + 0 = 0 * a by add_zero at (0 * a)
+      have h1  : 0 * succ(a) = 0 * a by trans ms2 and az
+      have h2  : 0 * succ(a) = 0 by trans h1 and ih
+      then 0 * succ(a) = 0 by h2
+end
+
+-- succ(p) * q = p * q + q  (left-successor law for multiplication).
+-- Needed as a lemma for mul_comm.
+-- Bound vars 'p','q' avoid capture with add_assoc internal vars 'a','b','c'.
+theorem mul_succ_left : for all p : Nat, for all q : Nat, succ(p) * q = p * q + q
+proof
+  take p : Nat
+  induction result on q : succ(p) * q = p * q + q
+    base:
+      -- succ(p)*0 = 0 = p*0+0
+      have sl  : succ(p) * 0 = 0 by mul_zero at succ(p)
+      have al  : p * 0 = 0 by mul_zero at p
+      have azl : p * 0 + 0 = p * 0 by add_zero at (p * 0)
+      have rz  : p * 0 + 0 = 0 by trans azl and al
+      have rz_sym : 0 = p * 0 + 0 by symm rz
+      have h_goal : succ(p) * 0 = p * 0 + 0 by trans sl and rz_sym
+      then succ(p) * 0 = p * 0 + 0 by h_goal
+    inductive:
+      -- IH: ih : succ(p)*q = p*q+q,  Goal: succ(p)*succ(q) = p*succ(q)+succ(q)
+      -- Step 1: succ(p)*succ(q) = succ(p)*q + succ(p)
+      -- mul_succ at succ(p): ∀ m, succ(p)*succ(m) = succ(p)*m + succ(p); bound 'm' ≠ 'p','q'
+      have ss1 : for all m : Nat, succ(p) * succ(m) = succ(p) * m + succ(p)
+                 by mul_succ at succ(p)
+      have ss2 : succ(p) * succ(q) = succ(p) * q + succ(p) by ss1 at q
+      -- Step 2: succ(p)*q + succ(p) = (p*q+q) + succ(p)  by congruence with IH
+      have h_r2 : (p * q + q) + succ(p) = (p * q + q) + succ(p) by refl
+      have h_c2 : succ(p) * q + succ(p) = (p * q + q) + succ(p)
+                  by eq_subst ih and h_r2
+      -- Step 3: p*succ(q) = p*q + p  by mul_succ at p; bound 'm' ≠ 'p','q'
+      have ms1 : for all m : Nat, p * succ(m) = p * m + p by mul_succ at p
+      have ms2 : p * succ(q) = p * q + p by ms1 at q
+      -- Step 4: (p*q+q)+succ(p) = (p*q+p)+succ(q)
+      -- (a) add_assoc at (p*q): ∀ b, ∀ c, (p*q+b)+c = p*q+(b+c)
+      --     bound 'b','c' are add_assoc's vars; p*q contains only 'p','q' — no capture.
+      have aa0 : for all b : Nat, for all c : Nat, (p * q + b) + c = p * q + (b + c)
+                 by add_assoc at (p * q)
+      -- (b) aa0 at q: substitute bound 'b' → free 'q'; p*q has no 'b' → no capture
+      have aa1 : for all c : Nat, (p * q + q) + c = p * q + (q + c)
+                 by aa0 at q
+      -- (c) aa1 at succ(p): (p*q+q)+succ(p) = p*q+(q+succ(p))
+      have al_sp : (p * q + q) + succ(p) = p * q + (q + succ(p))
+                   by aa1 at succ(p)
+      -- (d) q+succ(p) = p+succ(q)  via add_succ and add_comm
+      -- add_succ at q: ∀ m, q+succ(m) = succ(q+m); bound 'm' ≠ 'p'
+      have qsp0 : for all m : Nat, q + succ(m) = succ(q + m) by add_succ at q
+      have qsp  : q + succ(p) = succ(q + p) by qsp0 at p
+      -- add_comm at q: ∀ b, q+b = b+q; bound 'b' ≠ 'p'
+      have qpc0 : for all b : Nat, q + b = b + q by add_comm at q
+      have qpc  : q + p = p + q by qpc0 at p
+      -- succ(q+p) = succ(p+q) by congruence
+      have h_rpq : succ(p + q) = succ(p + q) by refl
+      have h_sqp : succ(q + p) = succ(p + q) by eq_subst qpc and h_rpq
+      -- add_succ at p: ∀ m, p+succ(m) = succ(p+m); bound 'm' ≠ 'q'
+      have psq0 : for all m : Nat, p + succ(m) = succ(p + m) by add_succ at p
+      have psq  : p + succ(q) = succ(p + q) by psq0 at q
+      have psq_sym : succ(p + q) = p + succ(q) by symm psq
+      -- Chain: q+succ(p) = succ(q+p) = succ(p+q) = p+succ(q)
+      have swap1 : q + succ(p) = succ(p + q) by trans qsp and h_sqp
+      have swap  : q + succ(p) = p + succ(q) by trans swap1 and psq_sym
+      -- (e) p*q+(q+succ(p)) = p*q+(p+succ(q)) by congruence with swap
+      have h_rpsq : p * q + (p + succ(q)) = p * q + (p + succ(q)) by refl
+      have mid : p * q + (q + succ(p)) = p * q + (p + succ(q))
+                 by eq_subst swap and h_rpsq
+      -- (f) aa0 at p: substitute bound 'b' → free 'p'; p*q has no 'b' → no capture
+      have ar1 : for all c : Nat, (p * q + p) + c = p * q + (p + c)
+                 by aa0 at p
+      -- (g) ar1 at succ(q): (p*q+p)+succ(q) = p*q+(p+succ(q))
+      have ar_sq : (p * q + p) + succ(q) = p * q + (p + succ(q))
+                   by ar1 at succ(q)
+      have ar_sym : p * q + (p + succ(q)) = (p * q + p) + succ(q) by symm ar_sq
+      -- (h) Chain: (p*q+q)+succ(p) = p*q+(q+succ(p)) = p*q+(p+succ(q)) = (p*q+p)+succ(q)
+      have key1 : (p * q + q) + succ(p) = p * q + (p + succ(q))
+                  by trans al_sp and mid
+      have key2 : (p * q + q) + succ(p) = (p * q + p) + succ(q)
+                  by trans key1 and ar_sym
+      -- Step 5: (p*q+p)+succ(q) = p*succ(q)+succ(q) by congruence with symm ms2
+      have ms2_sym : p * q + p = p * succ(q) by symm ms2
+      have h_rms : p * succ(q) + succ(q) = p * succ(q) + succ(q) by refl
+      have key3 : (p * q + p) + succ(q) = p * succ(q) + succ(q)
+                  by eq_subst ms2_sym and h_rms
+      have key4 : (p * q + q) + succ(p) = p * succ(q) + succ(q)
+                  by trans key2 and key3
+      -- Step 6: succ(p)*succ(q) = (p*q+q)+succ(p) = p*succ(q)+succ(q)
+      have chain1 : succ(p) * succ(q) = (p * q + q) + succ(p)
+                    by trans ss2 and h_c2
+      have final  : succ(p) * succ(q) = p * succ(q) + succ(q)
+                    by trans chain1 and key4
+      then succ(p) * succ(q) = p * succ(q) + succ(q) by final
+end
