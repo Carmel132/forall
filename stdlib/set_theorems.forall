@@ -1,0 +1,92 @@
+import "set_theory.forall"
+
+-- Derived theorems about sets, proved from the axioms in set_theory.forall.
+--
+-- Variable naming convention: use P, Q, R to avoid capture with the axiom-internal
+-- bound variables A, B, x (which appear in inter_def, subset_def, etc.).
+
+-- A ∩ B ⊆ A.
+theorem inter_subset_left :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    P inter Q subseteq P
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have id1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A inter B iff (x in A and x in B)
+             by inter_def at T
+  have id2 : for all B : Set T, for all x : T,
+               x in P inter B iff (x in P and x in B)
+             by id1 at P
+  have id3 : for all x : T,
+               x in P inter Q iff (x in P and x in Q)
+             by id2 at Q
+  have mem_dir : for all x : T, x in (P inter Q) implies x in P
+  proof
+    take x : T
+    suppose h_mem : x in P inter Q
+    have id4 : x in P inter Q iff (x in P and x in Q) by id3 at x
+    have fwd  : x in P inter Q -> (x in P and x in Q) by id4
+    have both : x in P and x in Q by fwd and h_mem
+    have h_p  : x in P by both
+    have impl : x in P inter Q -> x in P by h_mem and h_p
+    have fa   : for all x : T, x in P inter Q -> x in P by impl
+    then for all x : T, x in (P inter Q) implies x in P by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               (P inter Q) subseteq B iff (for all x : T, x in (P inter Q) implies x in B)
+             by sd1 at (P inter Q)
+  have sd3 : (P inter Q) subseteq P iff (for all x : T, x in (P inter Q) implies x in P)
+             by sd2 at P
+  have sd_back : (for all x : T, x in (P inter Q) implies x in P) ->
+                   (P inter Q) subseteq P
+                 by sd3
+  then P inter Q subseteq P by sd_back and mem_dir
+end
+
+-- A ∩ B ⊆ B.
+theorem inter_subset_right :
+  for all T : Type, for all P : Set T, for all Q : Set T,
+    P inter Q subseteq Q
+proof
+  take T : Type
+  take P : Set T
+  take Q : Set T
+  have id1 : for all A : Set T, for all B : Set T, for all x : T,
+               x in A inter B iff (x in A and x in B)
+             by inter_def at T
+  have id2 : for all B : Set T, for all x : T,
+               x in P inter B iff (x in P and x in B)
+             by id1 at P
+  have id3 : for all x : T,
+               x in P inter Q iff (x in P and x in Q)
+             by id2 at Q
+  have mem_dir : for all x : T, x in (P inter Q) implies x in Q
+  proof
+    take x : T
+    suppose h_mem : x in P inter Q
+    have id4 : x in P inter Q iff (x in P and x in Q) by id3 at x
+    have fwd  : x in P inter Q -> (x in P and x in Q) by id4
+    have both : x in P and x in Q by fwd and h_mem
+    have h_q  : x in Q by both
+    have impl : x in P inter Q -> x in Q by h_mem and h_q
+    have fa   : for all x : T, x in P inter Q -> x in Q by impl
+    then for all x : T, x in (P inter Q) implies x in Q by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               (P inter Q) subseteq B iff (for all x : T, x in (P inter Q) implies x in B)
+             by sd1 at (P inter Q)
+  have sd3 : (P inter Q) subseteq Q iff (for all x : T, x in (P inter Q) implies x in Q)
+             by sd2 at Q
+  have sd_back : (for all x : T, x in (P inter Q) implies x in Q) ->
+                   (P inter Q) subseteq Q
+                 by sd3
+  then P inter Q subseteq Q by sd_back and mem_dir
+end
