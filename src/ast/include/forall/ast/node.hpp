@@ -330,22 +330,34 @@ struct ObtainStep {
     std::vector<std::unique_ptr<Step>> steps;
 };
 
+// One arm of a structural induction step (one constructor case).
+struct InductionArm {
+    std::string                        ctor_name;  // constructor name (e.g. "nil", "cons")
+    std::vector<std::string>           vars;       // variables bound in this arm
+    std::vector<std::string>           ih_names;   // IH names for recursive args (empty for base ctors)
+    std::vector<std::unique_ptr<Step>> steps;      // must end with a ThenStep
+};
+
 // induction <name> on <var> : <body>
-//   base:       <steps...>    -- must conclude subst(body, var, 0)
-//   inductive:  <steps...>    -- has ih : body in scope; must conclude subst(body, var, succ(var))
+//   base:       <steps...>    -- must conclude subst(body, var, 0)    [Nat only]
+//   inductive:  <steps...>    -- has ih : body in scope               [Nat only]
 //
-// Proves ∀ var : Nat, body.  The checker:
-//   1. verifies the base block concludes body[var:=0]
-//   2. injects ih : body as an assumption and verifies the inductive block
-//      concludes body[var:=succ(var)]
-//   3. applies NatInduction to certify ∀ var : Nat, body
-// The result is stored under `name` in the enclosing scope.
+// OR for user-defined inductive types (type_name != "Nat"):
+//   induction <name> on <var> : <body>
+//     case nil:  <steps...>
+//     case cons head tail ih: <steps...>
+//
+// Proves ∀ var : T, body.
 struct InductionStep {
     std::string                        name;            // label for the result in scope
     std::string                        var;             // induction variable
+    std::string                        type_name;       // "Nat" for Nat induction; else inductive type
     Prop                               body;            // P(var) — the inductive predicate
+    // Nat induction sub-blocks (used when type_name == "Nat"):
     std::vector<std::unique_ptr<Step>> base_steps;      // proves P(0)
     std::vector<std::unique_ptr<Step>> inductive_steps; // proves P(succ(var)) using ih : P(var)
+    // Structural induction arms (used when type_name != "Nat"):
+    std::vector<InductionArm>          arms;
 };
 
 struct ShowStep {
@@ -438,10 +450,19 @@ using StructField = std::variant<FieldTerm, FieldAxiom>;
 
 // ── Top-level declarations ─────────────────────────────────────────────────────
 
+// One constructor of a user-defined inductive type.
+// arg_types holds the types of each constructor argument as raw strings (pre-type-system).
+// is_recursive[i] is true when arg_types[i] refers back to the inductive type itself.
+struct InductiveConstructor {
+    std::string              name;
+    std::vector<std::string> arg_types;    // raw type strings, e.g. {"Nat", "List"}
+    std::vector<bool>        is_recursive; // true for args whose type == inductive type name
+};
+
 // Namespace kind groups declarations under a qualified prefix.
 // Open kind brings a namespace into unqualified scope.
 enum class DeclKind { Axiom, Definition, Lemma, Theorem, Import, Instance, Structure, Quotient,
-                      Namespace, Open, TypeAlias };
+                      Namespace, Open, TypeAlias, Inductive };
 
 // visibility of a declaration (controls export during import).
 enum class Visibility { Public, Private, Protected };
@@ -480,11 +501,17 @@ struct Decl {
     std::optional<PropPtr>    def_body;
     // for DeclKind::TypeAlias: the right-hand side type expression.
     std::optional<TypeNode>   type_alias_body;
+    // for DeclKind::Inductive: the constructor list.
+    std::vector<InductiveConstructor> inductive_ctors;
 };
 
 // Maps structure name → its field list.  Used by the checker to process
 // structure instantiations.
 using StructEnv = std::map<std::string, std::vector<StructField>>;
+
+// Maps inductive type name → its constructor list.  Built by the checker when
+// processing DeclKind::Inductive declarations; consulted by check_induction_step.
+using InductiveEnv = std::map<std::string, std::vector<InductiveConstructor>>;
 
 using DeclPtr = std::unique_ptr<Decl>;
 
