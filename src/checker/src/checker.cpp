@@ -2044,6 +2044,26 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by eq_subst h_eq h_pb" — conclude P(a) from h_eq : a = b and h_pb : P(b)
+            // This is the EqSubst kernel rule: substitution of equals in propositions.
+            if (!s.justification.empty() && s.justification[0] == "__eq_subst__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 2) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by eq_subst' requires exactly two premises: the equality and the proof of the substituted goal"});
+                    return false;
+                }
+                const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
+                auto r = kernel.apply(kernel::Rule::EqSubst, std::span{prem}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by eq_subst' failed: " + r.error().message});
+                    return false;
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             // expand any let-bound names in the witness expression and beta-reduce.
@@ -2497,6 +2517,24 @@ bool check_step(const ast::Step& step,
                 if (!r) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "'by congr' failed: " + r.error().message});
+                    return false;
+                }
+                return true;
+            }
+            // "by eq_subst h_eq h_pb" — ThenStep variant
+            if (!s.justification.empty() && s.justification[0] == "__eq_subst__") {
+                std::vector<std::string> hrefs(s.justification.begin() + 1, s.justification.end());
+                auto es2 = resolve_refs(hrefs, env, diag, step.loc);
+                if (!es2 || es2->size() != 2) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by eq_subst' requires exactly two premises: the equality and the proof of the substituted goal"});
+                    return false;
+                }
+                const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
+                auto r = kernel.apply(kernel::Rule::EqSubst, std::span{prem}, prop);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by eq_subst' failed: " + r.error().message});
                     return false;
                 }
                 return true;
