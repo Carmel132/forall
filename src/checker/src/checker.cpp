@@ -2978,11 +2978,43 @@ void check_proof(const ast::Decl& decl,
                     rw_error = true;
                     break;
                 }
+
+                if (item.iff_rewrite) {
+                    // rewrite ↔ h — h must be (P→Q)∧(Q→P), the desugared biconditional.
+                    // Rewrites every occurrence of P in the goal with Q (or Q→P if reverse).
+                    const auto* conj = std::get_if<ast::PropAnd>(&h->judgment.prop().node);
+                    const ast::PropImpl* fwd = conj ? std::get_if<ast::PropImpl>(&conj->lhs->node) : nullptr;
+                    const ast::PropImpl* bwd = conj ? std::get_if<ast::PropImpl>(&conj->rhs->node) : nullptr;
+                    if (!conj || !fwd || !bwd) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "rewrite ↔ '" + item.hyp_ref
+                                   + "': hypothesis must be a biconditional (P ↔ Q)"});
+                        rw_error = true;
+                        break;
+                    }
+                    // fwd: P→Q, bwd: Q→P
+                    const ast::Prop& P = *fwd->lhs;
+                    const ast::Prop& Q = *fwd->rhs;
+                    ast::Prop new_goal;
+                    if (!item.reverse)
+                        new_goal = ast::subst_prop(*current_goal, P, Q);
+                    else
+                        new_goal = ast::subst_prop(*current_goal, Q, P);
+                    if (new_goal == *current_goal) {
+                        diag.emit({diag::Severity::Warning, step.loc,
+                                   "rewrite ↔ '" + item.hyp_ref
+                                   + "': proposition does not appear in goal — no effect"});
+                    }
+                    goal_history.push_back(std::move(new_goal));
+                    current_goal = &goal_history.back();
+                    continue;
+                }
+
                 const auto* eq = std::get_if<ast::PropRel>(&h->judgment.prop().node);
                 if (!eq || eq->op != ast::RelOp::Eq) {
                     diag.emit({diag::Severity::Error, step.loc,
                                "rewrite: hypothesis '" + item.hyp_ref
-                               + "' must be an equality (lhs = rhs)"});
+                               + "' must be an equality (lhs = rhs); use 'rewrite ↔' for biconditionals"});
                     rw_error = true;
                     break;
                 }
