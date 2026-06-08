@@ -1690,3 +1690,104 @@ proof
       done
       then for all p : Nat, succ(n) <= p or p <= succ(n) by result_cases
 end
+
+-- n ≤ p → n < p ∨ n = p  (a ≤ is either strict or equality).
+-- Induction on n; uses nat_zero_or_succ at p (outer var named 'p', not 'm', to avoid capture).
+theorem lt_or_eq_of_le : for all n : Nat, for all p : Nat, n <= p implies n < p or n = p
+proof
+  induction result on n : for all p : Nat, n <= p implies n < p or n = p
+    base:
+      take p : Nat
+      suppose h_le : 0 <= p
+      have h_split : p = 0 or (there exists m : Nat, p = succ(m))
+                     by nat_zero_or_succ at p
+      cases split_res : h_split
+        case p_zero : p = 0 =>
+          have h_eq : 0 = p by symm p_zero
+          have disj : 0 < p or 0 = p by h_eq
+          then 0 < p or 0 = p by disj
+        case p_succ : there exists m : Nat, p = succ(m) =>
+          obtain j_res from p_succ
+            case j , h_pj : p = succ(j) =>
+              have h_0sj : 0 < succ(j) by succ_pos at j
+              have h_0p : 0 < p by eq_subst h_pj and h_0sj
+              have disj : 0 < p or 0 = p by h_0p
+              then 0 < p or 0 = p by disj
+            done
+          then 0 < p or 0 = p by j_res
+      done
+      have impl : 0 <= p implies 0 < p or 0 = p by h_le and split_res
+      then for all p : Nat, 0 <= p implies 0 < p or 0 = p by impl
+    inductive:
+      -- ih : for all p : Nat, n <= p implies n < p or n = p
+      take p : Nat
+      suppose h_le : succ(n) <= p
+      have h_split : p = 0 or (there exists m : Nat, p = succ(m))
+                     by nat_zero_or_succ at p
+      cases split_res : h_split
+        case p_zero : p = 0 =>
+          -- 0 < succ(n) <= p = 0 → 0 < 0, contradiction
+          have h_0sn : 0 < succ(n) by succ_pos at n
+          have llt1 : for all q : Nat, for all r : Nat, 0 < q implies q <= r implies 0 < r
+                      by lt_le_trans at 0
+          have llt2 : for all r : Nat, 0 < succ(n) implies succ(n) <= r implies 0 < r
+                      by llt1 at succ(n)
+          have llt3 : 0 < succ(n) implies succ(n) <= p implies 0 < p by llt2 at p
+          have llt4 : succ(n) <= p implies 0 < p by llt3 and h_0sn
+          have h_0p : 0 < p by llt4 and h_le
+          have h_00 : 0 < 0 by omega
+          have h_nirr : not (0 < 0) by lt_irrefl at 0
+          have bot : false by h_nirr and h_00
+          have disj : succ(n) < p or succ(n) = p by bot
+          then succ(n) < p or succ(n) = p by disj
+        case p_succ : there exists m : Nat, p = succ(m) =>
+          obtain j_res from p_succ
+            case j , h_pj : p = succ(j) =>
+              -- succ(n) <= p = succ(j) → succ(n) <= succ(j) → n <= j
+              have h_pj_sym : succ(j) = p by symm h_pj
+              have h_sn_sj : succ(n) <= succ(j) by eq_subst h_pj_sym and h_le
+              have losl1 : for all m : Nat, succ(n) <= succ(m) implies n <= m
+                           by le_of_succ_le_succ at n
+              have losl2 : succ(n) <= succ(j) implies n <= j by losl1 at j
+              have h_nj : n <= j by losl2 and h_sn_sj
+              -- IH at j: n <= j → n < j ∨ n = j
+              have ih1 : for all p : Nat, n <= p implies n < p or n = p by ih
+              have ih2 : n <= j implies n < j or n = j by ih1 at j
+              have ih3 : n < j or n = j by ih2 and h_nj
+              cases ih_res : ih3
+                case n_lt_j : n < j =>
+                  -- n < j → succ(n) ≤ j (lt_succ_le)
+                  have lsl1 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+                  have lsl2 : n < j implies succ(n) <= j by lsl1 at j
+                  have h_sn_j : succ(n) <= j by lsl2 and n_lt_j
+                  -- succ(n) ≤ j < succ(j) → succ(n) < succ(j)
+                  have h_j_sj : j < succ(j) by lt_succ at j
+                  have llt1 : for all q : Nat, for all r : Nat,
+                              succ(n) <= q implies q < r implies succ(n) < r
+                              by le_lt_trans at succ(n)
+                  have llt2 : for all r : Nat, succ(n) <= j implies j < r implies succ(n) < r
+                              by llt1 at j
+                  have llt3 : succ(n) <= j implies j < succ(j) implies succ(n) < succ(j)
+                              by llt2 at succ(j)
+                  have llt4 : j < succ(j) implies succ(n) < succ(j) by llt3 and h_sn_j
+                  have h_sn_lt_sj : succ(n) < succ(j) by llt4 and h_j_sj
+                  -- succ(n) < p (since p = succ(j))
+                  have h_sn_lt_p : succ(n) < p by eq_subst h_pj and h_sn_lt_sj
+                  have disj : succ(n) < p or succ(n) = p by h_sn_lt_p
+                  then succ(n) < p or succ(n) = p by disj
+                case n_eq_j : n = j =>
+                  -- n = j → succ(n) = succ(j): eq_subst n_eq_j (n→j) in succ(n)=succ(j) → succ(j)=succ(j)
+                  have refl_sj : succ(j) = succ(j) by refl
+                  have h_sn_sj_eq : succ(n) = succ(j) by eq_subst n_eq_j and refl_sj
+                  -- succ(j) = p, so succ(n) = p
+                  have h_sn_p_eq : succ(n) = p by trans h_sn_sj_eq and h_pj_sym
+                  have disj : succ(n) < p or succ(n) = p by h_sn_p_eq
+                  then succ(n) < p or succ(n) = p by disj
+              done
+              then succ(n) < p or succ(n) = p by ih_res
+            done
+          then succ(n) < p or succ(n) = p by j_res
+      done
+      have impl : succ(n) <= p implies succ(n) < p or succ(n) = p by h_le and split_res
+      then for all p : Nat, succ(n) <= p implies succ(n) < p or succ(n) = p by impl
+end
