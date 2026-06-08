@@ -1,29 +1,8 @@
--- Set theory axioms over Real elements.
+-- Set theory for Real analysis.
 --
--- Mirrors set_theory.forall but uses Real as the element type.
--- Required for analysis (bounded sets, open sets, etc.).
+-- The generic set_theory.forall already covers Set Real via its
+-- "for all T : Type" quantification.  This file imports both so that
+-- analyses can get all set-theoretic facts about Real sets in one import.
 
 import "algebra/real.forall"
-
--- ── Extensionality ──────────────────────────────────────────────────────────
-axiom set_real_ext : for all A : Set Real, for all B : Set Real, (for all x : Real, x in A iff x in B) implies A = B
-
--- ── Empty set ────────────────────────────────────────────────────────────────
-axiom set_real_empty : for all x : Real, not (x in {})
-
--- ── Union ────────────────────────────────────────────────────────────────────
-axiom set_real_union_def  : for all A : Set Real, for all B : Set Real, for all x : Real, x in A union B iff (x in A or x in B)
-axiom set_real_union_comm : for all A : Set Real, for all B : Set Real, A union B = B union A
-axiom set_real_union_assoc : for all A : Set Real, for all B : Set Real, for all C : Set Real, (A union B) union C = A union (B union C)
-
--- ── Intersection ─────────────────────────────────────────────────────────────
-axiom set_real_inter_def  : for all A : Set Real, for all B : Set Real, for all x : Real, x in A inter B iff (x in A and x in B)
-axiom set_real_inter_comm : for all A : Set Real, for all B : Set Real, A inter B = B inter A
-
--- ── Set difference ──────────────────────────────────────────────────────────
-axiom set_real_diff_def : for all A : Set Real, for all B : Set Real, for all x : Real, x in A setminus B iff (x in A and not (x in B))
-
--- ── Subset ───────────────────────────────────────────────────────────────────
-axiom set_real_subset_def : for all A : Set Real, for all B : Set Real, A subseteq B iff (for all x : Real, x in A implies x in B)
-axiom set_real_subset_refl : for all A : Set Real, A subseteq A
-axiom set_real_subset_antisym : for all A : Set Real, for all B : Set Real, A subseteq B implies B subseteq A implies A = B
+import "set_theory.forall"
