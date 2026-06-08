@@ -1602,3 +1602,38 @@ proof
   have fa : for all n : Nat, (1 <= n implies 0 < n) and (0 < n implies 1 <= n) by iff_res
   then for all n : Nat, 1 <= n iff 0 < n by fa
 end
+
+-- n < n + 1  (every natural number is strictly less than its successor, phrased with +1).
+theorem lt_add_one : for all n : Nat, n < n + 1
+proof
+  take n : Nat
+  have h_lt : n < succ(n) by lt_succ at n
+  have sea : n + 1 = succ(n) by succ_eq_add_one at n
+  have result : n < n + 1 by eq_subst sea and h_lt
+  then for all n : Nat, n < n + 1 by result
+end
+
+-- n ≤ n + m and n ≤ m + n  (adding anything keeps you at least as large).
+-- These already exist as le_add_right and le_add_left; provide a 0 < m → n < n + m alias.
+
+-- 0 < m → n < n + m  is lt_add_of_pos_right, already proved.
+
+-- n < succ(n + m)  (useful for stepping arguments).
+theorem lt_succ_add : for all n : Nat, for all m : Nat, n < succ(n + m)
+proof
+  take n : Nat
+  take m : Nat
+  have lar1 : for all m : Nat, n <= n + m by le_add_right at n
+  have h_le : n <= n + m by lar1 at m
+  have h_lt_s : n + m < succ(n + m) by lt_succ at (n + m)
+  have llt1 : for all q : Nat, for all r : Nat, n <= q implies q < r implies n < r
+              by le_lt_trans at n
+  have llt2 : for all r : Nat, n <= n + m implies n + m < r implies n < r by llt1 at (n + m)
+  have llt3 : n <= n + m implies n + m < succ(n + m) implies n < succ(n + m)
+              by llt2 at (succ(n + m))
+  have llt4 : n + m < succ(n + m) implies n < succ(n + m) by llt3 and h_le
+  have result : n < succ(n + m) by llt4 and h_lt_s
+  have impl : n < succ(n + m) by result
+  have fa_m : for all m : Nat, n < succ(n + m) by impl
+  then for all n : Nat, for all m : Nat, n < succ(n + m) by fa_m
+end
