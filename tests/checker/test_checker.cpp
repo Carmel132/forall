@@ -4331,3 +4331,18 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Set Real axioms ───────────────────────────────────────────────────────
+
+// set_real_ext applies to Set Real; the axiom is accessible and parseable.
+TEST(CheckerTest, SetReal_ExtAxiom_Parseable) {
+    auto diag = run_checker("set_real_ext", R"(
+axiom set_real_ext : for all A : Set Real, for all B : Set Real, (for all x : Real, x in A iff x in B) implies A = B
+theorem use_ext : for all A : Set Real, for all B : Set Real, (for all x : Real, x in A iff x in B) implies A = B
+proof
+  have h : for all A : Set Real, for all B : Set Real, (for all x : Real, x in A iff x in B) implies A = B by set_real_ext
+  then for all A : Set Real, for all B : Set Real, (for all x : Real, x in A iff x in B) implies A = B by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
