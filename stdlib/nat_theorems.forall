@@ -1907,29 +1907,6 @@ proof
   then n < p by res
 end
 
-
--- p <= n implies not (n < p).
-theorem not_lt_of_ge : for all n : Nat, for all p : Nat, p <= n implies not (n < p)
-proof
-  take n : Nat
-  take p : Nat
-  suppose h_ge : p <= n
-  have result : not (n < p)
-    proof
-      suppose h_lt : n < p
-      have llt1 : for all q : Nat, for all r : Nat, n < q implies q <= r implies n < r
-                  by lt_le_trans at n
-      have llt2 : for all r : Nat, n < p implies p <= r implies n < r by llt1 at p
-      have llt3 : n < p implies p <= n implies n < n by llt2 at n
-      have llt4 : p <= n implies n < n by llt3 and h_lt
-      have h_nn : n < n by llt4 and h_ge
-      have h_irr : not (n < n) by lt_irrefl at n
-      have bot : false by h_irr and h_nn
-      then not (n < p) by h_lt and bot
-    end
-  then not (n < p) by result
-end
-
 -- p <= n implies not (n < p).
 theorem not_lt_of_ge : for all n : Nat, for all p : Nat, p <= n implies not (n < p)
 proof
@@ -2118,4 +2095,46 @@ proof
       then succ(n) <= p implies n < p by h and result
     end
   then n < p iff succ(n) <= p by fwd and bwd
+end
+
+
+-- a + c < b + c iff a < b (right cancellation for strict inequality).
+theorem add_lt_cancel_right : for all a : Nat, for all b : Nat, for all c : Nat,
+                               a + c < b + c implies a < b
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a + c < b + c
+  then a < b by omega
+end
+
+-- a + c < b + c iff a < b (left cancellation for strict inequality).
+theorem add_lt_cancel_left : for all c : Nat, for all a : Nat, for all b : Nat,
+                              c + a < c + b implies a < b
+proof
+  take c : Nat
+  take a : Nat
+  take b : Nat
+  suppose h : c + a < c + b
+  then a < b by omega
+end
+
+-- n >= 0 for all n (synonym for nat_le_zero).
+theorem zero_le : for all n : Nat, 0 <= n
+proof
+  take n : Nat
+  have h : 0 <= n by nat_le_zero at n
+  then 0 <= n by h
+end
+
+-- n * m = m * n (multiplication commutativity, direct form).
+-- (mul_comm exists but uses bound vars a, b; this uses n, m for convenience)
+theorem mul_comm_nm : for all n : Nat, for all m : Nat, n * m = m * n
+proof
+  take n : Nat
+  take m : Nat
+  have mc1 : for all b : Nat, n * b = b * n by mul_comm at n
+  have mc2 : n * m = m * n by mc1 at m
+  then n * m = m * n by mc2
 end
