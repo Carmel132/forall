@@ -2008,3 +2008,89 @@ proof
       have impl : not (p < succ(n)) implies succ(n) <= p by h_not and h_snp
       then for all p : Nat, not (p < succ(n)) implies succ(n) <= p by impl
   end
+
+
+-- Trichotomy: n < p or n = p or p < n.
+-- (or is left-assoc: goal = (n<p or n=p) or p<n)
+theorem lt_trichotomy : for all n : Nat, for all p : Nat, n < p or n = p or p < n
+proof
+  induction result on n : for all p : Nat, n < p or n = p or p < n
+    base:
+      take p : Nat
+      have h_split : p = 0 or (there exists m : Nat, p = succ(m))
+                     by nat_zero_or_succ at p
+      cases split_res : h_split
+        case p_zero : p = 0 =>
+          have h_eq : 0 = p by symm p_zero
+          have disj1 : 0 < p or 0 = p by h_eq
+          have disj : 0 < p or 0 = p or p < 0 by disj1
+          then 0 < p or 0 = p or p < 0 by disj
+        case p_succ : there exists m : Nat, p = succ(m) =>
+          obtain obj_res from p_succ
+            case k , h_pk : p = succ(k) =>
+              have h_0sk : 0 < succ(k) by succ_pos at k
+              have h_0p : 0 < p by eq_subst h_pk and h_0sk
+              have disj1 : 0 < p or 0 = p by h_0p
+              have disj : 0 < p or 0 = p or p < 0 by disj1
+              then 0 < p or 0 = p or p < 0 by disj
+            done
+          then 0 < p or 0 = p or p < 0 by obj_res
+      done
+      then for all p : Nat, 0 < p or 0 = p or p < 0 by split_res
+    inductive:
+      -- ih : for all p : Nat, n < p or n = p or p < n
+      take p : Nat
+      have h_split : p = 0 or (there exists m : Nat, p = succ(m))
+                     by nat_zero_or_succ at p
+      cases split_res : h_split
+        case p_zero : p = 0 =>
+          have h_0sn : 0 < succ(n) by succ_pos at n
+          have h_p_sn : p < succ(n) by eq_subst p_zero and h_0sn
+          have disj : succ(n) < p or succ(n) = p or p < succ(n) by h_p_sn
+          then succ(n) < p or succ(n) = p or p < succ(n) by disj
+        case p_succ : there exists m : Nat, p = succ(m) =>
+          obtain obj_res from p_succ
+            case k , h_pk : p = succ(k) =>
+              -- ih at k: n < k or n = k or k < n
+              have ih_k : n < k or n = k or k < n by ih at k
+              -- ih_k = (n<k or n=k) or k<n. Split outer first.
+              cases outer_res : ih_k
+                case left_nk : n < k or n = k =>
+                  cases inner_res : left_nk
+                    case n_lt_k : n < k =>
+                      -- n < k → succ(n) < succ(k)
+                      have sss1 : for all m : Nat, n < m implies succ(n) < succ(m)
+                                  by succ_lt_succ at n
+                      have sss2 : n < k implies succ(n) < succ(k) by sss1 at k
+                      have h_sn_sk : succ(n) < succ(k) by sss2 and n_lt_k
+                      have h_sn_p : succ(n) < p by eq_subst h_pk and h_sn_sk
+                      have disj1 : succ(n) < p or succ(n) = p by h_sn_p
+                      have disj : succ(n) < p or succ(n) = p or p < succ(n) by disj1
+                      then succ(n) < p or succ(n) = p or p < succ(n) by disj
+                    case n_eq_k : n = k =>
+                      -- n = k → succ(n) = succ(k)
+                      have refl_sk : succ(k) = succ(k) by refl
+                      have h_sn_sk : succ(n) = succ(k) by eq_subst n_eq_k and refl_sk
+                      have h_sk_p : succ(k) = p by symm h_pk
+                      have h_sn_p : succ(n) = p by trans h_sn_sk and h_sk_p
+                      have disj1 : succ(n) < p or succ(n) = p by h_sn_p
+                      have disj : succ(n) < p or succ(n) = p or p < succ(n) by disj1
+                      then succ(n) < p or succ(n) = p or p < succ(n) by disj
+                  done
+                  then succ(n) < p or succ(n) = p or p < succ(n) by inner_res
+                case k_lt_n : k < n =>
+                  -- k < n → succ(k) < succ(n)
+                  have sss1 : for all m : Nat, k < m implies succ(k) < succ(m)
+                              by succ_lt_succ at k
+                  have sss2 : k < n implies succ(k) < succ(n) by sss1 at n
+                  have h_sk_sn : succ(k) < succ(n) by sss2 and k_lt_n
+                  have h_p_sn : p < succ(n) by eq_subst h_pk and h_sk_sn
+                  have disj : succ(n) < p or succ(n) = p or p < succ(n) by h_p_sn
+                  then succ(n) < p or succ(n) = p or p < succ(n) by disj
+              done
+              then succ(n) < p or succ(n) = p or p < succ(n) by outer_res
+            done
+          then succ(n) < p or succ(n) = p or p < succ(n) by obj_res
+      done
+      then for all p : Nat, succ(n) < p or succ(n) = p or p < succ(n) by split_res
+  end
