@@ -2768,6 +2768,49 @@ std::optional<ast::DeclPtr> Parser::parseOpen() {
     return decl;
 }
 
+// ── parseNamespaceAlias ────────────────────────────────────────────────────────
+// alias <Alias> = <DottedName>
+// Creates a namespace alias: all "DottedName.x" entries become accessible as "Alias.x".
+std::optional<ast::DeclPtr> Parser::parseNamespaceAlias() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "alias"
+
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected alias name after 'alias'"});
+        return std::nullopt;
+    }
+    std::string alias_name = std::string{advance().lexeme};
+
+    if (!check(K::Equals)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected '=' after alias name in 'alias'"});
+        return std::nullopt;
+    }
+    advance(); // consume "="
+
+    // Parse a dotted name: Foo or Foo.Bar or Foo.Bar.Baz
+    if (!check(K::Identifier)) {
+        diag_.emit({diag::Severity::Error, peek().loc,
+                    "expected target name after '=' in 'alias'"});
+        return std::nullopt;
+    }
+    std::string target = std::string{advance().lexeme};
+    // consume dotted continuation
+    while (check(K::Dot) && pos_ + 1 < tokens_.size()
+           && tokens_[pos_ + 1].kind == K::Identifier) {
+        advance(); // consume "."
+        target += "." + std::string{advance().lexeme};
+    }
+
+    auto decl = std::make_unique<ast::Decl>(
+        ast::DeclKind::NamespaceAlias, alias_name, loc,
+        ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+    decl->alias_target = std::move(target);
+    return decl;
+}
+
 // ── parseTypeAlias ─────────────────────────────────────────────────────────────
 // type <Alias> = <type>
 std::optional<ast::DeclPtr> Parser::parseTypeAlias() {
@@ -2904,10 +2947,11 @@ std::optional<ast::DeclPtr> Parser::parseDeclaration() {
     else if (check(K::KwOpen))     result = parseOpen();
     else if (check(K::KwType))     result = parseTypeAlias();
     else if (check(K::Identifier) && peek().lexeme == "inductive") result = parseInductive();
+    else if (check(K::Identifier) && peek().lexeme == "alias") result = parseNamespaceAlias();
     else {
         diag_.emit({diag::Severity::Error, peek().loc,
                     "expected 'axiom', 'definition', 'theorem', 'lemma', 'instance', "
-                    "'structure', 'quotient', 'namespace', 'open', 'type', or 'inductive'; got '"
+                    "'structure', 'quotient', 'namespace', 'open', 'type', 'inductive', or 'alias'; got '"
                     + peek().lexeme + "'"});
         advance();
         return std::nullopt;

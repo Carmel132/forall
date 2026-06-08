@@ -33,6 +33,7 @@ private:
     [[nodiscard]] std::optional<ast::DeclPtr> parseOpen();
     [[nodiscard]] std::optional<ast::DeclPtr> parseTypeAlias();
     [[nodiscard]] std::optional<ast::DeclPtr> parseInductive();
+    [[nodiscard]] std::optional<ast::DeclPtr> parseNamespaceAlias();
 
     // Proof blocks and steps
     [[nodiscard]] ast::ProofBlock parseProofBlock();
