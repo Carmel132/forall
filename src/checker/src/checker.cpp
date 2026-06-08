@@ -5067,6 +5067,24 @@ ModuleResult check_module(const std::filesystem::path& path,
             break;
         }
 
+        // namespace alias — alias N = X.Y copies all "X.Y.*" entries under "N.*"
+        case ast::DeclKind::NamespaceAlias: {
+            const std::string& alias = decl->name;
+            const std::string& target = decl->alias_target;
+            const std::string src_prefix = target + ".";
+            const std::string dst_prefix = alias + ".";
+            std::vector<std::pair<std::string, HypEntry>> to_add;
+            for (const auto& [name, entry] : module_env) {
+                if (name.size() > src_prefix.size()
+                        && name.substr(0, src_prefix.size()) == src_prefix) {
+                    to_add.emplace_back(dst_prefix + name.substr(src_prefix.size()), entry);
+                }
+            }
+            for (auto& [qname, entry] : to_add)
+                module_env.insert_or_assign(qname, std::move(entry));
+            break;
+        }
+
         // inductive type — register constructors and auto-generate induction principle
         case ast::DeclKind::Inductive: {
             const std::string& type_name = decl->name;
