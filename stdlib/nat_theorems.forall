@@ -1268,3 +1268,33 @@ proof
       have impl_step : a <= b implies a * succ(k) <= b * succ(k) by h_ab and result
       then a <= b implies a * succ(k) <= b * succ(k) by impl_step
 end
+
+-- a ≤ b → k * a ≤ k * b  (multiplication is monotone on the left).
+-- Derived from mul_le_mul_right via mul_comm.
+theorem mul_le_mul_left : for all k : Nat, for all a : Nat, for all b : Nat,
+                           a <= b implies k * a <= k * b
+proof
+  take k : Nat
+  take a : Nat
+  take b : Nat
+  suppose h_ab : a <= b
+  have mlr1 : for all b : Nat, for all k : Nat, a <= b implies a * k <= b * k
+              by mul_le_mul_right at a
+  have mlr2 : for all k : Nat, a <= b implies a * k <= b * k by mlr1 at b
+  have h_impl : a <= b implies a * k <= b * k by mlr2 at k
+  have h_rk : a * k <= b * k by h_impl and h_ab
+  -- k * a = a * k  via mul_comm specialised at k then a
+  have mc_ka1 : for all b : Nat, k * b = b * k by mul_comm at k
+  have mc_ka : k * a = a * k by mc_ka1 at a
+  -- k * b = b * k  via mul_comm specialised at k then b
+  have mc_kb : k * b = b * k by mc_ka1 at b
+  -- Rewrite a*k ≤ b*k to k*a ≤ b*k using mc_ka (LHS k*a → a*k in declared type).
+  have h_r1 : k * a <= b * k by eq_subst mc_ka and h_rk
+  -- Rewrite k*a ≤ b*k to k*a ≤ k*b using mc_kb (LHS k*b → b*k in declared type).
+  have result : k * a <= k * b by eq_subst mc_kb and h_r1
+  have impl : a <= b implies k * a <= k * b by h_ab and result
+  have fa_b : for all b : Nat, a <= b implies k * a <= k * b by impl
+  have fa_ab : for all a : Nat, for all b : Nat, a <= b implies k * a <= k * b by fa_b
+  then for all k : Nat, for all a : Nat, for all b : Nat, a <= b implies k * a <= k * b
+       by fa_ab
+end
