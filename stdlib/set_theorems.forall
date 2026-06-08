@@ -134,6 +134,40 @@ proof
   then P subseteq P union Q by sd_back and mem_dir
 end
 
+-- {} ⊆ A for any set A.
+theorem empty_subset :
+  for all T : Type, for all P : Set T,
+    {} subseteq P
+proof
+  take T : Type
+  take P : Set T
+  have es1 : for all x : T, not (x in {})
+             by empty_set at T
+  have mem_dir : for all x : T, x in {} implies x in P
+  proof
+    take x : T
+    suppose h_mem : x in {}
+    have h_not : not (x in {}) by es1 at x
+    have h_false : false by h_not and h_mem
+    have h_p : x in P by h_false
+    have impl : x in {} -> x in P by h_mem and h_p
+    have fa   : for all x : T, x in {} -> x in P by impl
+    then for all x : T, x in {} implies x in P by fa
+  end
+  have sd1 : for all A : Set T, for all B : Set T,
+               A subseteq B iff (for all x : T, x in A implies x in B)
+             by subset_def at T
+  have sd2 : for all B : Set T,
+               {} subseteq B iff (for all x : T, x in {} implies x in B)
+             by sd1 at {}
+  have sd3 : {} subseteq P iff (for all x : T, x in {} implies x in P)
+             by sd2 at P
+  have sd_back : (for all x : T, x in {} implies x in P) ->
+                   {} subseteq P
+                 by sd3
+  then {} subseteq P by sd_back and mem_dir
+end
+
 -- Q ⊆ P ∪ Q.
 theorem union_supset_right :
   for all T : Type, for all P : Set T, for all Q : Set T,
