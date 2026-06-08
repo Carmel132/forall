@@ -5001,8 +5001,59 @@ ModuleResult check_module(const std::filesystem::path& path,
                     to_add.emplace_back(name.substr(prefix.size()), entry);
                 }
             }
-            for (auto& [uname, entry] : to_add)
+            // Track which keys we inject so we can remove them afterwards (scoped form).
+            std::vector<std::string> injected_keys;
+            injected_keys.reserve(to_add.size());
+            for (auto& [uname, entry] : to_add) {
+                // Only inject if the name was not already present (don't shadow existing).
+                if (!module_env.count(uname))
+                    injected_keys.push_back(uname);
                 module_env.insert_or_assign(uname, std::move(entry));
+            }
+
+            if (decl->open_scope_decl) {
+                // Scoped open: process one declaration under the opened namespace,
+                // then remove the injected unqualified names.
+                // Recurse by faking a one-element module and processing that decl.
+                // We do this inline by dispatching the inner decl through the same
+                // switch via a temporary alias.
+                const ast::DeclPtr& inner = decl->open_scope_decl;
+                // Re-dispatch: use a goto-free approach — call the helper lambda.
+                // The simplest correct approach: create a one-item module and call
+                // check_module recursively would risk double-visiting; instead we
+                // inline the dispatch by processing the inner decl.
+                // Since check_module is not refactored as a per-decl helper, we handle
+                // the most common cases inline: axiom, definition, theorem/lemma.
+                if (inner->kind == ast::DeclKind::Axiom
+                        || inner->kind == ast::DeclKind::Definition) {
+                    const auto eff = pred_def_table.empty()
+                                     ? inner->statement
+                                     : unfold_preds(inner->statement, pred_def_table);
+                    if (auto r = kernel.introduce_axiom(eff))
+                        module_env.insert_or_assign(inner->name,
+                                                    HypEntry{std::move(*r), EntryKind::Derived, inner->visibility});
+                } else if (inner->kind == ast::DeclKind::Theorem
+                           || inner->kind == ast::DeclKind::Lemma) {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag);
+                    const auto snapshot2 = diag.diagnostics().size();
+                    check_proof(*inner, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table, &inductive_env);
+                    const auto& all2 = diag.diagnostics();
+                    bool ok = true;
+                    for (auto i = snapshot2; i < all2.size(); ++i)
+                        if (all2[i].severity == diag::Severity::Error) { ok = false; break; }
+                    if (ok) {
+                        const ast::Prop eff2 = pred_def_table.empty()
+                                               ? inner->statement
+                                               : unfold_preds(inner->statement, pred_def_table);
+                        if (auto r = kernel.introduce_axiom(eff2))
+                            module_env.insert_or_assign(inner->name,
+                                                        HypEntry{std::move(*r), EntryKind::Derived, inner->visibility});
+                    }
+                }
+                // Remove the injected unqualified names to restore previous scope.
+                for (const auto& k : injected_keys)
+                    module_env.erase(k);
+            }
             break;
         }
 
@@ -5196,8 +5247,25 @@ void Checker::check_content(const std::string& source, const std::string& filena
             for (const auto& [name, entry] : module_env)
                 if (name.size() > prefix.size() && name.substr(0, prefix.size()) == prefix)
                     to_add.emplace_back(name.substr(prefix.size()), entry);
-            for (auto& [uname, entry] : to_add)
+            std::vector<std::string> injected_cc;
+            for (auto& [uname, entry] : to_add) {
+                if (!module_env.count(uname)) injected_cc.push_back(uname);
                 module_env.insert_or_assign(uname, std::move(entry));
+            }
+            if (decl->open_scope_decl) {
+                const ast::DeclPtr& inner = decl->open_scope_decl;
+                if (inner->kind == ast::DeclKind::Axiom || inner->kind == ast::DeclKind::Definition) {
+                    if (auto r = kernel.introduce_axiom(inner->statement))
+                        module_env.insert_or_assign(inner->name, HypEntry{std::move(*r), EntryKind::Derived});
+                } else if (inner->kind == ast::DeclKind::Theorem || inner->kind == ast::DeclKind::Lemma) {
+                    check_prop_types_deep(inner->statement, {}, sig_table, diag_);
+                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
+                    if (!diag_.hasErrors())
+                        if (auto r = kernel.introduce_axiom(inner->statement))
+                            module_env.insert_or_assign(inner->name, HypEntry{std::move(*r), EntryKind::Derived});
+                }
+                for (const auto& k : injected_cc) module_env.erase(k);
+            }
             break;
         }
         case ast::DeclKind::Axiom:
