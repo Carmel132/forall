@@ -1,0 +1,32 @@
+import "../nat.forall"
+
+open Nat
+
+namespace Analysis
+
+-- Convergence and Cauchy predicates for rational sequences.
+-- These enable the construction of the reals as the Cauchy completion of Q.
+-- Distance is expressed as a two-sided inequality since there is no built-in
+-- absolute value for Rat; "|a[n] - L| < eps" is written as
+-- "a[n] - L < eps and a[n] - L > (0 - eps)".
+
+-- ConvergesTo_Rat: the sequence a_n converges to L in the rationals.
+definition ConvergesTo_Rat (a : Nat -> Rat) (L : Rat) : Prop :=
+  for all eps : Rat, eps > 0 ->
+    there exists N : Nat, for all n : Nat, n >= N ->
+      a[n] - L < eps and a[n] - L > (0 - eps)
+
+-- IsCauchy_Rat: a is a Cauchy sequence of rationals.
+definition IsCauchy_Rat (a : Nat -> Rat) : Prop :=
+  for all eps : Rat, eps > 0 ->
+    there exists N : Nat, for all m : Nat, for all n : Nat,
+      m >= N -> n >= N ->
+        a[m] - a[n] < eps and a[m] - a[n] > (0 - eps)
+
+-- The rationals are NOT Cauchy-complete; there exist Cauchy sequences
+-- of rationals with no rational limit (e.g. rational approximations to sqrt 2).
+axiom rat_not_complete :
+  there exists a : Nat -> Rat,
+    IsCauchy_Rat(a) and (for all L : Rat, not (ConvergesTo_Rat(a, L)))
+
+end Analysis
