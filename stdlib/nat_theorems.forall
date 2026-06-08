@@ -991,3 +991,91 @@ proof
   suppose h : 0 < n
   then m < m + n by omega
 end
+
+-- a ≤ b → c ≤ d → a + c ≤ b + d  (addition is monotone in both arguments).
+theorem add_le_add : for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+                     a <= b implies c <= d implies a + c <= b + d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h1 : a <= b
+  suppose h2 : c <= d
+  then a + c <= b + d by omega
+end
+
+-- k + a < k + b → a < b  (left-cancellation of addition in <).
+theorem lt_of_add_lt_add_left : for all k : Nat, for all a : Nat, for all b : Nat,
+                                 k + a < k + b implies a < b
+proof
+  take k : Nat
+  take a : Nat
+  take b : Nat
+  suppose h : k + a < k + b
+  then a < b by omega
+end
+
+-- k + a ≤ k + b → a ≤ b  (left-cancellation of addition in ≤).
+theorem le_of_add_le_add_left : for all k : Nat, for all a : Nat, for all b : Nat,
+                                 k + a <= k + b implies a <= b
+proof
+  take k : Nat
+  take a : Nat
+  take b : Nat
+  suppose h : k + a <= k + b
+  then a <= b by omega
+end
+
+-- succ(n) < succ(m) ↔ n < m  (successor is an order isomorphism).
+theorem succ_lt_succ_iff : for all n : Nat, for all m : Nat,
+                            succ(n) < succ(m) iff n < m
+proof
+  take n : Nat
+  take m : Nat
+  have fwd_impl : succ(n) < succ(m) implies n < m
+    proof
+      suppose h : succ(n) < succ(m)
+      -- succ(n) < succ(m) → succ(n) ≤ m  by le_of_lt_succ at succ(n) at m
+      have lofs0 : for all m : Nat, succ(n) < succ(m) implies succ(n) <= m
+                   by le_of_lt_succ at succ(n)
+      have lofs1 : succ(n) < succ(m) implies succ(n) <= m by lofs0 at m
+      have hle : succ(n) <= m by lofs1 and h
+      -- succ(n) ≤ m → n < m  by succ_le_iff
+      have sli0 : for all m : Nat, succ(n) <= m iff n < m by succ_le_iff at n
+      have sli1 : succ(n) <= m iff n < m by sli0 at m
+      have sli_fwd : succ(n) <= m implies n < m by sli1
+      have n_lt : n < m by sli_fwd and hle
+      have impl : succ(n) < succ(m) implies n < m by h and n_lt
+      then succ(n) < succ(m) implies n < m by impl
+    end
+  have bwd_impl : n < m implies succ(n) < succ(m)
+    proof
+      suppose h : n < m
+      have scs0 : for all m : Nat, n < m implies succ(n) < succ(m) by succ_lt_succ at n
+      have scs1 : n < m implies succ(n) < succ(m) by scs0 at m
+      have concl : succ(n) < succ(m) by scs1 and h
+      have impl : n < m implies succ(n) < succ(m) by h and concl
+      then n < m implies succ(n) < succ(m) by impl
+    end
+  have both : (succ(n) < succ(m) implies n < m) and (n < m implies succ(n) < succ(m))
+              by fwd_impl and bwd_impl
+  then succ(n) < succ(m) iff n < m by both
+end
+
+-- succ(n) ≤ succ(m) → n ≤ m  (successor is ≤-monotone inverse).
+theorem le_of_succ_le_succ : for all n : Nat, for all m : Nat, succ(n) <= succ(m) implies n <= m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : succ(n) <= succ(m)
+  -- succ(n) ≤ succ(m) → n < succ(m) by succ_le_iff
+  have sli0 : for all m : Nat, succ(n) <= m iff n < m by succ_le_iff at n
+  have sli1 : succ(n) <= succ(m) iff n < succ(m) by sli0 at succ(m)
+  have sli_fwd : succ(n) <= succ(m) implies n < succ(m) by sli1
+  have n_lt : n < succ(m) by sli_fwd and h
+  -- n < succ(m) → n ≤ m
+  have lofs0 : for all m : Nat, n < succ(m) implies n <= m by le_of_lt_succ at n
+  have lofs1 : n < succ(m) implies n <= m by lofs0 at m
+  then n <= m by lofs1 and n_lt
+end
