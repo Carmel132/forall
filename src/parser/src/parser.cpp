@@ -920,6 +920,15 @@ std::vector<std::string> Parser::parseJustification() {
             refs.push_back(std::string{advance().lexeme});
         return refs;
     }
+    // "eq_subst h_eq h_pb" — substitution of equals: P(a) from a=b and P(b)
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "eq_subst") {
+        advance();
+        refs.push_back("__eq_subst__");
+        if (check(lexer::TokenKind::Identifier)) refs.push_back(std::string{advance().lexeme});
+        if (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) advance();
+        if (check(lexer::TokenKind::Identifier)) refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
     // "contra" is context-sensitive — only a tactic when it appears as an identifier
     // in a justification context (not as a theorem/hypothesis name).
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contra") {
