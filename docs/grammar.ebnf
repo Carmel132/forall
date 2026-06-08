@@ -59,12 +59,32 @@ module      = { declaration } ;
 declaration = axiom
             | definition
             | theorem
-            | import ;
+            | import
+            | type_alias
+            | namespace_block
+            | open_decl
+            | alias_decl ;
 
 axiom       = "axiom"                , identifier , ":" , prop ;
-definition  = "definition"           , identifier , { param } , ":" , prop ;
-theorem     = ( "theorem" | "lemma") , identifier , ":" , prop , proof_block ;
+definition  = "definition"           , identifier , { param } , ":" , prop , [ ":=" , prop ] ;
+theorem     = ( "theorem" | "lemma") , identifier , { param } , ":" , prop , proof_block ;
 import      = "import" , string_lit ;
+
+(* A type alias introduces a name that the checker transparently expands. *)
+(* Example: type Sequence = Nat -> Real                                   *)
+type_alias  = "type" , identifier , "=" , type ;
+
+(* Namespace blocks group declarations under a qualified prefix.          *)
+(* "namespace Nat ... end Nat" prefixes inner names as "Nat.name".        *)
+(* "open Nat" brings all "Nat.*" names into scope unqualified.            *)
+(* "open Nat in <decl>" scopes the open to a single declaration.          *)
+namespace_block = "namespace" , identifier , { declaration } , "end" , identifier ;
+open_decl       = "open" , identifier , [ "in" , declaration ] ;
+
+(* Namespace alias — short name for a long qualified namespace.           *)
+(* Example: alias Seq = Analysis.Sequence                                  *)
+alias_decl  = "alias" , identifier , "=" , dotted_name ;
+dotted_name = identifier , { "." , identifier } ;
 
 param       = "(" , identifier , ":" , type , ")" ;
 
@@ -80,15 +100,28 @@ step = let_step
      | have_step
      | then_step
      | contradiction_step
-     | cases_step ;
+     | cases_step
+     | induction_step
+     | rewrite_step
+     | apply_step
+     | exact_step
+     | show_step
+     | calc_step
+     | split_step
+     | push_neg_step
+     | wlog_step ;
 
 (* "let x be a Nat" introduces a term variable; deferred until term layer. *)
 let_step    = "let" , identifier , ( "=" , expr | "be" , "a" , type ) ;
 
-(* "take x" introduces a fresh arbitrary variable for ∀-intro.            *)
-(* The checker verifies x does not appear free in any assumption; after    *)
-(* proving P(x), the user writes "then ∀ x [: T], P by h" to generalize. *)
-take_step   = "take" , identifier , [ ":" , type ] ;
+(* "take x" introduces a fresh arbitrary variable for ∀-intro.               *)
+(* "fix" is a synonym.  "let n be arbitrary [in T]" is also accepted.        *)
+(* The checker verifies x does not appear free in any assumption.             *)
+(* After proving P(x), bare "then" closes the ∀ x, P goal automatically      *)
+(* (pending LI1 — currently requires explicit "then ∀ x, P by h").           *)
+(* Multiple takes nest: take x, take y produces ∀ x, ∀ y, P.                *)
+take_step   = ( "take" | "fix" ) , identifier , [ ":" , type ]
+            | "let" , identifier , "be" , "arbitrary" , [ "in" , type ] ;
 
 (* "obtain" eliminates an existential hypothesis (∃-elim).                 *)
 (* <exists_ref> must be ∃ x [: T], P.  The case arm introduces a fresh    *)
@@ -139,10 +172,77 @@ contradiction_step = "contradiction" , ( ":" | "from" ) , justification ;
 cases_step  = "cases" , [ identifier , ":" ] , ref ,
               { "case" , identifier , ":" , prop , "=>" , { step } , [ "done" ] } ;
 
+(* Induction on a natural number variable.  "base:" proves P(0);         *)
+(* "inductive:" has the induction hypothesis "ih : P(k)" in scope and    *)
+(* must prove P(succ(k)).                                                 *)
+induction_step = "induction" , identifier , "on" , identifier , ":" , prop ,
+                 "base" , ":" , { step } ,
+                 "inductive" , ":" , { step } ;
+
+(* Rewrite one or more equalities into the current goal.                  *)
+(* "←" or "<-" reverses the direction of h : lhs = rhs.                 *)
+(* Comma-separated rewrites are applied left-to-right.                   *)
+(* Pending LI2: currently only single rewrite without list syntax.       *)
+(* Rewrite one or more equalities or biconditionals into the current goal.  *)
+(* "←" / "<-" reverses a = b to b = a before rewriting.                   *)
+(* "↔" form rewrites using a biconditional h : P ↔ Q (pending BI3).       *)
+rewrite_step   = "rewrite" , rewrite_item , { "," , rewrite_item } ;
+rewrite_item   = [ ( "←" | "<-" | "↔" ) ] , ref ;
+
+(* apply h — backward-applies an implication h : P → goal; new goal is P. *)
+apply_step     = "apply" , ref ;
+
+(* exact h — closes the current goal directly when h : goal.             *)
+exact_step     = "exact" , ref ;
+
+(* show P — documents the current goal; checker verifies P == goal.      *)
+(* Aliases: "we need to show P", "it suffices to show P",               *)
+(*          "we prove that P".                                            *)
+show_step      = ( "show" | "we" , "need" , "to" , "show"
+                 | "it" , "suffices" , "to" , "show"
+                 | "we" , "prove" , "that" ) , prop ;
+
+(* Equational / inequality reasoning chains.                              *)
+(* "_" on a continuation line refers to the RHS of the previous line.    *)
+(* Mixed relations are supported (pending LI4): = ∘ ≤ = ≤, ≤ ∘ < = <, etc. *)
+calc_step      = "calc" , [ identifier , ":" ] ,
+                 expr , rel , expr , "by" , justification ,
+                 { ( rel | "_" ) , expr , "by" , justification } ;
+
+(* Structured biconditional / conjunction proof.                          *)
+(* Arms labelled "left"/"right" for ∧, "(→)"/"(←)" for ↔.              *)
+split_step     = "split" , [ identifier , ":" ] ,
+                 { split_arm } ;
+split_arm      = ( "left" | "right" | "(→)" | "(←)" | "(->" | "(<-)" ) ,
+                 ":" , { step } ;
+
+(* Push negations inward using De Morgan's laws and classical equivalences. *)
+(* "push neg" pushes through the goal; "push neg at h" transforms h.      *)
+push_neg_step  = "push" , "neg" , [ "at" , ref ] ;
+
+(* Without loss of generality — introduces an assumption with a warning   *)
+(* that the symmetry side-obligation has not been verified.               *)
+wlog_step      = "wlog" , [ identifier , ":" ] , prop ;
+
+
 justification = ref , { ( "and" | "with" ) , ref } ;
 (* "at expr" is a witness extension, written after "by <justification>":  *)
 (*   have q : P(n) by forall_h at n          -- ForallElim               *)
 (*   then ∃x.P by fact at n                  -- ExistsIntro              *)
+(*                                                                          *)
+(* Special justification sentinels (context-sensitive identifiers):        *)
+(*   refl        -- proves a = a (BI1, pending)                            *)
+(*   symm        -- proves b = a from a = b in scope (BI1, pending)        *)
+(*   trans       -- proves a = c from a = b and b = c in scope (BI1)       *)
+(*   funext      -- proves f = g by pointwise equality (BI2, pending)      *)
+(*   decide      -- evaluates a closed arithmetic proposition               *)
+(*   norm_num    -- checks a polynomial equality                            *)
+(*   ring        -- checks a commutative ring identity                      *)
+(*   omega       -- linear arithmetic over ℤ/ℕ                             *)
+(*   linarith    -- linear arithmetic over ordered fields                   *)
+(*   simp        -- propositional simplification                            *)
+(*   contra      -- closes P from ⊥ in scope (FalseElim)                  *)
+(*   contrapositive -- closes A→B from ¬B→¬A argument in scope            *)
 ref           = identifier ;
 
 
@@ -218,8 +318,22 @@ arg_list = expr , { "," , expr } ;
 
 (* ── Types ───────────────────────────────────────────────────────────────── *)
 
-(* Built-in numeric and logical types; user-defined types via identifier. *)
-type = "Real" | "Nat" | "Int" | "Rat" | "Prop" | "Set" | "Sequence" | identifier ;
+(* Built-in numeric and logical types; user-defined structure/alias names via identifier. *)
+(* Type aliases declared with "type A = T" expand transparently: A is interchangeable    *)
+(* with T everywhere a type annotation is accepted.                                       *)
+(* Function types are right-associative: Nat -> Nat -> Real = Nat -> (Nat -> Real).      *)
+type = primitive_type , [ "->" , type ]
+     | "(" , identifier , ":" , type , ")" , "->" , type    (* Π-type: (x : A) -> B *)
+     | "(" , type , { "," , type } , ")"                    (* tuple type            *)
+     | "Set" , type                                          (* set type: Set Nat     *)
+     | identifier ;                                          (* user type or alias    *)
+
+(* "Type" is the type of types (universe level 0).  "Type 1" contains     *)
+(* "Type 0" itself.  In practice, bare "Type" is sufficient for generic  *)
+(* theorems parameterised over a type.  Full universe levels (TU2) and   *)
+(* universe-polymorphic binders (TU3) are future work.                   *)
+primitive_type = "Real" | "Nat" | "Int" | "Rat" | "Prop"
+               | "Type" , [ number ] ;   (* Type, Type 0, Type 1, ...  *)
 
 
 (* ── Primitives ──────────────────────────────────────────────────────────── *)
