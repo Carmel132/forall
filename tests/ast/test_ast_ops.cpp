@@ -356,6 +356,34 @@ TEST(InferType, ExprCall_TwoParamSig_BothMatch) {
     EXPECT_EQ(*infer_type(e, env, sigs), TypeNode{TypeProp{}});
 }
 
+// ── infer_type: TypePi application via ExprApp ────────────────────────────────
+
+TEST(InferType, ExprApp_TypePi_SubstitutesCodeomain) {
+    // A dependent function  f : (x : Nat) -> User{x}  applied to variable  n : Nat
+    // should yield TypeUser{"n"} (the codomain after substituting x := n).
+    TypeEnv env{{"f", type_pi("x", type_nat(), TypeNode{TypeUser{"x"}})},
+                {"n", type_nat()}};
+    Expr e{diag::SourceLocation{},
+           ExprApp{make_expr(evar("f")), {make_expr(evar("n"))}}};
+    auto result = infer_type(e, env);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, TypeNode{TypeUser{"n"}});
+}
+
+TEST(InferType, ExprApp_TypePi_ShadowedVar_CodeomainUnchanged) {
+    // Inner Pi binder shadows the outer var, so the codomain must not be substituted.
+    // Outer: (x : Nat) -> (y : Nat) -> User{y}
+    // Applied to n: the inner Pi  (y : Nat) -> User{y}  comes out unchanged.
+    TypeNode inner_pi = type_pi("y", type_nat(), TypeNode{TypeUser{"y"}});
+    TypeEnv env{{"f", type_pi("x", type_nat(), inner_pi)},
+                {"n", type_nat()}};
+    Expr e{diag::SourceLocation{},
+           ExprApp{make_expr(evar("f")), {make_expr(evar("n"))}}};
+    auto result = infer_type(e, env);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, inner_pi);
+}
+
 // ── TypeSet equality ──────────────────────────────────────────────────────────
 
 TEST(TypeSetEquality, SameElementType) {
