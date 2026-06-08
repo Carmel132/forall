@@ -64,6 +64,11 @@ add_test(NAME e2e_analysis_cauchy
         "${CMAKE_SOURCE_DIR}/stdlib/analysis/cauchy.forall"
 )
 
+add_test(NAME e2e_analysis_cauchy_real
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/analysis/cauchy_real.forall"
+)
+
 add_test(NAME e2e_set_real
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/set_real.forall"
