@@ -1421,3 +1421,29 @@ proof
            a < b implies 0 < k implies k * a < k * b
        by fa_bk
 end
+
+-- 1 ≤ k → n ≤ n * k  (a number is at most any of its multiples).
+-- Induction on k: base vacuous (1 ≤ 0 false); inductive: n*succ(j) = n*j+n ≥ n.
+theorem le_mul_of_one_le_right : for all n : Nat, for all k : Nat,
+                                  1 <= k implies n <= n * k
+proof
+  take n : Nat
+  induction result on k : 1 <= k implies n <= n * k
+    base:
+      suppose h_1z : 1 <= 0
+      have h00 : 0 < 0 by omega
+      have hf : not (0 < 0) by lt_irrefl at 0
+      have bot : false by hf and h00
+      have result0 : n <= n * 0 by bot
+      have impl0 : 1 <= 0 implies n <= n * 0 by h_1z and result0
+      then 1 <= 0 implies n <= n * 0 by impl0
+    inductive:
+      suppose h_1sk : 1 <= succ(k)
+      have ms1 : for all m : Nat, n * succ(m) = n * m + n by mul_succ at n
+      have ms2 : n * succ(k) = n * k + n by ms1 at k
+      have lal1 : for all m : Nat, n <= m + n by le_add_left at n
+      have h_le : n <= n * k + n by lal1 at (n * k)
+      have result_step : n <= n * succ(k) by eq_subst ms2 and h_le
+      have impl_step : 1 <= succ(k) implies n <= n * succ(k) by h_1sk and result_step
+      then 1 <= succ(k) implies n <= n * succ(k) by impl_step
+end
