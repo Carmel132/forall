@@ -1194,15 +1194,28 @@ ast::Step Parser::parseObtainStep() {
 
     expect(K::Comma, "expected ',' separating variable from hypothesis name");
 
-    std::string hyp_name;
-    if (check(K::Identifier))
-        hyp_name = advance().lexeme;
-    else
-        diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis name"});
+    // Parse one or more hyp bindings: name : prop [, name : prop ...]
+    // The list ends when we see '=>'.
+    std::vector<ast::ObtainHypBinding> hyp_bindings;
+    do {
+        std::string hname;
+        if (check(K::Identifier))
+            hname = advance().lexeme;
+        else
+            diag_.emit({diag::Severity::Error, peek().loc, "expected hypothesis name"});
+        expect(K::Colon, "expected ':' before hypothesis proposition");
+        auto hprop = parseProp();
+        hyp_bindings.push_back({std::move(hname), std::move(hprop)});
+        // Consume comma only if the next token is NOT '=>' (i.e. more bindings follow).
+        if (check(K::Comma)
+                && pos_ + 1 < tokens_.size()
+                && tokens_[pos_ + 1].kind != K::FatArrow)
+            advance(); // consume ',' between bindings
+        else if (check(K::Comma))
+            advance(); // trailing comma before '=>' — also consume
+    } while (!isAtEnd() && !check(K::FatArrow) && !check(K::KwEnd));
 
-    expect(K::Colon, "expected ':' before hypothesis proposition");
-    auto hyp_prop = parseProp();
-    expect(K::FatArrow, "expected '=>' after hypothesis proposition");
+    expect(K::FatArrow, "expected '=>' after hypothesis bindings");
 
     std::vector<std::unique_ptr<ast::Step>> steps;
     while (!isAtEnd()
@@ -1215,7 +1228,7 @@ ast::Step Parser::parseObtainStep() {
     return {loc, ast::ObtainStep{
         std::move(name), std::move(exists_ref),
         std::move(var), std::move(type),
-        std::move(hyp_name), std::move(hyp_prop),
+        std::move(hyp_bindings),
         std::move(steps)
     }};
 }
