@@ -1447,3 +1447,59 @@ proof
       have impl_step : 1 <= succ(k) implies n <= n * succ(k) by h_1sk and result_step
       then 1 <= succ(k) implies n <= n * succ(k) by impl_step
 end
+
+-- a ≤ b → c ≤ d → a * c ≤ b * d  (monotone multiplication).
+-- Chain: a*c ≤ b*c (mul_le_mul_right) and b*c ≤ b*d (mul_le_mul_right + mul_comm).
+theorem mul_le_mul : for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+                     a <= b implies c <= d implies a * c <= b * d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h_ab : a <= b
+  suppose h_cd : c <= d
+  -- a*c ≤ b*c  via mul_le_mul_right at a at b at c
+  have r1 : for all b : Nat, for all k : Nat, a <= b implies a * k <= b * k
+            by mul_le_mul_right at a
+  have r2 : for all k : Nat, a <= b implies a * k <= b * k by r1 at b
+  have r3 : a <= b implies a * c <= b * c by r2 at c
+  have h_ac_bc : a * c <= b * c by r3 and h_ab
+  -- c*b ≤ d*b  via mul_le_mul_right at c at d at b
+  have s1 : for all b : Nat, for all k : Nat, c <= b implies c * k <= b * k
+            by mul_le_mul_right at c
+  have s2 : for all k : Nat, c <= d implies c * k <= d * k by s1 at d
+  have s3 : c <= d implies c * b <= d * b by s2 at b
+  have h_cb_db : c * b <= d * b by s3 and h_cd
+  -- c*b = b*c  and  d*b = b*d  via mul_comm
+  have mc1 : for all b : Nat, c * b = b * c by mul_comm at c
+  have mc_cb : c * b = b * c by mc1 at b
+  have mc_db_1 : for all b : Nat, d * b = b * d by mul_comm at d
+  have mc_db : d * b = b * d by mc_db_1 at b
+  -- b*c ≤ d*b: rewrite b*c → c*b in declared (using symm mc_cb)
+  have mc_cb_sym : b * c = c * b by symm mc_cb
+  have h_bc_db : b * c <= d * b by eq_subst mc_cb_sym and h_cb_db
+  -- b*c ≤ b*d: rewrite b*d → d*b in declared (using symm mc_db)
+  have mc_db_sym : b * d = d * b by symm mc_db
+  have h_bc_bd : b * c <= b * d by eq_subst mc_db_sym and h_bc_db
+  -- a*c ≤ b*d  via le_trans
+  have lt1 : for all q : Nat, for all r : Nat, a * c <= q implies q <= r implies a * c <= r
+             by le_trans at (a * c)
+  have lt2 : for all r : Nat, a * c <= b * c implies b * c <= r implies a * c <= r
+             by lt1 at (b * c)
+  have lt3 : a * c <= b * c implies b * c <= b * d implies a * c <= b * d
+             by lt2 at (b * d)
+  have lt4 : b * c <= b * d implies a * c <= b * d by lt3 and h_ac_bc
+  have result : a * c <= b * d by lt4 and h_bc_bd
+  have impl1 : c <= d implies a * c <= b * d by h_cd and result
+  have impl2 : a <= b implies c <= d implies a * c <= b * d by h_ab and impl1
+  have fa_d : for all d : Nat, a <= b implies c <= d implies a * c <= b * d by impl2
+  have fa_cd : for all c : Nat, for all d : Nat, a <= b implies c <= d implies a * c <= b * d
+               by fa_d
+  have fa_bcd : for all b : Nat, for all c : Nat, for all d : Nat,
+                    a <= b implies c <= d implies a * c <= b * d
+                by fa_cd
+  then for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+           a <= b implies c <= d implies a * c <= b * d
+       by fa_bcd
+end
