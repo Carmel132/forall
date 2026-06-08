@@ -142,8 +142,7 @@ proof
   have h_am : AllMatch(a, a, fun k : Nat => k)
     proof
       take k : Nat
-      have hr1 : for all k : Nat, a[k] = a[k] by seq_eq_refl at a
-      have hr : a[k] = a[k] by hr1 at k
+      have hr : a[k] = a[k] by refl
       then for all k : Nat, a[k] = a[k] by hr
     end
   have h_both : StrictlyIncreasing(fun k : Nat => k) and AllMatch(a, a, fun k : Nat => k)
