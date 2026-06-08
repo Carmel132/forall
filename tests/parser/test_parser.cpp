@@ -3399,3 +3399,49 @@ TEST(ParserTest, TypeAlias_NestedFun) {
     EXPECT_TRUE(std::get_if<ast::TypeNat>(&tf2->domain->node) != nullptr);
     EXPECT_TRUE(std::get_if<ast::TypeReal>(&tf2->codomain->node) != nullptr);
 }
+
+// ── Inductive type declarations ────────────────────────────────────────────────
+
+TEST(ParserTest, Inductive_BaseCtorOnly) {
+    // inductive Unit := tt : Unit
+    // One constructor with no arguments.
+    auto r = parse_str("inductive Unit :=\n  tt : Unit");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, ast::DeclKind::Inductive);
+    EXPECT_EQ(d.name, "Unit");
+    ASSERT_EQ(d.inductive_ctors.size(), 1u);
+    EXPECT_EQ(d.inductive_ctors[0].name, "tt");
+    EXPECT_TRUE(d.inductive_ctors[0].arg_types.empty());
+    EXPECT_TRUE(d.inductive_ctors[0].is_recursive.empty());
+}
+
+TEST(ParserTest, Inductive_RecursiveCtor) {
+    // inductive List :=
+    //   nil  : List
+    //   cons : Nat -> List -> List
+    auto r = parse_str(
+        "inductive List :=\n"
+        "  nil : List\n"
+        "  cons : Nat -> List -> List");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& d = *r.mod.decls[0];
+    EXPECT_EQ(d.kind, ast::DeclKind::Inductive);
+    EXPECT_EQ(d.name, "List");
+    ASSERT_EQ(d.inductive_ctors.size(), 2u);
+
+    // nil: no args
+    EXPECT_EQ(d.inductive_ctors[0].name, "nil");
+    EXPECT_TRUE(d.inductive_ctors[0].arg_types.empty());
+
+    // cons: Nat -> List -> List  (List arg is recursive)
+    EXPECT_EQ(d.inductive_ctors[1].name, "cons");
+    ASSERT_EQ(d.inductive_ctors[1].arg_types.size(), 2u);
+    EXPECT_EQ(d.inductive_ctors[1].arg_types[0], "Nat");
+    EXPECT_EQ(d.inductive_ctors[1].arg_types[1], "List");
+    ASSERT_EQ(d.inductive_ctors[1].is_recursive.size(), 2u);
+    EXPECT_FALSE(d.inductive_ctors[1].is_recursive[0]); // Nat is not recursive
+    EXPECT_TRUE(d.inductive_ctors[1].is_recursive[1]);  // List is recursive
+}

@@ -4132,6 +4132,57 @@ end
     }();
 }
 
+// ── Structural induction over user-defined inductive types ────────────────────
+
+// A simple inductive type with a base constructor and a recursive constructor.
+// Structural induction should certify ∀ x : Color, P(x) when both arms pass.
+TEST(CheckerTest, StructuralInduction_TwoCtors_Valid) {
+    auto diag = run_checker("struct_ind_valid", R"(
+inductive Color :=
+  red   : Color
+  blue  : Color
+
+axiom P_red  : P(red)
+axiom P_blue : P(blue)
+
+theorem all_colors : for all x : Color, P(x)
+proof
+  take x : Color
+  induction h on x : P(x)
+    case red:
+      then P(red) by P_red
+    case blue:
+      then P(blue) by P_blue
+  then for all x : Color, P(x) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// When an arm concludes a different proposition the checker must report an error.
+TEST(CheckerTest, StructuralInduction_MismatchedArms_Error) {
+    auto diag = run_checker("struct_ind_mismatch", R"(
+inductive Bool2 :=
+  true2  : Bool2
+  false2 : Bool2
+
+axiom P_true  : P(true2)
+axiom Q_false : Q(false2)
+
+theorem bad : for all x : Bool2, P(x)
+proof
+  take x : Bool2
+  induction h on x : P(x)
+    case true2:
+      then P(true2) by P_true
+    case false2:
+      then Q(false2) by Q_false
+  then for all x : Bool2, P(x) by h
+end
+)");
+    EXPECT_TRUE(has_error(diag, ""));
+}
+
 // A type alias that expands to a function type is non-numeric; using it in
 // arithmetic fires the type-mismatch warning.
 TEST(CheckerTest, TypeAlias_FunctionTypeTriggersWarning) {
