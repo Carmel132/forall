@@ -856,6 +856,18 @@ std::vector<std::string> Parser::parseJustification() {
     if (check(lexer::TokenKind::KwSimp)) {
         advance();
         refs.push_back("__simp__");
+        // Optional lemma set: simp [h1, h2, ...]
+        if (check(lexer::TokenKind::LBracket)) {
+            advance(); // consume '['
+            while (!isAtEnd() && !check(lexer::TokenKind::RBracket)) {
+                if (check(lexer::TokenKind::Identifier))
+                    refs.push_back(std::string{advance().lexeme});
+                if (check(lexer::TokenKind::Comma))
+                    advance();
+            }
+            if (check(lexer::TokenKind::RBracket))
+                advance(); // consume ']'
+        }
         return refs;
     }
     if (check(lexer::TokenKind::KwFieldSimp)) {
