@@ -1298,3 +1298,91 @@ proof
   then for all k : Nat, for all a : Nat, for all b : Nat, a <= b implies k * a <= k * b
        by fa_ab
 end
+
+-- a < b → 0 < k → a * k < b * k  (strict monotonicity of right multiplication).
+-- a + 1 <= b, so (a+1)*k <= b*k; and (a+1)*k = a*k + k > a*k since k > 0.
+theorem mul_lt_mul_of_pos_right : for all a : Nat, for all b : Nat, for all k : Nat,
+                                   a < b implies 0 < k implies a * k < b * k
+proof
+  take a : Nat
+  take b : Nat
+  take k : Nat
+  suppose h_lt : a < b
+  suppose h_pos_k : 0 < k
+  -- a + 1 <= b
+  have oal1 : for all b : Nat, a < b implies a + 1 <= b by lt_iff_add_one_le at a
+  have oal2 : a < b implies a + 1 <= b by oal1 at b
+  have h_ge : a + 1 <= b by oal2 and h_lt
+  -- (a+1)*k = a*k + 1*k  by mul_distrib_right
+  have dr1 : for all t : Nat, for all u : Nat, (a + t) * u = a * u + t * u
+             by mul_distrib_right at a
+  have dr2 : for all u : Nat, (a + 1) * u = a * u + 1 * u by dr1 at 1
+  have dr3 : (a + 1) * k = a * k + 1 * k by dr2 at k
+  -- 1 * k = k
+  have ol : 1 * k = k by mul_one_left at k
+  -- a*k + 1*k = a*k + k  (eq_subst rewrites 1*k → k in declared type)
+  have refl_ak : a * k + k = a * k + k by refl
+  have dr4 : a * k + 1 * k = a * k + k by eq_subst ol and refl_ak
+  -- (a+1)*k = a*k + k
+  have dr_full : (a + 1) * k = a * k + k by trans dr3 and dr4
+  -- a*k < a*k + k  since 0 < k
+  have lapr1 : for all m : Nat, 0 < m implies a * k < a * k + m
+               by lt_add_of_pos_right at (a * k)
+  have lapr2 : 0 < k implies a * k < a * k + k by lapr1 at k
+  have h_lt_sum : a * k < a * k + k by lapr2 and h_pos_k
+  -- a*k < (a+1)*k  via eq_subst dr_full (LHS=(a+1)*k, subst in a*k<(a+1)*k → a*k<a*k+k)
+  have h_lt_step : a * k < (a + 1) * k by eq_subst dr_full and h_lt_sum
+  -- (a+1)*k <= b*k  via mul_le_mul_right
+  have mlr1 : for all b : Nat, for all k : Nat, a + 1 <= b implies (a + 1) * k <= b * k
+              by mul_le_mul_right at (a + 1)
+  have mlr2 : for all k : Nat, a + 1 <= b implies (a + 1) * k <= b * k by mlr1 at b
+  have mlr3 : a + 1 <= b implies (a + 1) * k <= b * k by mlr2 at k
+  have h_mul_le : (a + 1) * k <= b * k by mlr3 and h_ge
+  -- a*k < (a+1)*k <= b*k  so a*k < b*k
+  have llt1 : for all q : Nat, for all r : Nat,
+              a * k < q implies q <= r implies a * k < r
+              by lt_le_trans at (a * k)
+  have llt2 : for all r : Nat,
+              a * k < (a + 1) * k implies (a + 1) * k <= r implies a * k < r
+              by llt1 at ((a + 1) * k)
+  have llt3 : a * k < (a + 1) * k implies (a + 1) * k <= b * k implies a * k < b * k
+              by llt2 at (b * k)
+  have llt4 : (a + 1) * k <= b * k implies a * k < b * k by llt3 and h_lt_step
+  have result : a * k < b * k by llt4 and h_mul_le
+  have impl1 : 0 < k implies a * k < b * k by h_pos_k and result
+  have impl2 : a < b implies 0 < k implies a * k < b * k by h_lt and impl1
+  have fa_k : for all k : Nat, a < b implies 0 < k implies a * k < b * k by impl2
+  have fa_bk : for all b : Nat, for all k : Nat, a < b implies 0 < k implies a * k < b * k
+               by fa_k
+  then for all a : Nat, for all b : Nat, for all k : Nat,
+           a < b implies 0 < k implies a * k < b * k
+       by fa_bk
+end
+
+-- 0 < a → 0 < b → 0 < a * b  (product of positives is positive).
+-- Uses mul_lt_mul_of_pos_right at 0: 0 < a → 0 < b → 0*b < a*b; 0*b = 0 by mul_zero_left.
+theorem mul_pos : for all a : Nat, for all b : Nat,
+                  0 < a implies 0 < b implies 0 < a * b
+proof
+  take a : Nat
+  take b : Nat
+  suppose h_pa : 0 < a
+  suppose h_pb : 0 < b
+  -- mul_lt_mul_of_pos_right at 0 at a at b: 0 < a → 0 < b → 0*b < a*b
+  have mlt1 : for all b : Nat, for all k : Nat, 0 < b implies 0 < k implies 0 * k < b * k
+              by mul_lt_mul_of_pos_right at 0
+  have mlt2 : for all k : Nat, 0 < a implies 0 < k implies 0 * k < a * k by mlt1 at a
+  have mlt3 : 0 < a implies 0 < b implies 0 * b < a * b by mlt2 at b
+  have mlt4 : 0 < b implies 0 * b < a * b by mlt3 and h_pa
+  have h_0b_lt_ab : 0 * b < a * b by mlt4 and h_pb
+  -- 0 * b = 0  by mul_zero_left
+  have mzl : 0 * b = 0 by mul_zero_left at b
+  have mzl_sym : 0 = 0 * b by symm mzl
+  -- 0 < a * b  by eq_subst mzl_sym and h_0b_lt_ab (subst 0 → 0*b in declared 0 < a*b → 0*b < a*b)
+  have h_pos_ab : 0 < a * b by eq_subst mzl_sym and h_0b_lt_ab
+  have impl1 : 0 < b implies 0 < a * b by h_pb and h_pos_ab
+  have impl2 : 0 < a implies 0 < b implies 0 < a * b by h_pa and impl1
+  have fa_b : for all b : Nat, 0 < a implies 0 < b implies 0 < a * b by impl2
+  then for all a : Nat, for all b : Nat, 0 < a implies 0 < b implies 0 < a * b
+       by fa_b
+end
