@@ -10,6 +10,11 @@ static Prop prop_or (Prop l, Prop r) { return {diag::SourceLocation{}, PropOr {m
 static Prop prop_impl(Prop l, Prop r){ return {diag::SourceLocation{}, PropImpl{make_prop(std::move(l)), make_prop(std::move(r))}}; }
 static Prop prop_not(Prop p)         { return {diag::SourceLocation{}, PropNot{make_prop(std::move(p))}}; }
 static Prop prop_false()             { return {diag::SourceLocation{}, PropFalse{}}; }
+static Expr expr_var(std::string n)  { return {diag::SourceLocation{}, ExprVar{std::move(n)}}; }
+static Prop prop_eq(Expr l, Expr r)  {
+    return {diag::SourceLocation{},
+            PropRel{make_expr(std::move(l)), make_expr(std::move(r)), RelOp::Eq}};
+}
 
 TEST(KernelTest, AxiomIntroduction) {
     kernel::Kernel k;
@@ -581,4 +586,48 @@ TEST(KernelTest, ProofIrrel_DifferentProps_Fails) {
     // P and Q are different: ProofIrrel must reject this.
     auto result = k.apply(kernel::Rule::ProofIrrel, premises, atom("P"));
     EXPECT_FALSE(result.has_value());
+}
+
+// ── Equality rules ────────────────────────────────────────────────────────
+
+TEST(KernelTest, Refl_SameVar_Succeeds) {
+    kernel::Kernel k;
+    Prop conc = prop_eq(expr_var("x"), expr_var("x"));
+    auto r = k.apply(kernel::Rule::Refl, {}, conc);
+    EXPECT_TRUE(r.has_value());
+}
+
+TEST(KernelTest, Symm_SwapsSides) {
+    kernel::Kernel k;
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    Prop ba = prop_eq(expr_var("b"), expr_var("a"));
+    std::vector<kernel::Judgment> prem{*jab};
+    auto r = k.apply(kernel::Rule::Symm, prem, ba);
+    EXPECT_TRUE(r.has_value());
+}
+
+TEST(KernelTest, Trans_Chains) {
+    kernel::Kernel k;
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    Prop bc = prop_eq(expr_var("b"), expr_var("c"));
+    Prop ac = prop_eq(expr_var("a"), expr_var("c"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    auto jbc = k.introduce_axiom(bc); ASSERT_TRUE(jbc);
+    std::vector<kernel::Judgment> prem{*jab, *jbc};
+    auto r = k.apply(kernel::Rule::Trans, prem, ac);
+    EXPECT_TRUE(r.has_value());
+}
+
+TEST(KernelTest, Congr_FunctionApplication) {
+    kernel::Kernel k;
+    // h : a = b   ⊢   f(a) = f(b)
+    Prop ab = prop_eq(expr_var("a"), expr_var("b"));
+    auto jab = k.introduce_axiom(ab); ASSERT_TRUE(jab);
+    Expr fa{{}, ExprCall{"f", {make_expr(expr_var("a"))}}};
+    Expr fb{{}, ExprCall{"f", {make_expr(expr_var("b"))}}};
+    Prop conc = prop_eq(fa, fb);
+    std::vector<kernel::Judgment> prem{*jab};
+    auto r = k.apply(kernel::Rule::Congr, prem, conc);
+    EXPECT_TRUE(r.has_value());
 }

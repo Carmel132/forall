@@ -4226,3 +4226,54 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Equality tactics: refl / symm / trans / congr ────────────────────────
+
+TEST(CheckerTest, Refl_HaveStep) {
+    auto diag = run_checker("refl_have", R"(
+theorem eq_refl : for all x : Nat, x = x
+proof
+  take x : Nat
+  have h : x = x by refl
+  then for all x : Nat, x = x by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Symm_HaveStep) {
+    auto diag = run_checker("symm_have", R"(
+axiom ab : a = b
+theorem ba : b = a
+proof
+  have h : b = a by symm ab
+  then b = a by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Trans_HaveStep) {
+    auto diag = run_checker("trans_have", R"(
+axiom ab : a = b
+axiom bc : b = c
+theorem ac : a = c
+proof
+  have h : a = c by trans ab and bc
+  then a = c by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Congr_HaveStep) {
+    auto diag = run_checker("congr_have", R"(
+axiom ab : a = b
+theorem fa_eq_fb : f(a) = f(b)
+proof
+  have h : f(a) = f(b) by congr ab
+  then f(a) = f(b) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
