@@ -3693,7 +3693,15 @@ static Poly normalize_expr(const ast::Expr& e) {
             return {};
         }
 
-        return {}; // calls, indices, lambdas, conditionals, aggregates, sets
+        // Opaque function calls (e.g. succ(n), f(x)): treat as a fresh variable
+        // named after the call's pretty-printed form.  This prevents succ(0) from
+        // normalizing to zero and creating spurious arithmetic contradictions.
+        if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            ast::Expr tmp{{}, ast::ExprNode{n}};
+            return poly_var("__call_" + forall::pretty::to_string(tmp));
+        }
+
+        return {}; // indices, lambdas, conditionals, aggregates, sets
     }, e.node);
 }
 
@@ -3818,6 +3826,28 @@ extract_linear(const ast::PropRel& rel) {
 // To check for contradiction: add negated goal to the set and check unsat.
 static bool fourier_motzkin(std::vector<LinConstraint> cs) {
     if (cs.empty()) return false;
+
+    // Expand equality (sense=0) constraints into two inequalities:
+    //   A = 0  →  A ≤ 0  AND  -A ≤ 0  (sense=1 each)
+    // This lets the FM loop handle them as upper/lower bounds on variables.
+    {
+        std::vector<LinConstraint> expanded;
+        for (auto& c : cs) {
+            if (c.sense != 0) { expanded.push_back(std::move(c)); continue; }
+            // A ≤ 0
+            LinConstraint le = c;
+            le.sense = 1;
+            expanded.push_back(le);
+            // -A ≤ 0  (negate coeffs and rhs)
+            LinConstraint ge;
+            ge.sense = 1;
+            ge.rhs = rat_neg(c.rhs);
+            for (const auto& [v, coeff] : c.coeffs)
+                ge.coeffs[v] = rat_neg(coeff);
+            expanded.push_back(std::move(ge));
+        }
+        cs = std::move(expanded);
+    }
 
     // Helper: add scaled constraint (scalar * c) to another constraint.
     auto scale = [](const LinConstraint& c, Rational s) -> LinConstraint {
@@ -4687,6 +4717,7 @@ ModuleResult check_module(const std::filesystem::path& path,
                           kernel::Kernel& kernel,
                           diag::DiagnosticEngine& diag,
                           std::set<std::filesystem::path>& visited,
+                          std::map<std::filesystem::path, ModuleResult>& module_cache,
                           const std::filesystem::path& stdlib_root = {})
 {
     visited.insert(std::filesystem::weakly_canonical(path));
@@ -4775,22 +4806,31 @@ ModuleResult check_module(const std::filesystem::path& path,
             else
                 import_path = current_dir / import_name;
             auto canonical   = std::filesystem::weakly_canonical(import_path);
-            if (!visited.count(canonical)) {
-                auto imported = check_module(canonical, kernel, diag, visited, stdlib_root);
-                // also insert entries under the qualified prefix "ModName.entry".
-                // skip Private entries — they are not exported across import boundaries.
-                const std::string mod_prefix = module_name_from_path(import_name) + ".";
-                for (auto& [name, entry] : imported.env) {
+            // Merge the imported module's symbols into our env.
+            // If not yet visited, run the checker and cache the result.
+            // If already visited, retrieve from cache to avoid re-running.
+            // This ensures that even if a dependency was already visited
+            // (via a different import chain), its symbols are still available.
+            const std::string mod_prefix = module_name_from_path(import_name) + ".";
+            auto merge_result = [&](const ModuleResult& imported) {
+                for (const auto& [name, entry] : imported.env) {
                     if (entry.visibility == ast::Visibility::Private) continue;
                     module_env.insert_or_assign(name, entry);
                     module_env.insert_or_assign(mod_prefix + name, entry);
                 }
-                for (auto& [tname, classes] : imported.instances)
+                for (const auto& [tname, classes] : imported.instances)
                     for (const auto& cls : classes)
                         instance_table[tname].insert(cls);
-                // merge imported predicate definitions.
-                for (auto& [pname, pentry] : imported.pred_defs)
+                for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+            };
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag, visited, module_cache, stdlib_root);
+                module_cache.emplace(canonical, imported);
+                merge_result(imported);
+            } else {
+                auto it = module_cache.find(canonical);
+                if (it != module_cache.end()) merge_result(it->second);
             }
             break;
         }
@@ -5177,7 +5217,9 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
         }
     }
-    return ModuleResult{std::move(module_env), std::move(instance_table), std::move(pred_def_table)};
+    ModuleResult result{std::move(module_env), std::move(instance_table), std::move(pred_def_table)};
+    module_cache.emplace(std::filesystem::weakly_canonical(path), result);
+    return result;
 }
 
 } // namespace
@@ -5187,7 +5229,8 @@ ModuleResult check_module(const std::filesystem::path& path,
 void Checker::check(const std::filesystem::path& path) {
     kernel::Kernel kernel;
     std::set<std::filesystem::path> visited;
-    check_module(path, kernel, diag_, visited, stdlib_root_);
+    std::map<std::filesystem::path, ModuleResult> module_cache;
+    check_module(path, kernel, diag_, visited, module_cache, stdlib_root_);
 }
 
 void Checker::check_content(const std::string& source, const std::string& filename) {
@@ -5213,6 +5256,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
     ast::StructEnv struct_env;
     PredDefTable pred_def_table;
     std::set<std::filesystem::path> visited;
+    std::map<std::filesystem::path, ModuleResult> module_cache;
     if (!filename.empty())
         visited.insert(std::filesystem::weakly_canonical(file_path));
 
@@ -5226,21 +5270,25 @@ void Checker::check_content(const std::string& source, const std::string& filena
             else
                 import_path = current_dir / iname;
             auto canonical = std::filesystem::weakly_canonical(import_path);
-            if (!visited.count(canonical)) {
-                auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
-                // also insert under the qualified prefix "ModName.entry".
-                // skip Private entries.
-                const std::string mod_prefix = module_name_from_path(iname) + ".";
-                for (auto& [n, e] : imported.env) {
+            const std::string mod_prefix = module_name_from_path(iname) + ".";
+            auto merge_content = [&](const ModuleResult& imported) {
+                for (const auto& [n, e] : imported.env) {
                     if (e.visibility == ast::Visibility::Private) continue;
                     module_env.insert_or_assign(n, e);
                     module_env.insert_or_assign(mod_prefix + n, e);
                 }
-                for (auto& [t, cls] : imported.instances)
+                for (const auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
-                // merge imported predicate definitions.
-                for (auto& [pname, pentry] : imported.pred_defs)
+                for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+            };
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag_, visited, module_cache, stdlib_root_);
+                module_cache.emplace(canonical, imported);
+                merge_content(imported);
+            } else {
+                auto it = module_cache.find(canonical);
+                if (it != module_cache.end()) merge_content(it->second);
             }
             break;
         }
@@ -5467,6 +5515,7 @@ LspEnv Checker::check_content_lsp(const std::string& source,
     ast::StructEnv struct_env;
     PredDefTable pred_def_table;
     std::set<std::filesystem::path> visited;
+    std::map<std::filesystem::path, ModuleResult> module_cache;
     if (!filename.empty())
         visited.insert(std::filesystem::weakly_canonical(file_path));
 
@@ -5489,19 +5538,24 @@ LspEnv Checker::check_content_lsp(const std::string& source,
             else
                 import_path = current_dir / iname;
             auto canonical = std::filesystem::weakly_canonical(import_path);
-            if (!visited.count(canonical)) {
-                auto imported = check_module(canonical, kernel, diag_, visited, stdlib_root_);
-                for (auto& [n, e] : imported.env) {
+            auto merge_lsp = [&](const ModuleResult& imported) {
+                for (const auto& [n, e] : imported.env) {
                     module_env.insert_or_assign(n, e);
-                    // Record imported names with an unknown location (from another file).
                     if (!lsp_env.count(n))
                         lsp_env[n] = LspEntry{forall::pretty::to_string(e.judgment.prop()), {}};
                 }
-                for (auto& [t, cls] : imported.instances)
+                for (const auto& [t, cls] : imported.instances)
                     for (const auto& c : cls) instance_table[t].insert(c);
-                // merge imported predicate definitions.
-                for (auto& [pname, pentry] : imported.pred_defs)
+                for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+            };
+            if (!visited.count(canonical)) {
+                auto imported = check_module(canonical, kernel, diag_, visited, module_cache, stdlib_root_);
+                module_cache.emplace(canonical, imported);
+                merge_lsp(imported);
+            } else {
+                auto it = module_cache.find(canonical);
+                if (it != module_cache.end()) merge_lsp(it->second);
             }
             break;
         }
