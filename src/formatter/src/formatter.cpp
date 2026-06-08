@@ -134,10 +134,20 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
         if constexpr (std::is_same_v<T, ast::InductionStep>) {
             std::string r = indent + "induction " + s.name + " on " + s.var
                             + " : " + to_string(s.body) + "\n";
-            r += indent + "  base:\n";
-            r += format_steps(s.base_steps, indent + "    ");
-            r += indent + "  inductive:\n";
-            r += format_steps(s.inductive_steps, indent + "    ");
+            if (s.type_name.empty() || s.type_name == "Nat") {
+                r += indent + "  base:\n";
+                r += format_steps(s.base_steps, indent + "    ");
+                r += indent + "  inductive:\n";
+                r += format_steps(s.inductive_steps, indent + "    ");
+            } else {
+                for (const auto& arm : s.arms) {
+                    r += indent + "  case " + arm.ctor_name;
+                    for (const auto& v : arm.vars)   r += " " + v;
+                    for (const auto& ih : arm.ih_names) r += " " + ih;
+                    r += ":\n";
+                    r += format_steps(arm.steps, indent + "    ");
+                }
+            }
             return r;
         }
 
@@ -377,6 +387,17 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
         if (decl.type_alias_body.has_value())
             return "type " + decl.name + " = " + to_string(*decl.type_alias_body);
         return "type " + decl.name;
+
+    case ast::DeclKind::Inductive: {
+        std::string r = "inductive " + decl.name + " :=\n";
+        for (const auto& ctor : decl.inductive_ctors) {
+            r += "  " + ctor.name + " :";
+            for (const auto& t : ctor.arg_types)
+                r += " " + t + " ->";
+            r += " " + decl.name;
+        }
+        return r;
+    }
 
     case ast::DeclKind::Namespace:
     case ast::DeclKind::Open:
