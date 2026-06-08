@@ -1529,3 +1529,76 @@ proof
   have impl : 0 < n implies n /= 0 by h_pos and result
   then for all n : Nat, 0 < n implies n /= 0 by impl
 end
+
+-- 0 < a → 0 < a + b  (adding a non-negative to a positive yields positive).
+-- Uses le_add_right: a ≤ a+b, so 0 < a ≤ a+b → 0 < a+b.
+theorem pos_add_left : for all a : Nat, for all b : Nat, 0 < a implies 0 < a + b
+proof
+  take a : Nat
+  take b : Nat
+  suppose h_pa : 0 < a
+  have lar1 : for all m : Nat, a <= a + m by le_add_right at a
+  have h_a_ab : a <= a + b by lar1 at b
+  have llt1 : for all q : Nat, for all r : Nat, 0 < q implies q <= r implies 0 < r
+              by lt_le_trans at 0
+  have llt2 : for all r : Nat, 0 < a implies a <= r implies 0 < r by llt1 at a
+  have llt3 : 0 < a implies a <= a + b implies 0 < a + b by llt2 at (a + b)
+  have llt4 : a <= a + b implies 0 < a + b by llt3 and h_pa
+  have result : 0 < a + b by llt4 and h_a_ab
+  have impl : 0 < a implies 0 < a + b by h_pa and result
+  have fa_b : for all b : Nat, 0 < a implies 0 < a + b by impl
+  then for all a : Nat, for all b : Nat, 0 < a implies 0 < a + b by fa_b
+end
+
+-- 0 < a → 0 < b → 0 < a + b.
+-- Follows immediately from pos_add_left.
+theorem add_pos : for all a : Nat, for all b : Nat, 0 < a implies 0 < b implies 0 < a + b
+proof
+  take a : Nat
+  take b : Nat
+  suppose h_pa : 0 < a
+  suppose h_pb : 0 < b
+  have pal1 : for all b : Nat, 0 < a implies 0 < a + b by pos_add_left at a
+  have pal2 : 0 < a implies 0 < a + b by pal1 at b
+  have result : 0 < a + b by pal2 and h_pa
+  have impl1 : 0 < b implies 0 < a + b by h_pb and result
+  have impl2 : 0 < a implies 0 < b implies 0 < a + b by h_pa and impl1
+  have fa_b : for all b : Nat, 0 < a implies 0 < b implies 0 < a + b by impl2
+  then for all a : Nat, for all b : Nat, 0 < a implies 0 < b implies 0 < a + b by fa_b
+end
+
+-- 1 ≤ n ↔ 0 < n.
+theorem one_le_iff_pos : for all n : Nat, 1 <= n iff 0 < n
+proof
+  take n : Nat
+  -- Forward: 1 ≤ n → 0 < n  (via 0 < 1 ≤ n → 0 < n)
+  have fwd : 1 <= n implies 0 < n
+    proof
+      suppose h_1n : 1 <= n
+      have h_01 : 0 < 1 by zero_lt_one
+      have llt1 : for all q : Nat, for all r : Nat, 0 < q implies q <= r implies 0 < r
+                  by lt_le_trans at 0
+      have llt2 : for all r : Nat, 0 < 1 implies 1 <= r implies 0 < r by llt1 at 1
+      have llt3 : 0 < 1 implies 1 <= n implies 0 < n by llt2 at n
+      have llt4 : 1 <= n implies 0 < n by llt3 and h_01
+      have result : 0 < n by llt4 and h_1n
+      have impl : 1 <= n implies 0 < n by h_1n and result
+      then 1 <= n implies 0 < n by impl
+    end
+  -- Backward: 0 < n → 1 ≤ n  (via lt_iff_add_one_le: 0 < n → 0+1 ≤ n; 0+1 = 1)
+  have bwd : 0 < n implies 1 <= n
+    proof
+      suppose h_pos : 0 < n
+      have oal1 : for all b : Nat, 0 < b implies 0 + 1 <= b by lt_iff_add_one_le at 0
+      have oal2 : 0 < n implies 0 + 1 <= n by oal1 at n
+      have h_01n : 0 + 1 <= n by oal2 and h_pos
+      have za : 0 + 1 = 1 by zero_add at 1
+      have za_sym : 1 = 0 + 1 by symm za
+      have result : 1 <= n by eq_subst za_sym and h_01n
+      have impl : 0 < n implies 1 <= n by h_pos and result
+      then 0 < n implies 1 <= n by impl
+    end
+  have iff_res : (1 <= n implies 0 < n) and (0 < n implies 1 <= n) by fwd and bwd
+  have fa : for all n : Nat, (1 <= n implies 0 < n) and (0 < n implies 1 <= n) by iff_res
+  then for all n : Nat, 1 <= n iff 0 < n by fa
+end
