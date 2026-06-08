@@ -19,7 +19,13 @@ static std::string format_justification(const std::vector<std::string>& refs,
     if (refs.size() == 1 && refs[0] == "__ring__")     return " by ring";
     if (refs.size() == 1 && refs[0] == "__linarith__") return " by linarith";
     if (refs.size() == 1 && refs[0] == "__omega__")          return " by omega";
-    if (refs.size() == 1 && refs[0] == "__simp__")           return " by simp";
+    if (!refs.empty() && refs[0] == "__simp__") {
+        if (refs.size() == 1) return " by simp";
+        std::string r = " by simp [" + refs[1];
+        for (std::size_t i = 2; i < refs.size(); ++i) r += ", " + refs[i];
+        r += "]";
+        return r;
+    }
     if (refs.size() == 1 && refs[0] == "__field_simp__")     return " by field_simp";
     if (refs.size() == 1 && refs[0] == "__positivity__")     return " by positivity";
     if (refs.size() == 1 && refs[0] == "__gcongr__")         return " by gcongr";
