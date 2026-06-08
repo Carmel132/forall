@@ -992,19 +992,6 @@ proof
   then m < m + n by omega
 end
 
--- a ≤ b → c ≤ d → a + c ≤ b + d  (addition is monotone in both arguments).
-theorem add_le_add : for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
-                     a <= b implies c <= d implies a + c <= b + d
-proof
-  take a : Nat
-  take b : Nat
-  take c : Nat
-  take d : Nat
-  suppose h1 : a <= b
-  suppose h2 : c <= d
-  then a + c <= b + d by omega
-end
-
 -- k + a < k + b → a < b  (left-cancellation of addition in <).
 theorem lt_of_add_lt_add_left : for all k : Nat, for all a : Nat, for all b : Nat,
                                  k + a < k + b implies a < b
@@ -1080,16 +1067,6 @@ proof
   then n <= m by lofs1 and n_lt
 end
 
--- n ≤ m → m ≤ n → n = m  (antisymmetry of ≤).
-theorem le_antisymm : for all n : Nat, for all m : Nat, n <= m implies m <= n implies n = m
-proof
-  take n : Nat
-  take m : Nat
-  suppose h1 : n <= m
-  suppose h2 : m <= n
-  then n = m by omega
-end
-
 -- n < succ(m) ↔ n ≤ m  (successor boundary).
 theorem lt_succ_iff_le : for all n : Nat, for all m : Nat, n < succ(m) iff n <= m
 proof
@@ -1126,17 +1103,6 @@ proof
   then n < succ(m) iff n <= m by both
 end
 
--- a + c = b + c → a = b  (right-cancellation of addition).
-theorem add_right_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
-                            a + c = b + c implies a = b
-proof
-  take a : Nat
-  take b : Nat
-  take c : Nat
-  suppose h : a + c = b + c
-  then a = b by omega
-end
-
 -- a = b → a + c = b + c  (right-congruence of addition).
 theorem add_right_cong : for all a : Nat, for all b : Nat, for all c : Nat,
                          a = b implies a + c = b + c
@@ -1146,4 +1112,33 @@ proof
   take c : Nat
   suppose h : a = b
   then a + c = b + c by omega
+end
+
+-- n ≤ m → succ(n) ≤ succ(m)  (successor is ≤-monotone).
+theorem succ_le_succ : for all n : Nat, for all m : Nat, n <= m implies succ(n) <= succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n <= m
+  -- n ≤ m → n < succ(m) by lt_succ_iff_le (backward)
+  have lsi0 : for all m : Nat, n < succ(m) iff n <= m by lt_succ_iff_le at n
+  have lsi1 : n < succ(m) iff n <= m by lsi0 at m
+  have lsi_bwd : n <= m implies n < succ(m) by lsi1
+  have n_lt : n < succ(m) by lsi_bwd and h
+  -- n < succ(m) → succ(n) ≤ succ(m) by lt_succ_le at n at succ(m)
+  have lsl0 : for all m : Nat, n < m implies succ(n) <= m by lt_succ_le at n
+  have lsl1 : n < succ(m) implies succ(n) <= succ(m) by lsl0 at succ(m)
+  then succ(n) <= succ(m) by lsl1 and n_lt
+end
+
+-- n ≤ m → n < succ(m)  (corollary of lt_succ_iff_le).
+theorem lt_succ_of_le : for all n : Nat, for all m : Nat, n <= m implies n < succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n <= m
+  have lsi0 : for all m : Nat, n < succ(m) iff n <= m by lt_succ_iff_le at n
+  have lsi1 : n < succ(m) iff n <= m by lsi0 at m
+  have lsi_bwd : n <= m implies n < succ(m) by lsi1
+  then n < succ(m) by lsi_bwd and h
 end
