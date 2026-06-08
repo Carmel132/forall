@@ -4,7 +4,10 @@
 -- an ordinary function name in axiom statements (ExprCall). No FuncSigTable
 -- entry is needed — axioms are accepted unconditionally by the kernel.
 --
--- The induction schema is deferred until the InductionStep checker is implemented.
+-- All declarations live in the Nat namespace; import this file and use
+-- "open Nat" or qualified names like "Nat.add_zero".
+
+namespace Nat
 
 -- Successor is never zero, and is injective.
 axiom succ_ne_zero : for all n : Nat, not (succ(n) = 0)
@@ -29,3 +32,5 @@ axiom succ_ne_self : for all n : Nat, not (succ(n) = n)
 -- Every natural number is zero or a successor (case-split axiom).
 axiom nat_zero_or_succ :
     for all n : Nat, (n = 0) or (there exists m : Nat, n = succ(m))
+
+end Nat
