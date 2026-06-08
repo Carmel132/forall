@@ -31,6 +31,17 @@ static std::string format_justification(const std::vector<std::string>& refs,
     if (refs.size() == 1 && refs[0] == "__gcongr__")         return " by gcongr";
     if (refs.size() == 1 && refs[0] == "__contra__")         return " by contra";
     if (refs.size() == 1 && refs[0] == "__contrapositive__") return " by contrapositive";
+    if (refs.size() == 1 && refs[0] == "__refl__")           return " by refl";
+    if (!refs.empty() && refs[0] == "__symm__")
+        return refs.size() >= 2 ? " by symm " + refs[1] : " by symm";
+    if (!refs.empty() && refs[0] == "__trans__")
+        return (refs.size() >= 3) ? " by trans " + refs[1] + " and " + refs[2] : " by trans";
+    if (!refs.empty() && refs[0] == "__congr__")
+        return refs.size() >= 2 ? " by congr " + refs[1] : " by congr";
+    if (!refs.empty() && refs[0] == "__funext__")
+        return refs.size() >= 2 ? " by funext " + refs[1] : " by funext";
+    if (!refs.empty() && refs[0] == "__eq_subst__")
+        return (refs.size() >= 3) ? " by eq_subst " + refs[1] + " and " + refs[2] : " by eq_subst";
     if (refs.empty()) return "";
     std::string r = " by " + refs[0];
     for (std::size_t i = 1; i < refs.size(); ++i)
