@@ -38,12 +38,12 @@
 
     "declaration-keyword": {
       "name": "storage.type.forall",
-      "match": "\\b(axiom|theorem|lemma|definition|import)\\b"
+      "match": "\\b(axiom|theorem|lemma|definition|import|namespace|open|type|structure|quotient|instance|abstract|private|protected|inductive|alias|over)\\b"
     },
 
     "proof-structure": {
       "name": "keyword.control.proof.forall",
-      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|contradiction|cases|case|done|let|take|obtain|be|we|on|induction|base|inductive|show|exact|rewrite|apply)\\b|□"
+      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|hence|so|contradiction|cases|case|done|let|take|fix|obtain|be|we|on|induction|base|inductive|show|exact|rewrite|apply|calc|split|wlog|push|note|observe|since|suffices|therefore|thus)\\b|□"
     },
 
     "proof-justification": {
