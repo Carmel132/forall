@@ -122,7 +122,9 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             std::string r = indent + "obtain " + s.name + " from " + s.exists_ref + "\n";
             r += indent + "  case " + s.var;
             if (s.type) r += " : " + to_string(*s.type);
-            r += " , " + s.hyp_name + " : " + to_string(s.hyp_prop) + " =>\n";
+            for (const auto& b : s.hyp_bindings)
+                r += " , " + b.name + " : " + to_string(b.prop);
+            r += " =>\n";
             r += format_steps(s.steps, indent + "    ");
             if (!r.empty() && r.back() != '\n') r += "\n";
             r += indent + "  done";
