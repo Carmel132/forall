@@ -1813,22 +1813,25 @@ ast::Step Parser::parseStep() {
     if (check(K::KwRewrite)) {
         const auto loc = peek().loc;
         advance(); // consume "rewrite"
-        // Optional reverse marker: ← (U+2190, lexed as some token) or literal "<-"
-        // We check for the Arrow token used in "<-" direction — but Arrow is "→"/"->".
-        // For simplicity, accept the identifier "←" or the lexeme "<-" as a reverse flag.
-        // Actually use: check for a bare '<' followed by '-' identifier, or accept
-        // the identifier token with lexeme "←".
-        bool rev = false;
-        if (check(K::Identifier) && peek().lexeme == "\xe2\x86\x90") {
-            rev = true; advance(); // ← U+2190
-        }
-        std::string ref;
-        if (check(K::Identifier))
-            ref = advance().lexeme;
-        else
-            diag_.emit({diag::Severity::Error, peek().loc,
-                        "expected hypothesis name after 'rewrite'"});
-        return {loc, ast::RewriteStep{std::move(ref), rev}};
+        // Parse a comma-separated list of [←] ref items.
+        std::vector<ast::RewriteItem> rewrites;
+        do {
+            bool rev = false;
+            if (check(K::LeftArrow)) {
+                rev = true; advance(); // ← U+2190
+            } else if (check(K::Less) && pos_ + 1 < tokens_.size()
+                       && tokens_[pos_ + 1].kind == K::Minus) {
+                rev = true; advance(); advance(); // <- ASCII alternative
+            }
+            std::string ref;
+            if (check(K::Identifier))
+                ref = advance().lexeme;
+            else
+                diag_.emit({diag::Severity::Error, peek().loc,
+                            "expected hypothesis name after 'rewrite'"});
+            rewrites.push_back({std::move(ref), rev});
+        } while (check(K::Comma) && (advance(), true));
+        return {loc, ast::RewriteStep{std::move(rewrites)}};
     }
 
     // apply h — backward implication application step
