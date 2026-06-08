@@ -1142,3 +1142,72 @@ proof
   have lsi_bwd : n <= m implies n < succ(m) by lsi1
   then n < succ(m) by lsi_bwd and h
 end
+
+-- n ≤ m ↔ succ(n) ≤ succ(m)  (successor preserves ≤ order, both ways).
+theorem succ_le_succ_iff : for all n : Nat, for all m : Nat,
+                            succ(n) <= succ(m) iff n <= m
+proof
+  take n : Nat
+  take m : Nat
+  have fwd_impl : succ(n) <= succ(m) implies n <= m
+    proof
+      suppose h : succ(n) <= succ(m)
+      have lss0 : for all m : Nat, succ(n) <= succ(m) implies n <= m by le_of_succ_le_succ at n
+      have lss1 : succ(n) <= succ(m) implies n <= m by lss0 at m
+      have concl : n <= m by lss1 and h
+      have impl : succ(n) <= succ(m) implies n <= m by h and concl
+      then succ(n) <= succ(m) implies n <= m by impl
+    end
+  have bwd_impl : n <= m implies succ(n) <= succ(m)
+    proof
+      suppose h : n <= m
+      have sss0 : for all m : Nat, n <= m implies succ(n) <= succ(m) by succ_le_succ at n
+      have sss1 : n <= m implies succ(n) <= succ(m) by sss0 at m
+      have concl : succ(n) <= succ(m) by sss1 and h
+      have impl : n <= m implies succ(n) <= succ(m) by h and concl
+      then n <= m implies succ(n) <= succ(m) by impl
+    end
+  have both : (succ(n) <= succ(m) implies n <= m) and (n <= m implies succ(n) <= succ(m))
+              by fwd_impl and bwd_impl
+  then succ(n) <= succ(m) iff n <= m by both
+end
+
+-- n + m = 0 → n = 0  (if a sum of naturals is zero then left summand is zero).
+theorem add_eq_zero : for all n : Nat, for all m : Nat, n + m = 0 implies n = 0
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n + m = 0
+  have hn : 0 <= n by nat_le_zero at n
+  have hm : 0 <= m by nat_le_zero at m
+  then n = 0 by omega
+end
+
+-- n + m = n → m = 0  (if a sum equals its left operand then the right is zero).
+theorem add_left_zero : for all n : Nat, for all m : Nat, n + m = n implies m = 0
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n + m = n
+  have hm : 0 <= m by nat_le_zero at m
+  then m = 0 by omega
+end
+
+-- n ≤ n + m  (a number does not exceed its sum with another).
+-- Already have le_add_right; this is the same thing but stated for completeness.
+-- Alias: see le_add_right.
+
+-- a < b → a + 1 ≤ b  (equivalent to succ(a) ≤ b via succ = +1).
+theorem lt_iff_add_one_le : for all a : Nat, for all b : Nat, a < b implies a + 1 <= b
+proof
+  take a : Nat
+  take b : Nat
+  suppose h : a < b
+  have sn_eq : a + 1 = succ(a) by succ_eq_add_one at a
+  have lsl0 : for all m : Nat, a < m implies succ(a) <= m by lt_succ_le at a
+  have lsl1 : a < b implies succ(a) <= b by lsl0 at b
+  have h_succ : succ(a) <= b by lsl1 and h
+  have sn_sym : succ(a) = a + 1 by symm sn_eq
+  have h_r : a + 1 <= b by omega
+  then a + 1 <= b by h_r
+end
