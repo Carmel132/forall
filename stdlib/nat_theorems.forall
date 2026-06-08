@@ -1503,3 +1503,29 @@ proof
            a <= b implies c <= d implies a * c <= b * d
        by fa_bcd
 end
+
+-- 0 < 1  (one is positive).
+theorem zero_lt_one : 0 < 1
+proof
+  have h : 0 < succ(0) by succ_pos at 0
+  have oeq : 1 = succ(0) by one_eq_succ_zero
+  have result : 0 < 1 by eq_subst oeq and h
+  then 0 < 1 by result
+end
+
+-- 0 < n → n ≠ 0.
+theorem ne_zero_of_pos : for all n : Nat, 0 < n implies n /= 0
+proof
+  take n : Nat
+  suppose h_pos : 0 < n
+  have result : n /= 0
+    proof
+      suppose h_eq : n = 0
+      have h_lt0 : 0 < 0 by omega
+      have h_nirr : not (0 < 0) by lt_irrefl at 0
+      have bot : false by h_nirr and h_lt0
+      then n /= 0 by bot
+    end
+  have impl : 0 < n implies n /= 0 by h_pos and result
+  then for all n : Nat, 0 < n implies n /= 0 by impl
+end
