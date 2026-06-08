@@ -1698,8 +1698,22 @@ ast::Step Parser::parseCalcStep() {
 
     std::vector<ast::CalcLink> links;
 
+    // Helper: is the current position the start of a continuation link?
+    // Accepts either:  rel-op ...      (compact single-line form)
+    //              or  _ rel-op ...    (_ = "previous RHS" placeholder)
+    auto is_continuation = [&]() {
+        if (is_rel_op_token(peek().kind)) return true;
+        if (check(K::Identifier) && peek().lexeme == "_"
+                && pos_ + 1 < tokens_.size()
+                && is_rel_op_token(tokens_[pos_ + 1].kind))
+            return true;
+        return false;
+    };
+
     // Parse links in a loop
-    while (is_rel_op_token(peek().kind)) {
+    while (is_continuation()) {
+        if (check(K::Identifier) && peek().lexeme == "_")
+            advance(); // consume placeholder _ (refers to previous RHS)
         auto rel_opt = as_rel_op(peek().kind);
         advance(); // consume the rel-op token
         auto rhs = parseExpr();
