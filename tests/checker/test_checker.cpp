@@ -4277,3 +4277,29 @@ end
 )");
     EXPECT_FALSE(diag.hasErrors());
 }
+
+// ── Function extensionality ───────────────────────────────────────────────
+
+// Prove f = g from a pointwise-equality hypothesis via by funext.
+TEST(CheckerTest, Funext_HaveStep) {
+    auto diag = run_checker("funext_have", R"(
+axiom hfg : for all x : Nat, f(x) = g(x)
+theorem f_eq_g : f = g
+proof
+  have h : f = g by funext hfg
+  then f = g by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// funext on a non-equality goal should error.
+TEST(CheckerTest, Funext_NonEqualityGoal_Errors) {
+    auto diag = run_checker("funext_nonrel", R"(
+theorem bad : P
+proof
+  have h : P by funext wrong
+end
+)");
+    EXPECT_TRUE(has_error(diag, "funext"));
+}
