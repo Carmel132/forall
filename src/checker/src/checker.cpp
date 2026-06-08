@@ -2395,7 +2395,8 @@ void check_proof(const ast::Decl& decl,
                  const ast::FuncSigTable& sigs = {},
                  const InstanceTable& instances = {},
                  const ast::StructEnv* struct_env = nullptr,
-                 const PredDefTable* pred_defs = nullptr)
+                 const PredDefTable* pred_defs = nullptr,
+                 const ast::TypeAliasTable* aliases = nullptr)
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -2491,8 +2492,11 @@ void check_proof(const ast::Decl& decl,
         // Populate type_env before processing the step so TakeStep vars are
         // available for the type-mismatch check on the same iteration.
         if (const auto* ts = std::get_if<ast::TakeStep>(&step.node))
-            if (ts->type.has_value())
-                type_env[ts->var] = *ts->type;
+            if (ts->type.has_value()) {
+                type_env[ts->var] = aliases
+                    ? ast::expand_type_aliases(*ts->type, *aliases)
+                    : *ts->type;
+            }
 
         // TakeStep struct injection — when "take G : S" and S is a known
         // structure, inject S's FieldAxiom fields as hypotheses and FieldTerm
@@ -4198,6 +4202,7 @@ ModuleResult check_module(const std::filesystem::path& path,
     InstanceTable instance_table; // populated from instance declarations
     ast::StructEnv struct_env;    // populated from structure declarations
     PredDefTable pred_def_table;  // predicate definitions with bodies
+    ast::TypeAliasTable alias_table; // populated from type alias declarations
     const auto current_dir = path.parent_path();
 
     for (const auto& decl : mod.decls) {
@@ -4224,7 +4229,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -4341,10 +4346,13 @@ ModuleResult check_module(const std::filesystem::path& path,
                 module_env.insert_or_assign(decl->name,
                                             HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
             // Build signature table entry: params[0].type -> ... -> Prop (curried).
+            // Expand type aliases so TypeUser{alias} becomes the concrete type.
             if (!decl->params.empty()) {
                 ast::TypeNode ret{ast::TypeProp{}};
-                for (std::size_t i = decl->params.size(); i-- > 0; )
-                    ret = ast::type_fun(decl->params[i].type, ret);
+                for (std::size_t i = decl->params.size(); i-- > 0; ) {
+                    ast::TypeNode pt = ast::expand_type_aliases(decl->params[i].type, alias_table);
+                    ret = ast::type_fun(std::move(pt), ret);
+                }
                 if (const auto* tf = std::get_if<ast::TypeFun>(&ret.node))
                     sig_table[decl->name] = *tf;
             }
@@ -4518,6 +4526,16 @@ ModuleResult check_module(const std::filesystem::path& path,
             }
             for (auto& [uname, entry] : to_add)
                 module_env.insert_or_assign(uname, std::move(entry));
+            break;
+        }
+
+        // type alias — register alias_name → expanded type for transparent use
+        case ast::DeclKind::TypeAlias: {
+            if (decl->type_alias_body.has_value()) {
+                // Expand transitively (alias can reference earlier aliases).
+                ast::TypeNode body = ast::expand_type_aliases(*decl->type_alias_body, alias_table);
+                alias_table[decl->name] = std::move(body);
+            }
             break;
         }
         }
