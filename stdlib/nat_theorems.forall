@@ -885,3 +885,29 @@ proof
               by fwd_impl and bwd_impl
   then succ(n) <= m iff n < m by both
 end
+
+-- n < m → n ≤ m  (strict less-than implies less-than-or-equal).
+theorem le_of_lt : for all n : Nat, for all m : Nat, n < m implies n <= m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n < m
+  then n <= m by omega
+end
+
+-- succ(n) < m → n < m  (weakening: if successor is strictly below, so is the original).
+-- Proof: n < succ(n) and succ(n) < m give n < m by lt_trans.
+theorem lt_of_succ_lt : for all n : Nat, for all m : Nat, succ(n) < m implies n < m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : succ(n) < m
+  have h_lt : n < succ(n) by lt_succ at n
+  have lt0 : for all q : Nat, for all r : Nat, n < q implies q < r implies n < r
+             by lt_trans at n
+  have lt1 : for all r : Nat, n < succ(n) implies succ(n) < r implies n < r
+             by lt0 at succ(n)
+  have lt2 : n < succ(n) implies succ(n) < m implies n < m by lt1 at m
+  have lt3 : succ(n) < m implies n < m by lt2 and h_lt
+  then n < m by lt3 and h
+end
