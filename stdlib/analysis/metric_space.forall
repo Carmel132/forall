@@ -1,6 +1,8 @@
 import "../algebra/real.forall"
 import "../nat.forall"
 
+namespace Analysis
+
 -- A metric space is a set equipped with a distance function satisfying
 -- non-negativity, identity of indiscernibles, symmetry, and the triangle inequality.
 -- We model it as a structure; carrier and dist refer to abstract fields.
@@ -13,8 +15,6 @@ structure MetricSpace :=
         dist(x, z) <= dist(x, y) + dist(y, z)
 
 -- Convergence in a metric space: a_n -> L in (carrier, dist).
--- For every eps > 0 there exists N such that n >= N implies dist(a[n], L) < eps.
--- We use the unqualified dist here; the ambient metric space is implicit.
 axiom MetricConvergesTo_def :
     for all a : Nat -> carrier, for all L : carrier,
         MetricConvergesTo(a, L) ->
@@ -34,3 +34,5 @@ axiom MetricCauchy_def :
 axiom MetricComplete_def :
     IsComplete -> for all a : Nat -> carrier, MetricCauchy(a) ->
         there exists L : carrier, MetricConvergesTo(a, L)
+
+end Analysis

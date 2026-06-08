@@ -1,10 +1,10 @@
 import "../algebra/real.forall"
 
+namespace Analysis
+
 -- Limit of a function f at a point a equals L.
 -- For every eps > 0 there exists delta > 0 such that
 -- 0 < |x - a| < delta implies |f(x) - L| < eps.
--- The conjunction "delta > 0 and ..." is split into two implications
--- because "and for all" is not supported by the parser.
 axiom LimitAt_def :
     for all f : Real -> Real, for all a : Real, for all L : Real,
         LimitAt(f, a, L) ->
@@ -43,3 +43,5 @@ axiom continuous_compose :
     for all a : Real, for all b : Real,
         ContinuousAt(f, a) -> ContinuousAt(g, b) -> f(a) = b ->
             ContinuousAt(fun x => g(f(x)), a)
+
+end Analysis

@@ -1,6 +1,8 @@
 import "../algebra/real.forall"
 import "../nat.forall"
 
+namespace Analysis
+
 -- A sequence of reals is a function Nat -> Real.
 -- Sequences are treated as terms; the indexed access a[n] gives the n-th term.
 
@@ -27,3 +29,5 @@ definition IsCauchy (a : Nat -> Real) : Prop :=
 axiom real_completeness_seq :
     for all a : Nat -> Real,
         IsCauchy(a) -> there exists L : Real, ConvergesTo(a, L)
+
+end Analysis
