@@ -885,6 +885,34 @@ std::vector<std::string> Parser::parseJustification() {
         refs.push_back("__gcongr__");
         return refs;
     }
+    // "refl" / "symm" / "trans" / "congr" — equality tactics; context-sensitive identifiers
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "refl") {
+        advance();
+        refs.push_back("__refl__");
+        return refs;
+    }
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "symm") {
+        advance();
+        refs.push_back("__symm__");
+        if (check(lexer::TokenKind::Identifier))
+            refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "trans") {
+        advance();
+        refs.push_back("__trans__");
+        if (check(lexer::TokenKind::Identifier)) refs.push_back(std::string{advance().lexeme});
+        if (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) advance();
+        if (check(lexer::TokenKind::Identifier)) refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
+    if (check(lexer::TokenKind::Identifier) && peek().lexeme == "congr") {
+        advance();
+        refs.push_back("__congr__");
+        if (check(lexer::TokenKind::Identifier))
+            refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
     // "contra" is context-sensitive — only a tactic when it appears as an identifier
     // in a justification context (not as a theorem/hypothesis name).
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contra") {
