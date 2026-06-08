@@ -494,6 +494,8 @@ struct Decl {
     std::string                          quot_rel;        // equivalence relation name (e.g. "int_eq")
     // for DeclKind::Namespace — inner declarations
     std::vector<std::unique_ptr<Decl>> ns_decls;
+    // for DeclKind::Open with "open X in <decl>" scoped form — the single inner decl
+    std::unique_ptr<Decl> open_scope_decl;
     // visibility for export control
     Visibility                visibility{Visibility::Public};
     // abstract flag — definition body not unfoldable
