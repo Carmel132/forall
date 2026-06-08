@@ -192,14 +192,14 @@ induction_step = "induction" , identifier , "on" , identifier , ":" , prop ,
                  | { "case" , identifier , { identifier } , ":" , { step } } ) ;
 
 (* Rewrite one or more equalities into the current goal.                  *)
-(* "←" or "<-" reverses the direction of h : lhs = rhs.                 *)
-(* Comma-separated rewrites are applied left-to-right.                   *)
-(* Pending LI2: currently only single rewrite without list syntax.       *)
 (* Rewrite one or more equalities or biconditionals into the current goal.  *)
 (* "←" / "<-" reverses a = b to b = a before rewriting.                   *)
-(* "↔" form rewrites using a biconditional h : P ↔ Q (pending BI3).       *)
+(* "↔" / "iff" prefix: h must be a biconditional P ↔ Q;                   *)
+(*   forward (no ←): replaces P with Q in goal.                            *)
+(*   reverse (with ←): replaces Q with P in goal.                          *)
+(* Comma-separated rewrites are applied left-to-right.                   *)
 rewrite_step   = "rewrite" , rewrite_item , { "," , rewrite_item } ;
-rewrite_item   = [ ( "←" | "<-" | "↔" ) ] , ref ;
+rewrite_item   = [ ( "\xe2\x86\x94" | "iff" ) ] , [ ( "\xe2\x86\x90" | "<-" ) ] , ref ;
 
 (* apply h — backward-applies an implication h : P → goal; new goal is P. *)
 apply_step     = "apply" , ref ;
