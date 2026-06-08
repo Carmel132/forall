@@ -33,4 +33,8 @@ axiom succ_ne_self : for all n : Nat, not (succ(n) = n)
 axiom nat_zero_or_succ :
     for all n : Nat, (n = 0) or (there exists m : Nat, n = succ(m))
 
+-- The numeric literal 1 equals succ(0).
+-- Needed to bridge between ExprLit{"1"} and ExprCall{"succ",[0]} in proofs.
+axiom one_eq_succ_zero : 1 = succ(0)
+
 end Nat
