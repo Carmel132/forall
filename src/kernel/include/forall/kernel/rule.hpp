@@ -33,6 +33,13 @@ namespace forall::kernel {
 //   NatInduction : Γ ⊢ P(0),  Γ ⊢ ∀n:Nat, P(n)→P(succ(n))  →  Γ ⊢ ∀n:Nat, P(n)
 //   (The "n" in the conclusion must match the binder variable of the ∀.)
 //
+// Equality rules:
+//   Refl  :                                                   →  Γ ⊢ a = a
+//   Symm  : Γ ⊢ a = b                                        →  Γ ⊢ b = a
+//   Trans : Γ ⊢ a = b,  Γ ⊢ b = c                           →  Γ ⊢ a = c
+//   Congr : Γ ⊢ a = b                                        →  Γ ⊢ f(a) = f(b)
+//           (conclusion lhs/rhs must differ exactly by replacing b with a)
+//
 // Proof irrelevance:
 //   ProofIrrel : Γ ⊢ P,  Γ ⊢ P                             →  Γ ⊢ P
 //
@@ -55,6 +62,7 @@ enum class Rule {
     ForallIntro,
     ExistsElim,
     NatInduction,
+    Refl, Symm, Trans, Congr,
     ProofIrrel,
 };
 

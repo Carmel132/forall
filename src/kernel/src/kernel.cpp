@@ -307,6 +307,68 @@ Kernel::apply(Rule rule, std::span<const Judgment> premises, const ast::Prop& co
         return make(conclusion);
     }
 
+    // ── Refl: ⊢ a = a ─────────────────────────────────────────────────────────
+    case Rule::Refl: {
+        if (!premises.empty()) return wrong_arity(0);
+        const auto* rel = std::get_if<ast::PropRel>(&conclusion.node);
+        if (!rel || rel->op != ast::RelOp::Eq)
+            return mismatch("Refl: conclusion must be a = a");
+        if (!ast::defn_eq(*rel->lhs, *rel->rhs))
+            return mismatch("Refl: both sides must be definitionally equal");
+        return make(conclusion);
+    }
+
+    // ── Symm: a = b ⊢ b = a ──────────────────────────────────────────────────
+    case Rule::Symm: {
+        if (premises.size() != 1) return wrong_arity(1);
+        const auto* p = std::get_if<ast::PropRel>(&premises[0].prop().node);
+        if (!p || p->op != ast::RelOp::Eq)
+            return mismatch("Symm: premise must be a = b");
+        const auto* c = std::get_if<ast::PropRel>(&conclusion.node);
+        if (!c || c->op != ast::RelOp::Eq)
+            return mismatch("Symm: conclusion must be b = a");
+        if (!ast::defn_eq(*c->lhs, *p->rhs) || !ast::defn_eq(*c->rhs, *p->lhs))
+            return mismatch("Symm: conclusion must swap premise sides");
+        return make(conclusion);
+    }
+
+    // ── Trans: a = b, b = c ⊢ a = c ──────────────────────────────────────────
+    case Rule::Trans: {
+        if (premises.size() != 2) return wrong_arity(2);
+        const auto* p0 = std::get_if<ast::PropRel>(&premises[0].prop().node);
+        const auto* p1 = std::get_if<ast::PropRel>(&premises[1].prop().node);
+        if (!p0 || p0->op != ast::RelOp::Eq)
+            return mismatch("Trans: first premise must be a = b");
+        if (!p1 || p1->op != ast::RelOp::Eq)
+            return mismatch("Trans: second premise must be b = c");
+        if (!ast::defn_eq(*p0->rhs, *p1->lhs))
+            return mismatch("Trans: middle terms must match (rhs of first = lhs of second)");
+        const auto* c = std::get_if<ast::PropRel>(&conclusion.node);
+        if (!c || c->op != ast::RelOp::Eq)
+            return mismatch("Trans: conclusion must be a = c");
+        if (!ast::defn_eq(*c->lhs, *p0->lhs) || !ast::defn_eq(*c->rhs, *p1->rhs))
+            return mismatch("Trans: conclusion must be a = c");
+        return make(conclusion);
+    }
+
+    // ── Congr: a = b ⊢ f(a) = f(b) ──────────────────────────────────────────
+    // Verified by: substituting b→a in conclusion.rhs yields conclusion.lhs
+    // (or substituting a→b in conclusion.lhs yields conclusion.rhs).
+    case Rule::Congr: {
+        if (premises.size() != 1) return wrong_arity(1);
+        const auto* p = std::get_if<ast::PropRel>(&premises[0].prop().node);
+        if (!p || p->op != ast::RelOp::Eq)
+            return mismatch("Congr: premise must be a = b");
+        const auto* c = std::get_if<ast::PropRel>(&conclusion.node);
+        if (!c || c->op != ast::RelOp::Eq)
+            return mismatch("Congr: conclusion must be f(a) = f(b)");
+        // Replace b with a in rhs; result should equal lhs.
+        const ast::Expr lhs_check = ast::subst_expr(*c->rhs, *p->rhs, *p->lhs);
+        if (!ast::defn_eq(lhs_check, *c->lhs))
+            return mismatch("Congr: conclusion is not a valid congruence of the premise");
+        return make(conclusion);
+    }
+
     // ── ProofIrrel: two proofs of the same proposition are interchangeable ────
     // Given two Judgments certifying the same Prop, certify that Prop.
     // In our LCF design this is already implicit (Judgment carries no proof
