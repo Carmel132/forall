@@ -382,3 +382,90 @@ proof
                     by trans chain3 and rhs_eq
       then p * (q + succ(r)) = p * q + p * succ(r) by chain4
 end
+
+-- (s + t) * u = s*u + t*u  (right distributivity of multiplication over addition).
+-- Bound vars 's','t','u' avoid capture with mul_distrib_left internal vars 'p','q','r'.
+theorem mul_distrib_right : for all s : Nat, for all t : Nat, for all u : Nat,
+                              (s + t) * u = s * u + t * u
+proof
+  take s : Nat
+  take t : Nat
+  take u : Nat
+  -- (s+t)*u = u*(s+t)  by mul_comm at (s+t) at u
+  have mc0 : for all b : Nat, (s + t) * b = b * (s + t) by mul_comm at (s + t)
+  have mc1 : (s + t) * u = u * (s + t) by mc0 at u
+  -- u*(s+t) = u*s + u*t  by mul_distrib_left at u at s at t
+  -- mul_distrib_left has bound 'p','q','r'; after at u: ∀ q, ∀ r, u*(q+r)=u*q+u*r
+  -- at s: ∀ r, u*(s+r)=u*s+u*r; at t: u*(s+t)=u*s+u*t — no capture ✓
+  have dl0 : for all q : Nat, for all r : Nat, u * (q + r) = u * q + u * r
+             by mul_distrib_left at u
+  have dl1 : for all r : Nat, u * (s + r) = u * s + u * r by dl0 at s
+  have dl2 : u * (s + t) = u * s + u * t by dl1 at t
+  -- u*s = s*u  and  u*t = t*u  by mul_comm
+  have cs0 : for all b : Nat, u * b = b * u by mul_comm at u
+  have cs1 : u * s = s * u by cs0 at s
+  have ct1 : u * t = t * u by cs0 at t
+  -- u*s + u*t = s*u + t*u  by two congruences
+  have h_rsu : s * u + u * t = s * u + u * t by refl
+  have h_su  : u * s + u * t = s * u + u * t by eq_subst cs1 and h_rsu
+  have h_rtu : s * u + t * u = s * u + t * u by refl
+  have h_tu  : s * u + u * t = s * u + t * u by eq_subst ct1 and h_rtu
+  have h_step1 : u * (s + t) = s * u + u * t by trans dl2 and h_su
+  have h_sum   : u * (s + t) = s * u + t * u by trans h_step1 and h_tu
+  then (s + t) * u = s * u + t * u by trans mc1 and h_sum
+end
+
+-- (x * y) * z = x * (y * z)  (associativity of multiplication).
+-- Bound vars 'x','y','z' avoid capture with mul_distrib_left internal vars 'p','q','r'.
+theorem mul_assoc : for all x : Nat, for all y : Nat, for all z : Nat,
+                     (x * y) * z = x * (y * z)
+proof
+  take x : Nat
+  take y : Nat
+  induction result on z : (x * y) * z = x * (y * z)
+    base:
+      -- (x*y)*0 = 0 = x*0 = x*(y*0)
+      have lz : (x * y) * 0 = 0 by mul_zero at (x * y)
+      have yz : y * 0 = 0 by mul_zero at y
+      have h_r0 : x * 0 = x * 0 by refl
+      -- x*(y*0) = x*0  by congruence with yz
+      have h_xy0 : x * (y * 0) = x * 0 by eq_subst yz and h_r0
+      have xz : x * 0 = 0 by mul_zero at x
+      have h_rhs     : x * (y * 0) = 0 by trans h_xy0 and xz
+      have h_rhs_sym : 0 = x * (y * 0) by symm h_rhs
+      have h_goal    : (x * y) * 0 = x * (y * 0) by trans lz and h_rhs_sym
+      then (x * y) * 0 = x * (y * 0) by h_goal
+    inductive:
+      -- IH: ih : (x*y)*z = x*(y*z),  Goal: (x*y)*succ(z) = x*(y*succ(z))
+      -- Step 1: (x*y)*succ(z) = (x*y)*z + x*y
+      -- mul_succ at (x*y): ∀ m, (x*y)*succ(m) = (x*y)*m + x*y; bound 'm' ≠ 'x','y','z'
+      have ms0 : for all m : Nat, (x * y) * succ(m) = (x * y) * m + x * y
+                 by mul_succ at (x * y)
+      have ms1 : (x * y) * succ(z) = (x * y) * z + x * y by ms0 at z
+      -- Step 2: (x*y)*z + x*y = x*(y*z) + x*y  by congruence with IH
+      have h_r2 : x * (y * z) + x * y = x * (y * z) + x * y by refl
+      have cong : (x * y) * z + x * y = x * (y * z) + x * y by eq_subst ih and h_r2
+      -- Step 3: y*succ(z) = y*z + y  by mul_succ at y at z
+      have ys0 : for all m : Nat, y * succ(m) = y * m + y by mul_succ at y
+      have ys1 : y * succ(z) = y * z + y by ys0 at z
+      -- Step 4: x*(y*succ(z)) = x*(y*z + y)  by congruence with ys1
+      have h_r3 : x * (y * z + y) = x * (y * z + y) by refl
+      have rhs_eq : x * (y * succ(z)) = x * (y * z + y) by eq_subst ys1 and h_r3
+      -- Step 5: x*(y*z + y) = x*(y*z) + x*y  by mul_distrib_left at x at (y*z) at y
+      -- mul_distrib_left has bound 'p','q','r'; at x: ∀ q, ∀ r, x*(q+r)=x*q+x*r
+      -- at (y*z): ∀ r, x*(y*z+r)=x*(y*z)+x*r; at y: x*(y*z+y)=x*(y*z)+x*y
+      -- no capture: p→x (free x has no 'q' or 'r'); q→y*z (has y,z not q or r); r→y ✓
+      have dl0 : for all q : Nat, for all r : Nat, x * (q + r) = x * q + x * r
+                 by mul_distrib_left at x
+      have dl1 : for all r : Nat, x * (y * z + r) = x * (y * z) + x * r
+                 by dl0 at (y * z)
+      have dl2 : x * (y * z + y) = x * (y * z) + x * y by dl1 at y
+      -- Step 6: x*(y*succ(z)) = x*(y*z) + x*y
+      have rhs_simp : x * (y * succ(z)) = x * (y * z) + x * y by trans rhs_eq and dl2
+      -- Step 7: chain:
+      --   (x*y)*succ(z) = (x*y)*z + x*y = x*(y*z) + x*y = x*(y*succ(z))
+      have chain1 : (x * y) * succ(z) = x * (y * z) + x * y by trans ms1 and cong
+      have rhs_sym : x * (y * z) + x * y = x * (y * succ(z)) by symm rhs_simp
+      have chain2 : (x * y) * succ(z) = x * (y * succ(z)) by trans chain1 and rhs_sym
+      then (x * y) * succ(z) = x * (y * succ(z)) by chain2
+end
