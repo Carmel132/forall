@@ -142,7 +142,13 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
         }
 
         if constexpr (std::is_same_v<T, ast::RewriteStep>) {
-            return indent + "rewrite " + (s.reverse ? "\xe2\x86\x90 " : "") + s.hyp_ref;
+            std::string out = indent + "rewrite ";
+            for (std::size_t i = 0; i < s.rewrites.size(); ++i) {
+                if (i > 0) out += ", ";
+                if (s.rewrites[i].reverse) out += "\xe2\x86\x90 ";
+                out += s.rewrites[i].hyp_ref;
+            }
+            return out;
         }
 
         if constexpr (std::is_same_v<T, ast::ApplyStep>) {
