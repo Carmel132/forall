@@ -469,3 +469,74 @@ proof
       have chain2 : (x * y) * succ(z) = x * (y * succ(z)) by trans chain1 and rhs_sym
       then (x * y) * succ(z) = x * (y * succ(z)) by chain2
 end
+
+-- a + b = a + c → b = c  (left cancellation of addition).
+theorem add_left_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
+                           a + b = a + c implies b = c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a + b = a + c
+  then b = c by omega
+end
+
+-- b + a = c + a → b = c  (right cancellation of addition).
+theorem add_right_cancel : for all a : Nat, for all b : Nat, for all c : Nat,
+                            b + a = c + a implies b = c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : b + a = c + a
+  then b = c by omega
+end
+
+-- a ≤ a + b  (adding is non-decreasing on the right).
+theorem le_add_right : for all a : Nat, for all b : Nat, a <= a + b
+proof
+  take a : Nat
+  take b : Nat
+  then a <= a + b by omega
+end
+
+-- b ≤ a + b  (adding is non-decreasing on the left).
+theorem le_add_left : for all a : Nat, for all b : Nat, b <= a + b
+proof
+  take a : Nat
+  take b : Nat
+  then b <= a + b by omega
+end
+
+-- a ≤ b ∧ b ≤ a → a = b  (antisymmetry of ≤).
+theorem le_antisymm : for all a : Nat, for all b : Nat,
+                       a <= b implies b <= a implies a = b
+proof
+  take a : Nat
+  take b : Nat
+  suppose h1 : a <= b
+  suppose h2 : b <= a
+  then a = b by omega
+end
+
+-- a + b ≤ a + c → b ≤ c  (left cancellation for ≤).
+theorem add_le_cancel_left : for all a : Nat, for all b : Nat, for all c : Nat,
+                              a + b <= a + c implies b <= c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : a + b <= a + c
+  then b <= c by omega
+end
+
+-- b + a ≤ c + a → b ≤ c  (right cancellation for ≤).
+theorem add_le_cancel_right : for all a : Nat, for all b : Nat, for all c : Nat,
+                               b + a <= c + a implies b <= c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  suppose h : b + a <= c + a
+  then b <= c by omega
+end
