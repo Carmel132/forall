@@ -1,5 +1,6 @@
 import "sequence.forall"
 import "../nat.forall"
+import "../nat_theorems.forall"
 open Nat
 open Analysis
 
@@ -22,13 +23,29 @@ proof
   suppose h_si : StrictlyIncreasing(phi)
   induction result on k : phi(k) >= k
     base:
+      have h_nle : 0 <= phi(0) by nat_le_zero at phi(0)
       then phi(0) >= 0 by omega
     inductive:
+      -- ih : phi(k) >= k;  goal : phi(succ(k)) >= succ(k)
       have h_lt : k < succ(k) by lt_succ at k
       have si_k : for all n : Nat, k < n -> phi(k) < phi(n) by h_si at k
       have si_kk : k < succ(k) -> phi(k) < phi(succ(k)) by si_k at succ(k)
       have h_strict : phi(k) < phi(succ(k)) by si_kk and h_lt
-      then phi(succ(k)) >= succ(k) by linarith
+      -- k <= phi(k) from ih; phi(k) < phi(succ(k)); so k < phi(succ(k)).
+      -- lt_succ_le gives succ(k) <= phi(succ(k)).
+      have ih_le : k <= phi(k) by omega
+      have llt0 : for all q : Nat, for all r : Nat, k <= q implies q < r implies k < r
+                  by le_lt_trans at k
+      have llt1 : for all r : Nat, k <= phi(k) implies phi(k) < r implies k < r
+                  by llt0 at phi(k)
+      have llt2 : k <= phi(k) implies phi(k) < phi(succ(k)) implies k < phi(succ(k))
+                  by llt1 at phi(succ(k))
+      have llt3 : phi(k) < phi(succ(k)) implies k < phi(succ(k)) by llt2 and ih_le
+      have k_lt_psk : k < phi(succ(k)) by llt3 and h_strict
+      have lsl0 : for all m : Nat, k < m implies succ(k) <= m by lt_succ_le at k
+      have lsl1 : k < phi(succ(k)) implies succ(k) <= phi(succ(k)) by lsl0 at phi(succ(k))
+      have spk_le : succ(k) <= phi(succ(k)) by lsl1 and k_lt_psk
+      then phi(succ(k)) >= succ(k) by omega
 end
 
 -- AllMatch(a, b, phi): b[k] = a[phi(k)] for every k.
