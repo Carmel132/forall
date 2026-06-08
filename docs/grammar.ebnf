@@ -61,6 +61,7 @@ declaration = axiom
             | theorem
             | import
             | type_alias
+            | inductive_decl
             | namespace_block
             | open_decl
             | alias_decl ;
@@ -73,6 +74,15 @@ import      = "import" , string_lit ;
 (* A type alias introduces a name that the checker transparently expands. *)
 (* Example: type Sequence = Nat -> Real                                   *)
 type_alias  = "type" , identifier , "=" , type ;
+
+(* Inductive type declaration.  Each constructor lists its argument types  *)
+(* separated by "->", with the return type (the type name) at the end.    *)
+(* Example:                                                                *)
+(*   inductive List :=                                                     *)
+(*     nil  : List                                                         *)
+(*     cons : Nat -> List -> List                                          *)
+inductive_decl = "inductive" , identifier , ":=" ,
+                 { identifier , ":" , { type , "->" } , identifier } ;
 
 (* Namespace blocks group declarations under a qualified prefix.          *)
 (* "namespace Nat ... end Nat" prefixes inner names as "Nat.name".        *)
@@ -175,9 +185,11 @@ cases_step  = "cases" , [ identifier , ":" ] , ref ,
 (* Induction on a natural number variable.  "base:" proves P(0);         *)
 (* "inductive:" has the induction hypothesis "ih : P(k)" in scope and    *)
 (* must prove P(succ(k)).                                                 *)
+(* For user-defined inductive types, use one "case <ctor> [vars] [ih]:"  *)
+(* arm per constructor instead of base/inductive blocks.                 *)
 induction_step = "induction" , identifier , "on" , identifier , ":" , prop ,
-                 "base" , ":" , { step } ,
-                 "inductive" , ":" , { step } ;
+                 ( ( "base" , ":" , { step } , "inductive" , ":" , { step } )
+                 | { "case" , identifier , { identifier } , ":" , { step } } ) ;
 
 (* Rewrite one or more equalities into the current goal.                  *)
 (* "←" or "<-" reverses the direction of h : lhs = rhs.                 *)
