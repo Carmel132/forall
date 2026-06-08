@@ -259,6 +259,7 @@ justification = ref , { ( "and" | "with" ) , ref } ;
 (*   symm          -- proves b = a from a = b in scope (Symm kernel rule)  *)
 (*   trans         -- proves a = c from a = b and b = c in scope (Trans)   *)
 (*   congr         -- proves f(a)=f(b) from a=b in scope (Congr rule)      *)
+(*   eq_subst      -- proves P(a) from a=b and P(b) in scope (EqSubst rule)*)
 (*   funext        -- proves f = g by pointwise equality (BI2)             *)
 (*   decide        -- evaluates a closed arithmetic proposition             *)
 (*   norm_num      -- checks a polynomial equality                         *)
