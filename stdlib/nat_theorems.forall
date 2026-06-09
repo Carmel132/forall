@@ -2986,3 +2986,58 @@ proof
   have h_zlk : 0 <= k by zero_le at k
   then n <= m by omega
 end
+
+
+-- n divides n.
+theorem dvd_refl : for all n : Nat, there exists k : Nat, n = n * k
+proof
+  take n : Nat
+  have h_1 : n * 1 = n by mul_one_right at n
+  have h_sym : n = n * 1 by symm h_1
+  then there exists k : Nat, n = n * k by h_sym at 1
+end
+
+
+-- n divides 0.
+theorem dvd_zero : for all n : Nat, there exists k : Nat, 0 = n * k
+proof
+  take n : Nat
+  have h_0 : n * 0 = 0 by mul_zero at n
+  have h_sym : 0 = n * 0 by symm h_0
+  then there exists k : Nat, 0 = n * k by h_sym at 0
+end
+
+
+-- 0 ^ n = 0 when n > 0.
+theorem zero_pow_pos : for all n : Nat, 0 < n implies 0 ^ n = 0
+proof
+  induction result on n : 0 < n implies 0 ^ n = 0
+    base:
+      suppose h : 0 < 0
+      have bot : false by omega
+      then 0 < 0 implies 0 ^ 0 = 0 by bot
+    inductive:
+      suppose h_pos : 0 < succ(n)
+      have ps1 : for all k : Nat, 0 ^ succ(k) = 0 ^ k * 0 by pow_succ at 0
+      have ps2 : 0 ^ succ(n) = 0 ^ n * 0 by ps1 at n
+      have mz : 0 ^ n * 0 = 0 by mul_zero at (0 ^ n)
+      have h_result : 0 ^ succ(n) = 0 by trans ps2 and mz
+      then 0 < succ(n) implies 0 ^ succ(n) = 0 by h_pos and h_result
+end
+
+
+-- 1 ^ n = 1 for all n.
+theorem one_pow : for all n : Nat, 1 ^ n = 1
+proof
+  induction result on n : 1 ^ n = 1
+    base:
+      have pz : 1 ^ 0 = 1 by pow_zero at 1
+      then 1 ^ 0 = 1 by pz
+    inductive:
+      have ps1 : for all k : Nat, 1 ^ succ(k) = 1 ^ k * 1 by pow_succ at 1
+      have ps2 : 1 ^ succ(n) = 1 ^ n * 1 by ps1 at n
+      have mor : 1 ^ n * 1 = 1 ^ n by mul_one_right at (1 ^ n)
+      have h_iheq : 1 ^ n = 1 by ih
+      have h_prod : 1 ^ n * 1 = 1 by trans mor and h_iheq
+      then 1 ^ succ(n) = 1 by trans ps2 and h_prod
+end
