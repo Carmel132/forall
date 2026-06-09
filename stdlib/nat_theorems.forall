@@ -2486,3 +2486,81 @@ proof
       have h_eq_ba : n ^ (a * b + a) = n ^ (a * succ(b)) by symm h_eq_ab
       then (n ^ a) ^ succ(b) = n ^ (a * succ(b)) by trans step2 and h_eq_ba
 end
+
+
+-- 0 < succ(n)  for all n.
+theorem succ_pos : for all n : Nat, 0 < succ(n)
+proof
+  take n : Nat
+  have zlen : 0 <= n by zero_le at n
+  have nlt : n < succ(n) by lt_succ at n
+  have llt0 : for all q : Nat, for all r : Nat,
+              0 <= q implies q < r implies 0 < r
+              by le_lt_trans at 0
+  have llt1 : for all r : Nat, 0 <= n implies n < r implies 0 < r by llt0 at n
+  have llt2 : 0 <= n implies n < succ(n) implies 0 < succ(n) by llt1 at (succ(n))
+  have llt3 : n < succ(n) implies 0 < succ(n) by llt2 and zlen
+  then 0 < succ(n) by llt3 and nlt
+end
+
+
+-- n + m = 0 implies n = 0.
+theorem add_eq_zero_left : for all n : Nat, for all m : Nat, n + m = 0 implies n = 0
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n + m = 0
+  have h_cas : n = 0 or (there exists m : Nat, n = succ(m)) by nat_zero_or_succ at n
+  cases res : h_cas
+    case n_zero : n = 0 =>
+      then n = 0 by n_zero
+    case n_succ : there exists m : Nat, n = succ(m) =>
+      obtain n_eq from n_succ
+        case k, hk : n = succ(k) =>
+          have sp1 : for all m : Nat, succ(k) + m = succ(k + m) by succ_add at k
+          have sp2 : succ(k) + m = succ(k + m) by sp1 at m
+          have h_nm_succ : n + m = succ(k + m) by eq_subst hk and sp2
+          have h_sym : succ(k + m) = n + m by symm h_nm_succ
+          have h_skm0 : succ(k + m) = 0 by trans h_sym and h
+          have sp_ne : not (succ(k + m) = 0) by succ_ne_zero at (k + m)
+          have bot : false by sp_ne and h_skm0
+          then n = 0 by bot
+      done
+      then n = 0 by n_eq
+  done
+  then n = 0 by res
+end
+
+
+-- n + m = 0 implies m = 0.
+theorem add_eq_zero_right : for all n : Nat, for all m : Nat, n + m = 0 implies m = 0
+proof
+  take n : Nat
+  take m : Nat
+  suppose h : n + m = 0
+  have h_cas : n = 0 or (there exists m : Nat, n = succ(m)) by nat_zero_or_succ at n
+  cases res : h_cas
+    case n_zero : n = 0 =>
+      have rfl_zm : 0 + m = 0 + m by refl
+      have h_eq_nm : n + m = 0 + m by eq_subst n_zero and rfl_zm
+      have za : 0 + m = m by zero_add at m
+      have h_nm_m : n + m = m by trans h_eq_nm and za
+      have h_m_nm : m = n + m by symm h_nm_m
+      have h_m0 : m = 0 by trans h_m_nm and h
+      then m = 0 by h_m0
+    case n_succ : there exists m : Nat, n = succ(m) =>
+      obtain n_eq from n_succ
+        case k, hk : n = succ(k) =>
+          have sp1 : for all m : Nat, succ(k) + m = succ(k + m) by succ_add at k
+          have sp2 : succ(k) + m = succ(k + m) by sp1 at m
+          have h_nm_succ : n + m = succ(k + m) by eq_subst hk and sp2
+          have h_sym : succ(k + m) = n + m by symm h_nm_succ
+          have h_skm0 : succ(k + m) = 0 by trans h_sym and h
+          have sp_ne : not (succ(k + m) = 0) by succ_ne_zero at (k + m)
+          have bot : false by sp_ne and h_skm0
+          then m = 0 by bot
+      done
+      then m = 0 by n_eq
+  done
+  then m = 0 by res
+end
