@@ -2138,3 +2138,116 @@ proof
   have mc2 : n * m = m * n by mc1 at m
   then n * m = m * n by mc2
 end
+
+
+-- n <= n  (reflexivity of <=).
+theorem le_refl : for all n : Nat, n <= n
+proof
+  induction result on n : n <= n
+    base:
+      have h : 0 <= 0 by nat_le_zero at 0
+      then 0 <= 0 by h
+    inductive:
+      have ssl1 : for all m : Nat, n <= m implies succ(n) <= succ(m) by succ_le_succ at n
+      have ssl2 : n <= n implies succ(n) <= succ(n) by ssl1 at n
+      then succ(n) <= succ(n) by ssl2 and ih
+end
+
+-- x * z < y * z and 0 < z implies x < y  (right cancellation for strict mul ineq).
+-- Bound vars x,y,z avoid capture with all arithmetic theorem bound vars a,b,k,n,p,q,r.
+theorem lt_of_mul_lt_mul_right : for all x : Nat, for all y : Nat, for all z : Nat,
+                                  x * z < y * z implies 0 < z implies x < y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_lt : x * z < y * z
+  suppose h_pos : 0 < z
+  have tog1 : for all p : Nat, x < p or p <= x by lt_or_ge at x
+  have tog2 : x < y or y <= x by tog1 at y
+  cases outer_res : tog2
+    case x_lt_y : x < y =>
+      then x < y by x_lt_y
+    case y_le_x : y <= x =>
+      have loe1 : for all p : Nat, y <= p implies y < p or y = p by lt_or_eq_of_le at y
+      have loe2 : y <= x implies y < x or y = x by loe1 at x
+      have loe3 : y < x or y = x by loe2 and y_le_x
+      cases inner_res : loe3
+        case y_lt_x : y < x =>
+          have mlt1 : for all b : Nat, for all k : Nat,
+                      y < b implies 0 < k implies y * k < b * k
+                      by mul_lt_mul_of_pos_right at y
+          have mlt2 : for all k : Nat, y < x implies 0 < k implies y * k < x * k
+                      by mlt1 at x
+          have mlt3 : y < x implies 0 < z implies y * z < x * z by mlt2 at z
+          have mlt4 : 0 < z implies y * z < x * z by mlt3 and y_lt_x
+          have h_yz_lt_xz : y * z < x * z by mlt4 and h_pos
+          have ltt1 : for all q : Nat, for all r : Nat,
+                      x * z < q implies q < r implies x * z < r
+                      by lt_trans at (x * z)
+          have ltt2 : for all r : Nat, x * z < y * z implies y * z < r implies x * z < r
+                      by ltt1 at (y * z)
+          have ltt3 : x * z < y * z implies y * z < x * z implies x * z < x * z
+                      by ltt2 at (x * z)
+          have ltt4 : y * z < x * z implies x * z < x * z by ltt3 and h_lt
+          have h_xzxz : x * z < x * z by ltt4 and h_yz_lt_xz
+          have h_irr : not (x * z < x * z) by lt_irrefl at (x * z)
+          have bot : false by h_irr and h_xzxz
+          have concl : x < y by bot
+          then x < y by concl
+        case y_eq_x : y = x =>
+          have h_xz_eq_yz : x * z = y * z
+            proof
+              have hrefl : x * z = x * z by refl
+              have result : x * z = y * z by eq_subst y_eq_x and hrefl
+              then x * z = y * z by result
+            end
+          have h_yz_le_yz : y * z <= y * z by le_refl at (y * z)
+          have h_yz_le_xz : y * z <= x * z by eq_subst h_xz_eq_yz and h_yz_le_yz
+          have nle1 : for all p : Nat, x * z < p implies not (p <= x * z)
+                      by not_le_of_gt at (x * z)
+          have nle2 : x * z < y * z implies not (y * z <= x * z) by nle1 at (y * z)
+          have h_nyle : not (y * z <= x * z) by nle2 and h_lt
+          have bot : false by h_nyle and h_yz_le_xz
+          have concl : x < y by bot
+          then x < y by concl
+      done
+      then x < y by inner_res
+  done
+  then x < y by outer_res
+end
+
+-- x * z <= y * z and 0 < z implies x <= y  (right cancellation for mul <=).
+-- Bound vars x,y,z avoid capture with all arithmetic theorem bound vars a,b,k,n,p,q,r.
+theorem le_of_mul_le_mul_right : for all x : Nat, for all y : Nat, for all z : Nat,
+                                  x * z <= y * z implies 0 < z implies x <= y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_le : x * z <= y * z
+  suppose h_pos : 0 < z
+  have tog1 : for all p : Nat, y < p or p <= y by lt_or_ge at y
+  have tog2 : y < x or x <= y by tog1 at x
+  cases res : tog2
+    case y_lt_x : y < x =>
+      have mlt1 : for all b : Nat, for all k : Nat,
+                  y < b implies 0 < k implies y * k < b * k
+                  by mul_lt_mul_of_pos_right at y
+      have mlt2 : for all k : Nat, y < x implies 0 < k implies y * k < x * k
+                  by mlt1 at x
+      have mlt3 : y < x implies 0 < z implies y * z < x * z by mlt2 at z
+      have mlt4 : 0 < z implies y * z < x * z by mlt3 and y_lt_x
+      have h_yz_lt_xz : y * z < x * z by mlt4 and h_pos
+      have nle1 : for all p : Nat, y * z < p implies not (p <= y * z)
+                  by not_le_of_gt at (y * z)
+      have nle2 : y * z < x * z implies not (x * z <= y * z) by nle1 at (x * z)
+      have h_nle : not (x * z <= y * z) by nle2 and h_yz_lt_xz
+      have bot : false by h_nle and h_le
+      have concl : x <= y by bot
+      then x <= y by concl
+    case x_le_y : x <= y =>
+      then x <= y by x_le_y
+  done
+  then x <= y by res
+end
