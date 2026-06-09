@@ -2793,3 +2793,81 @@ proof
       have h_mid : succ(n) + succ(m) = succ(succ(n + m)) by trans as2 and h_sub
       then succ(n) + succ(m) = succ(n + succ(m)) by trans h_mid and h_final
 end
+
+
+-- z * x <= z * y and 0 < z implies x <= y  (left cancellation of ≤).
+theorem le_of_mul_le_mul_left : for all x : Nat, for all y : Nat, for all z : Nat,
+                                 z * x <= z * y implies 0 < z implies x <= y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_le : z * x <= z * y
+  suppose h_pos : 0 < z
+  have mc1 : for all b : Nat, z * b = b * z by mul_comm at z
+  have h_xz : z * x = x * z by mc1 at x
+  have h_yz : z * y = y * z by mc1 at y
+  have h_xz_sym : x * z = z * x by symm h_xz
+  have h_yz_sym : y * z = z * y by symm h_yz
+  have h_le2 : x * z <= z * y by eq_subst h_xz_sym and h_le
+  have h_le3 : x * z <= y * z by eq_subst h_yz_sym and h_le2
+  have lmr1 : for all y : Nat, for all z : Nat, x * z <= y * z implies 0 < z implies x <= y
+              by le_of_mul_le_mul_right at x
+  have lmr2 : for all z : Nat, x * z <= y * z implies 0 < z implies x <= y
+              by lmr1 at y
+  have lmr3 : x * z <= y * z implies 0 < z implies x <= y by lmr2 at z
+  have lmr4 : 0 < z implies x <= y by lmr3 and h_le3
+  then x <= y by lmr4 and h_pos
+end
+
+
+-- z * x < z * y and 0 < z implies x < y  (left cancellation of <).
+theorem lt_of_mul_lt_mul_left : for all x : Nat, for all y : Nat, for all z : Nat,
+                                 z * x < z * y implies 0 < z implies x < y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_lt : z * x < z * y
+  suppose h_pos : 0 < z
+  have mc1 : for all b : Nat, z * b = b * z by mul_comm at z
+  have h_xz : z * x = x * z by mc1 at x
+  have h_yz : z * y = y * z by mc1 at y
+  have h_xz_sym : x * z = z * x by symm h_xz
+  have h_yz_sym : y * z = z * y by symm h_yz
+  have h_lt2 : x * z < z * y by eq_subst h_xz_sym and h_lt
+  have h_lt3 : x * z < y * z by eq_subst h_yz_sym and h_lt2
+  have lmr1 : for all y : Nat, for all z : Nat, x * z < y * z implies 0 < z implies x < y
+              by lt_of_mul_lt_mul_right at x
+  have lmr2 : for all z : Nat, x * z < y * z implies 0 < z implies x < y
+              by lmr1 at y
+  have lmr3 : x * z < y * z implies 0 < z implies x < y by lmr2 at z
+  have lmr4 : 0 < z implies x < y by lmr3 and h_lt3
+  then x < y by lmr4 and h_pos
+end
+
+
+-- z * x = z * y and 0 < z implies x = y  (left cancellation for =).
+theorem mul_left_cancel_eq : for all x : Nat, for all y : Nat, for all z : Nat,
+                              z * x = z * y implies 0 < z implies x = y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_eq : z * x = z * y
+  suppose h_pos : 0 < z
+  have mc1 : for all b : Nat, z * b = b * z by mul_comm at z
+  have h_xz : z * x = x * z by mc1 at x
+  have h_yz : z * y = y * z by mc1 at y
+  have h_xz_sym : x * z = z * x by symm h_xz
+  have h_yz_sym : y * z = z * y by symm h_yz
+  have h_eq2 : x * z = z * y by eq_subst h_xz_sym and h_eq
+  have h_eq3 : x * z = y * z by eq_subst h_yz_sym and h_eq2
+  have mrc1 : for all y : Nat, for all z : Nat, x * z = y * z implies 0 < z implies x = y
+              by mul_right_cancel at x
+  have mrc2 : for all z : Nat, x * z = y * z implies 0 < z implies x = y
+              by mrc1 at y
+  have mrc3 : x * z = y * z implies 0 < z implies x = y by mrc2 at z
+  have mrc4 : 0 < z implies x = y by mrc3 and h_eq3
+  then x = y by mrc4 and h_pos
+end
