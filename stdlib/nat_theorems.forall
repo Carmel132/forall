@@ -3041,3 +3041,56 @@ proof
       have h_prod : 1 ^ n * 1 = 1 by trans mor and h_iheq
       then 1 ^ succ(n) = 1 by trans ps2 and h_prod
 end
+
+
+-- n ^ 2 = n * n  (from pow_two in reverse).
+theorem sq_eq_mul_self : for all n : Nat, n ^ 2 = n * n
+proof
+  take n : Nat
+  have pt : n ^ 2 = n * n by pow_two at n
+  then n ^ 2 = n * n by pt
+end
+
+
+-- n <= m → n <= succ(m).
+theorem le_succ_of_le : for all n : Nat, for all m : Nat, n <= m implies n <= succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h_le : n <= m
+  have ls2 : m <= succ(m) by le_succ at m
+  have let1 : for all q : Nat, for all r : Nat, n <= q implies q <= r implies n <= r
+              by le_trans at n
+  have let2 : for all r : Nat, n <= m implies m <= r implies n <= r by let1 at m
+  have let3 : n <= m implies m <= succ(m) implies n <= succ(m) by let2 at (succ(m))
+  have let4 : m <= succ(m) implies n <= succ(m) by let3 and h_le
+  then n <= succ(m) by let4 and ls2
+end
+
+
+-- n < m → n < succ(m).
+theorem lt_succ_of_lt : for all n : Nat, for all m : Nat, n < m implies n < succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h_lt : n < m
+  have ls2 : m < succ(m) by lt_succ at m
+  have ltt1 : for all q : Nat, for all r : Nat, n < q implies q < r implies n < r
+              by lt_trans at n
+  have ltt2 : for all r : Nat, n < m implies m < r implies n < r by ltt1 at m
+  have ltt3 : n < m implies m < succ(m) implies n < succ(m) by ltt2 at (succ(m))
+  have ltt4 : m < succ(m) implies n < succ(m) by ltt3 and h_lt
+  then n < succ(m) by ltt4 and ls2
+end
+
+
+-- n = m → succ(n) = succ(m).
+theorem succ_congr : for all n : Nat, for all m : Nat, n = m implies succ(n) = succ(m)
+proof
+  take n : Nat
+  take m : Nat
+  suppose h_eq : n = m
+  have rfl_sm : succ(m) = succ(m) by refl
+  have h_result : succ(n) = succ(m) by eq_subst h_eq and rfl_sm
+  then succ(n) = succ(m) by h_result
+end
