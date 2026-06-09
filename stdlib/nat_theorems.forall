@@ -2718,3 +2718,78 @@ proof
   have h_ne : n ^ k /= 0 by nzp and h_pos
   then n ^ k /= 0 by h_ne
 end
+
+
+-- a + (b + c) = b + (a + c).
+theorem add_comm_left : for all a : Nat, for all b : Nat, for all c : Nat,
+                        a + (b + c) = b + (a + c)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have h_zla : 0 <= a by zero_le at a
+  have h_zlb : 0 <= b by zero_le at b
+  have h_zlc : 0 <= c by zero_le at c
+  then a + (b + c) = b + (a + c) by omega
+end
+
+
+-- 2 * n = n + n.
+theorem two_mul : for all n : Nat, 2 * n = n + n
+proof
+  take n : Nat
+  have h_zln : 0 <= n by zero_le at n
+  then 2 * n = n + n by omega
+end
+
+
+-- 0 < n → 0 < n ^ 2.
+theorem sq_pos : for all n : Nat, 0 < n implies 0 < n ^ 2
+proof
+  take n : Nat
+  suppose hn : 0 < n
+  have pp1 : for all k : Nat, 0 < n implies 0 < n ^ k by pow_pos at n
+  have pp2 : 0 < n implies 0 < n ^ 2 by pp1 at 2
+  have h_pos : 0 < n ^ 2 by pp2 and hn
+  then 0 < n ^ 2 by h_pos
+end
+
+
+-- n ^ succ(k) = n * n ^ k.
+theorem pow_succ_left : for all n : Nat, for all k : Nat, n ^ succ(k) = n * n ^ k
+proof
+  take n : Nat
+  take k : Nat
+  have ps1 : for all k : Nat, n ^ succ(k) = n ^ k * n by pow_succ at n
+  have ps2 : n ^ succ(k) = n ^ k * n by ps1 at k
+  have mc1 : for all b : Nat, n ^ k * b = b * n ^ k by mul_comm at (n ^ k)
+  have mc2 : n ^ k * n = n * n ^ k by mc1 at n
+  then n ^ succ(k) = n * n ^ k by trans ps2 and mc2
+end
+
+
+-- succ(n) + m = succ(n + m).
+theorem succ_add_eq : for all n : Nat, for all m : Nat, succ(n) + m = succ(n + m)
+proof
+  take n : Nat
+  induction result on m : succ(n) + m = succ(n + m)
+    base:
+      have az1 : succ(n) + 0 = succ(n) by add_zero at (succ(n))
+      have az2 : n + 0 = n by add_zero at n
+      have rfl1 : succ(n) = succ(n) by refl
+      have h_sn : succ(n + 0) = succ(n) by eq_subst az2 and rfl1
+      have h_sn_sym : succ(n) = succ(n + 0) by symm h_sn
+      then succ(n) + 0 = succ(n + 0) by trans az1 and h_sn_sym
+    inductive:
+      have as1 : for all m : Nat, succ(n) + succ(m) = succ(succ(n) + m)
+                 by add_succ at (succ(n))
+      have as2 : succ(n) + succ(m) = succ(succ(n) + m) by as1 at m
+      have rfl2 : succ(succ(n + m)) = succ(succ(n + m)) by refl
+      have h_sub : succ(succ(n) + m) = succ(succ(n + m)) by eq_subst ih and rfl2
+      have as3 : for all m : Nat, n + succ(m) = succ(n + m) by add_succ at n
+      have as4 : n + succ(m) = succ(n + m) by as3 at m
+      have rfl3 : succ(succ(n + m)) = succ(succ(n + m)) by refl
+      have h_final : succ(succ(n + m)) = succ(n + succ(m)) by eq_subst as4 and rfl3
+      have h_mid : succ(n) + succ(m) = succ(succ(n + m)) by trans as2 and h_sub
+      then succ(n) + succ(m) = succ(n + succ(m)) by trans h_mid and h_final
+end
