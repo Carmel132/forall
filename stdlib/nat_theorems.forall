@@ -2606,3 +2606,45 @@ proof
       have hor : n = 0 or succ(m) = 0 by h_n0
       then n * succ(m) = 0 implies n = 0 or succ(m) = 0
 end
+
+
+-- n ^ 2 = n * n.
+theorem pow_two : for all n : Nat, n ^ 2 = n * n
+proof
+  take n : Nat
+  -- 2 = 1 + 1, use pow_add: n^(1+1) = n^1 * n^1 = n * n
+  have h_2_11 : 2 = 1 + 1 by decide
+  have pa0 : for all p : Nat, for all q : Nat, n ^ (p + q) = n ^ p * n ^ q by pow_add at n
+  have pa1 : for all q : Nat, n ^ (1 + q) = n ^ 1 * n ^ q by pa0 at 1
+  have pa2 : n ^ (1 + 1) = n ^ 1 * n ^ 1 by pa1 at 1
+  have rfl_11 : n ^ (1 + 1) = n ^ (1 + 1) by refl
+  have h_n2_n11 : n ^ 2 = n ^ (1 + 1) by eq_subst h_2_11 and rfl_11
+  have h_n2_11 : n ^ 2 = n ^ 1 * n ^ 1 by trans h_n2_n11 and pa2
+  have h_p1n : n ^ 1 = n by pow_one at n
+  have rfl_nn : n * n = n * n by refl
+  have h_sub1 : n ^ 1 * n ^ 1 = n * n ^ 1 by eq_subst h_p1n and rfl_nn
+  have h_sub2 : n * n ^ 1 = n * n by eq_subst h_p1n and rfl_nn
+  have h_step : n ^ 1 * n ^ 1 = n * n by trans h_sub1 and h_sub2
+  then n ^ 2 = n * n by trans h_n2_11 and h_step
+end
+
+
+-- n ^ 2 = 0 implies n = 0.
+theorem pow_two_eq_zero : for all n : Nat, n ^ 2 = 0 implies n = 0
+proof
+  take n : Nat
+  suppose h : n ^ 2 = 0
+  have pt : n ^ 2 = n * n by pow_two at n
+  have pt_sym : n * n = n ^ 2 by symm pt
+  have h_nn0 : n * n = 0 by trans pt_sym and h
+  have mez1 : for all m : Nat, n * m = 0 implies n = 0 or m = 0 by mul_eq_zero at n
+  have mez2 : n * n = 0 implies n = 0 or n = 0 by mez1 at n
+  have h_or : n = 0 or n = 0 by mez2 and h_nn0
+  cases res : h_or
+    case left : n = 0 =>
+      then n = 0 by left
+    case right : n = 0 =>
+      then n = 0 by right
+  done
+  then n = 0 by res
+end
