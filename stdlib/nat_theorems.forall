@@ -2902,3 +2902,87 @@ theorem one_lt_two : 1 < 2
 proof
   then 1 < 2 by decide
 end
+
+
+-- 0 < m → n < n + m.
+theorem lt_add_pos_right : for all n : Nat, for all m : Nat, 0 < m implies n < n + m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h_pos : 0 < m
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  then n < n + m by omega
+end
+
+
+-- 0 < m → m < n + m.
+theorem lt_add_pos_left : for all n : Nat, for all m : Nat, 0 < n implies m < n + m
+proof
+  take n : Nat
+  take m : Nat
+  suppose h_pos : 0 < n
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  then m < n + m by omega
+end
+
+
+-- n < m implies n + k < m + k.
+theorem add_lt_add_right_const : for all n : Nat, for all m : Nat, for all k : Nat,
+                                  n < m implies n + k < m + k
+proof
+  take n : Nat
+  take m : Nat
+  take k : Nat
+  suppose h_lt : n < m
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  have h_zlk : 0 <= k by zero_le at k
+  then n + k < m + k by omega
+end
+
+
+-- n <= m implies n + k <= m + k.
+theorem add_le_add_right_const : for all n : Nat, for all m : Nat, for all k : Nat,
+                                  n <= m implies n + k <= m + k
+proof
+  take n : Nat
+  take m : Nat
+  take k : Nat
+  suppose h_le : n <= m
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  have h_zlk : 0 <= k by zero_le at k
+  then n + k <= m + k by omega
+end
+
+
+-- n + k < m + k implies n < m.
+theorem lt_of_add_lt_add_right : for all n : Nat, for all m : Nat, for all k : Nat,
+                                  n + k < m + k implies n < m
+proof
+  take n : Nat
+  take m : Nat
+  take k : Nat
+  suppose h_lt : n + k < m + k
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  have h_zlk : 0 <= k by zero_le at k
+  then n < m by omega
+end
+
+
+-- n + k <= m + k implies n <= m.
+theorem le_of_add_le_add_right : for all n : Nat, for all m : Nat, for all k : Nat,
+                                  n + k <= m + k implies n <= m
+proof
+  take n : Nat
+  take m : Nat
+  take k : Nat
+  suppose h_le : n + k <= m + k
+  have h_zln : 0 <= n by zero_le at n
+  have h_zlm : 0 <= m by zero_le at m
+  have h_zlk : 0 <= k by zero_le at k
+  then n <= m by omega
+end
