@@ -2871,3 +2871,34 @@ proof
   have mrc4 : 0 < z implies x = y by mrc3 and h_eq3
   then x = y by mrc4 and h_pos
 end
+
+
+-- a <= b → k * a <= k * b  (left monotonicity of multiplication).
+theorem mul_le_mul_of_pos_left : for all a : Nat, for all b : Nat, for all k : Nat,
+                                  a <= b implies k * a <= k * b
+proof
+  take a : Nat
+  take b : Nat
+  take k : Nat
+  suppose h_ab : a <= b
+  have mc1 : for all b : Nat, k * b = b * k by mul_comm at k
+  have h_ak : k * a = a * k by mc1 at a
+  have h_bk_val : k * b = b * k by mc1 at b
+  have h_ak_sym : a * k = k * a by symm h_ak
+  have h_bk_sym : b * k = k * b by symm h_bk_val
+  have mlr1 : for all b : Nat, for all k : Nat, a <= b implies a * k <= b * k
+              by mul_le_mul_right at a
+  have mlr2 : for all k : Nat, a <= b implies a * k <= b * k by mlr1 at b
+  have mlr3 : a <= b implies a * k <= b * k by mlr2 at k
+  have h_ak_le : a * k <= b * k by mlr3 and h_ab
+  have h_ka_le : k * a <= b * k by eq_subst h_ak and h_ak_le
+  have h_le_final : k * a <= k * b by eq_subst h_bk_val and h_ka_le
+  then k * a <= k * b by h_le_final
+end
+
+
+-- 1 < 2.
+theorem one_lt_two : 1 < 2
+proof
+  then 1 < 2 by decide
+end
