@@ -2329,3 +2329,29 @@ proof
   done
   then x = y by outer_res
 end
+
+
+-- z * x = z * y → 0 < z → x = y.  Reduce to mul_right_cancel via mul_comm_nm.
+theorem mul_left_cancel : for all x : Nat, for all y : Nat, for all z : Nat,
+                           z * x = z * y implies 0 < z implies x = y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_eq : z * x = z * y
+  suppose h_pos : 0 < z
+  have mc_z : for all m : Nat, z * m = m * z by mul_comm_nm at z
+  have h_zx : z * x = x * z by mc_z at x
+  have h_zy : z * y = y * z by mc_z at y
+  have xz_eq_zx : x * z = z * x by symm h_zx
+  have xz_eq_zy : x * z = z * y by trans xz_eq_zx and h_eq
+  have xz_eq_yz : x * z = y * z by trans xz_eq_zy and h_zy
+  have rc1 : for all y : Nat, for all z : Nat,
+             x * z = y * z implies 0 < z implies x = y
+             by mul_right_cancel at x
+  have rc2 : for all z : Nat, x * z = y * z implies 0 < z implies x = y
+             by rc1 at y
+  have rc3 : x * z = y * z implies 0 < z implies x = y by rc2 at z
+  have rc4 : 0 < z implies x = y by rc3 and xz_eq_yz
+  then x = y by rc4 and h_pos
+end
