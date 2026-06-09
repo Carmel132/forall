@@ -2564,3 +2564,45 @@ proof
   done
   then m = 0 by res
 end
+
+
+-- a + b = 0 implies a = 0 and b = 0  (bound vars a,b chosen to avoid capture).
+theorem add_eq_zero_both : for all a : Nat, for all b : Nat, a + b = 0 implies a = 0 and b = 0
+proof
+  take a : Nat
+  take b : Nat
+  suppose h : a + b = 0
+  have aezl1 : for all m : Nat, a + m = 0 implies a = 0 by add_eq_zero_left at a
+  have aezl2 : a + b = 0 implies a = 0 by aezl1 at b
+  have ha : a = 0 by aezl2 and h
+  have aezr1 : for all m : Nat, a + m = 0 implies m = 0 by add_eq_zero_right at a
+  have aezr2 : a + b = 0 implies b = 0 by aezr1 at b
+  have hb : b = 0 by aezr2 and h
+  then a = 0 and b = 0 by ha and hb
+end
+
+
+-- n * m = 0 implies n = 0 or m = 0.
+theorem mul_eq_zero : for all n : Nat, for all m : Nat, n * m = 0 implies n = 0 or m = 0
+proof
+  take n : Nat
+  induction result on m : n * m = 0 implies n = 0 or m = 0
+    base:
+      suppose h : n * 0 = 0
+      have h_m0 : 0 = 0 by refl
+      have hor : n = 0 or 0 = 0 by h_m0
+      then n * 0 = 0 implies n = 0 or 0 = 0
+    inductive:
+      suppose h : n * succ(m) = 0
+      have ms1 : for all m : Nat, n * succ(m) = n * m + n by mul_succ at n
+      have ms2 : n * succ(m) = n * m + n by ms1 at m
+      have ms2_sym : n * m + n = n * succ(m) by symm ms2
+      have h_nm_n : n * m + n = 0 by trans ms2_sym and h
+      have aezb1 : for all b : Nat, n * m + b = 0 implies n * m = 0 and b = 0
+                   by add_eq_zero_both at (n * m)
+      have aezb2 : n * m + n = 0 implies n * m = 0 and n = 0 by aezb1 at n
+      have h_both : n * m = 0 and n = 0 by aezb2 and h_nm_n
+      have h_n0 : n = 0 by h_both
+      have hor : n = 0 or succ(m) = 0 by h_n0
+      then n * succ(m) = 0 implies n = 0 or succ(m) = 0
+end
