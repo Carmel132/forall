@@ -2355,3 +2355,47 @@ proof
   have rc4 : 0 < z implies x = y by rc3 and xz_eq_yz
   then x = y by rc4 and h_pos
 end
+
+
+-- n ^ 1 = n.
+theorem pow_one : for all n : Nat, n ^ 1 = n
+proof
+  take n : Nat
+  have ps : for all k : Nat, n ^ succ(k) = n ^ k * n by pow_succ at n
+  have ps0 : n ^ succ(0) = n ^ 0 * n by ps at 0
+  have pz : n ^ 0 = 1 by pow_zero at n
+  have refl1 : 1 * n = 1 * n by refl
+  have h_pz_n : n ^ 0 * n = 1 * n by eq_subst pz and refl1
+  have h_succ0_1n : n ^ succ(0) = 1 * n by trans ps0 and h_pz_n
+  have h_1n : 1 * n = n by mul_one_left at n
+  have h_succ0_n : n ^ succ(0) = n by trans h_succ0_1n and h_1n
+  have h_rfl_succ : n ^ succ(0) = n ^ succ(0) by refl
+  have h_1_eq : n ^ 1 = n ^ succ(0) by eq_subst one_eq_succ_zero and h_rfl_succ
+  then n ^ 1 = n by trans h_1_eq and h_succ0_n
+end
+
+
+-- 0 < n → 0 < n^k  (positivity of powers).
+theorem pow_pos : for all n : Nat, for all k : Nat, 0 < n implies 0 < n ^ k
+proof
+  take n : Nat
+  induction result on k : 0 < n implies 0 < n ^ k
+    base:
+      suppose h : 0 < n
+      have pz : n ^ 0 = 1 by pow_zero at n
+      have h1 : 0 < 1 by decide
+      have h1_eq : 0 < n ^ 0 by eq_subst pz and h1
+      then 0 < n implies 0 < n ^ 0
+    inductive:
+      suppose h : 0 < n
+      have ih_applied : 0 < n ^ k by ih and h
+      have ps0 : for all k : Nat, n ^ succ(k) = n ^ k * n by pow_succ at n
+      have ps : n ^ succ(k) = n ^ k * n by ps0 at k
+      have mp1 : for all b : Nat, 0 < n ^ k implies 0 < b implies 0 < n ^ k * b
+                 by mul_pos at (n ^ k)
+      have mp2 : 0 < n ^ k implies 0 < n implies 0 < n ^ k * n by mp1 at n
+      have mp3 : 0 < n implies 0 < n ^ k * n by mp2 and ih_applied
+      have h_nkn : 0 < n ^ k * n by mp3 and h
+      have h_result : 0 < n ^ succ(k) by eq_subst ps and h_nkn
+      then 0 < n implies 0 < n ^ succ(k)
+end
