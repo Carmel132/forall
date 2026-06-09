@@ -2401,44 +2401,88 @@ proof
 end
 
 
--- n^(a+b) = n^a * n^b.
-theorem pow_add : for all n : Nat, for all a : Nat, for all b : Nat, n ^ (a + b) = n ^ a * n ^ b
+-- n^(p+q) = n^p * n^q.  Bound vars x,p,q avoid capture when witnesses contain a,b,n.
+theorem pow_add : for all x : Nat, for all p : Nat, for all q : Nat, x ^ (p + q) = x ^ p * x ^ q
+proof
+  take x : Nat
+  take p : Nat
+  induction result on q : x ^ (p + q) = x ^ p * x ^ q
+    base:
+      have az : p + 0 = p by add_zero at p
+      have pz : x ^ 0 = 1 by pow_zero at x
+      have mor : x ^ p * 1 = x ^ p by mul_one_right at (x ^ p)
+      have xp_eq : x ^ p = x ^ p * 1 by symm mor
+      have h_rhs : x ^ p = x ^ p * x ^ 0 by eq_subst pz and xp_eq
+      then x ^ (p + 0) = x ^ p * x ^ 0 by eq_subst az and h_rhs
+    inductive:
+      have as0 : for all m : Nat, p + succ(m) = succ(p + m) by add_succ at p
+      have as1 : p + succ(q) = succ(p + q) by as0 at q
+      have ps0 : for all k : Nat, x ^ succ(k) = x ^ k * x by pow_succ at x
+      have ps1 : x ^ succ(p + q) = x ^ (p + q) * x by ps0 at (p + q)
+      have h_rfl1 : x ^ succ(p + q) = x ^ succ(p + q) by refl
+      have h_pq_succ : x ^ (p + succ(q)) = x ^ succ(p + q)
+                       by eq_subst as1 and h_rfl1
+      have step1 : x ^ (p + succ(q)) = x ^ (p + q) * x by trans h_pq_succ and ps1
+      have ih_cong1 : x ^ (p + q) * x = x ^ p * x ^ q * x
+        proof
+          have h_rfl2 : x ^ p * x ^ q * x = x ^ p * x ^ q * x by refl
+          have step2a : x ^ p * x ^ q * x = x ^ (p + q) * x by eq_subst ih and h_rfl2
+          then x ^ (p + q) * x = x ^ p * x ^ q * x by symm step2a
+        end
+      have step12 : x ^ (p + succ(q)) = x ^ p * x ^ q * x by trans step1 and ih_cong1
+      have ma0 : for all y : Nat, for all z : Nat,
+                 x ^ p * y * z = x ^ p * (y * z) by mul_assoc at (x ^ p)
+      have ma1 : for all z : Nat,
+                 x ^ p * x ^ q * z = x ^ p * (x ^ q * z) by ma0 at (x ^ q)
+      have ma3 : x ^ p * x ^ q * x = x ^ p * (x ^ q * x) by ma1 at x
+      have step3 : x ^ (p + succ(q)) = x ^ p * (x ^ q * x) by trans step12 and ma3
+      have ps2 : x ^ succ(q) = x ^ q * x by ps0 at q
+      have ps_sym : x ^ q * x = x ^ succ(q) by symm ps2
+      have h_rfl3 : x ^ p * x ^ succ(q) = x ^ p * x ^ succ(q) by refl
+      have step4 : x ^ p * (x ^ q * x) = x ^ p * x ^ succ(q)
+                   by eq_subst ps_sym and h_rfl3
+      then x ^ (p + succ(q)) = x ^ p * x ^ succ(q) by trans step3 and step4
+end
+
+
+-- (n^a)^b = n^(a*b).
+theorem pow_mul : for all n : Nat, for all a : Nat, for all b : Nat, (n ^ a) ^ b = n ^ (a * b)
 proof
   take n : Nat
   take a : Nat
-  induction result on b : n ^ (a + b) = n ^ a * n ^ b
+  induction result on b : (n ^ a) ^ b = n ^ (a * b)
     base:
-      have az : a + 0 = a by add_zero at a
-      have pz : n ^ 0 = 1 by pow_zero at n
-      have mor : n ^ a * 1 = n ^ a by mul_one_right at (n ^ a)
-      have na_eq : n ^ a = n ^ a * 1 by symm mor
-      have h_rhs : n ^ a = n ^ a * n ^ 0 by eq_subst pz and na_eq
-      then n ^ (a + 0) = n ^ a * n ^ 0 by eq_subst az and h_rhs
+      have pz1 : (n ^ a) ^ 0 = 1 by pow_zero at (n ^ a)
+      have mz : a * 0 = 0 by mul_zero at a
+      have pz2_rfl : n ^ 0 = n ^ 0 by refl
+      have pz2 : n ^ (a * 0) = n ^ 0 by eq_subst mz and pz2_rfl
+      have pz3 : n ^ 0 = 1 by pow_zero at n
+      have h_na0_1 : n ^ (a * 0) = 1 by trans pz2 and pz3
+      have h_1_na0 : 1 = n ^ (a * 0) by symm h_na0_1
+      then (n ^ a) ^ 0 = n ^ (a * 0) by trans pz1 and h_1_na0
     inductive:
-      have as0 : for all m : Nat, a + succ(m) = succ(a + m) by add_succ at a
-      have as1 : a + succ(b) = succ(a + b) by as0 at b
-      have ps0 : for all k : Nat, n ^ succ(k) = n ^ k * n by pow_succ at n
-      have ps1 : n ^ succ(a + b) = n ^ (a + b) * n by ps0 at (a + b)
-      have h_rfl1 : n ^ succ(a + b) = n ^ succ(a + b) by refl
-      have h_ab_succ : n ^ (a + succ(b)) = n ^ succ(a + b)
-                       by eq_subst as1 and h_rfl1
-      have step1 : n ^ (a + succ(b)) = n ^ (a + b) * n by trans h_ab_succ and ps1
-      have ih_cong1 : n ^ (a + b) * n = n ^ a * n ^ b * n
+      have ps_na : for all k : Nat, (n ^ a) ^ succ(k) = (n ^ a) ^ k * n ^ a
+                   by pow_succ at (n ^ a)
+      have ps_b : (n ^ a) ^ succ(b) = (n ^ a) ^ b * n ^ a by ps_na at b
+      have ms1 : for all m : Nat, a * succ(m) = a * m + a by mul_succ at a
+      have ms2 : a * succ(b) = a * b + a by ms1 at b
+      have pa0 : for all p : Nat, for all q : Nat, n ^ (p + q) = n ^ p * n ^ q
+                 by pow_add at n
+      have pa1 : for all q : Nat, n ^ (a * b + q) = n ^ (a * b) * n ^ q
+                 by pa0 at (a * b)
+      have pa_inst : n ^ (a * b + a) = n ^ (a * b) * n ^ a by pa1 at a
+      have pa_nab : n ^ (a * b) * n ^ a = n ^ (a * b + a) by symm pa_inst
+      have ih_cong : (n ^ a) ^ b * n ^ a = n ^ (a * b) * n ^ a
         proof
-          have h_rfl2 : n ^ a * n ^ b * n = n ^ a * n ^ b * n by refl
-          have step2a : n ^ a * n ^ b * n = n ^ (a + b) * n by eq_subst ih and h_rfl2
-          then n ^ (a + b) * n = n ^ a * n ^ b * n by symm step2a
+          have h_rfl2 : n ^ (a * b) * n ^ a = n ^ (a * b) * n ^ a by refl
+          have step_a : n ^ (a * b) * n ^ a = (n ^ a) ^ b * n ^ a
+                        by eq_subst ih and h_rfl2
+          then (n ^ a) ^ b * n ^ a = n ^ (a * b) * n ^ a by symm step_a
         end
-      have step12 : n ^ (a + succ(b)) = n ^ a * n ^ b * n by trans step1 and ih_cong1
-      have ma0 : for all y : Nat, for all z : Nat,
-                 n ^ a * y * z = n ^ a * (y * z) by mul_assoc at (n ^ a)
-      have ma1 : for all z : Nat,
-                 n ^ a * n ^ b * z = n ^ a * (n ^ b * z) by ma0 at (n ^ b)
-      have ma3 : n ^ a * n ^ b * n = n ^ a * (n ^ b * n) by ma1 at n
-      have step3 : n ^ (a + succ(b)) = n ^ a * (n ^ b * n) by trans step12 and ma3
-      have ps2 : n ^ succ(b) = n ^ b * n by ps0 at b
-      have ps_sym : n ^ b * n = n ^ succ(b) by symm ps2
-      have h_rfl3 : n ^ a * n ^ succ(b) = n ^ a * n ^ succ(b) by refl
-      have step4 : n ^ a * (n ^ b * n) = n ^ a * n ^ succ(b) by eq_subst ps_sym and h_rfl3
-      then n ^ (a + succ(b)) = n ^ a * n ^ succ(b) by trans step3 and step4
+      have step1 : (n ^ a) ^ succ(b) = n ^ (a * b) * n ^ a by trans ps_b and ih_cong
+      have step2 : (n ^ a) ^ succ(b) = n ^ (a * b + a) by trans step1 and pa_nab
+      have h_rfl3 : n ^ (a * b + a) = n ^ (a * b + a) by refl
+      have h_eq_ab : n ^ (a * succ(b)) = n ^ (a * b + a) by eq_subst ms2 and h_rfl3
+      have h_eq_ba : n ^ (a * b + a) = n ^ (a * succ(b)) by symm h_eq_ab
+      then (n ^ a) ^ succ(b) = n ^ (a * succ(b)) by trans step2 and h_eq_ba
 end
