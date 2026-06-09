@@ -2251,3 +2251,81 @@ proof
   done
   then x <= y by res
 end
+
+-- x * z = y * z and 0 < z implies x = y  (right cancellation for multiplication).
+-- Bound vars x,y,z avoid capture issues.
+theorem mul_right_cancel : for all x : Nat, for all y : Nat, for all z : Nat,
+                            x * z = y * z implies 0 < z implies x = y
+proof
+  take x : Nat
+  take y : Nat
+  take z : Nat
+  suppose h_eq : x * z = y * z
+  suppose h_pos : 0 < z
+  have tri1 : for all p : Nat, x < p or x = p or p < x by lt_trichotomy at x
+  have tri2 : x < y or x = y or y < x by tri1 at y
+  cases outer_res : tri2
+    case left_xy : x < y or x = y =>
+      cases inner_res : left_xy
+        case x_lt_y : x < y =>
+          have mlt1 : for all b : Nat, for all k : Nat,
+                      x < b implies 0 < k implies x * k < b * k
+                      by mul_lt_mul_of_pos_right at x
+          have mlt2 : for all k : Nat, x < y implies 0 < k implies x * k < y * k
+                      by mlt1 at y
+          have mlt3 : x < y implies 0 < z implies x * z < y * z by mlt2 at z
+          have mlt4 : 0 < z implies x * z < y * z by mlt3 and x_lt_y
+          have h_xz_lt_yz : x * z < y * z by mlt4 and h_pos
+          have h_xz_sym : y * z = x * z
+            proof
+              have sr : y * z = x * z by symm h_eq
+              then y * z = x * z by sr
+            end
+          have h_xz_le_xz : x * z <= x * z by le_refl at (x * z)
+          have h_yz_le_xz : y * z <= x * z by eq_subst h_xz_sym and h_xz_le_xz
+          have llt1 : for all q : Nat, for all r : Nat,
+                      x * z < q implies q <= r implies x * z < r
+                      by lt_le_trans at (x * z)
+          have llt2 : for all r : Nat,
+                      x * z < y * z implies y * z <= r implies x * z < r
+                      by llt1 at (y * z)
+          have llt3 : x * z < y * z implies y * z <= x * z implies x * z < x * z
+                      by llt2 at (x * z)
+          have llt4 : y * z <= x * z implies x * z < x * z by llt3 and h_xz_lt_yz
+          have h_xzxz : x * z < x * z by llt4 and h_yz_le_xz
+          have h_irr : not (x * z < x * z) by lt_irrefl at (x * z)
+          have bot : false by h_irr and h_xzxz
+          have concl : x = y by bot
+          then x = y by concl
+        case x_eq_y : x = y =>
+          then x = y by x_eq_y
+      done
+      then x = y by inner_res
+    case y_lt_x : y < x =>
+      have mlt1 : for all b : Nat, for all k : Nat,
+                  y < b implies 0 < k implies y * k < b * k
+                  by mul_lt_mul_of_pos_right at y
+      have mlt2 : for all k : Nat, y < x implies 0 < k implies y * k < x * k
+                  by mlt1 at x
+      have mlt3 : y < x implies 0 < z implies y * z < x * z by mlt2 at z
+      have mlt4 : 0 < z implies y * z < x * z by mlt3 and y_lt_x
+      have h_yz_lt_xz : y * z < x * z by mlt4 and h_pos
+      have h_yz_le_yz : y * z <= y * z by le_refl at (y * z)
+      have h_xz_le_yz : x * z <= y * z by eq_subst h_eq and h_yz_le_yz
+      have llt1 : for all q : Nat, for all r : Nat,
+                  y * z < q implies q <= r implies y * z < r
+                  by lt_le_trans at (y * z)
+      have llt2 : for all r : Nat,
+                  y * z < x * z implies x * z <= r implies y * z < r
+                  by llt1 at (x * z)
+      have llt3 : y * z < x * z implies x * z <= y * z implies y * z < y * z
+                  by llt2 at (y * z)
+      have llt4 : x * z <= y * z implies y * z < y * z by llt3 and h_yz_lt_xz
+      have h_yzy : y * z < y * z by llt4 and h_xz_le_yz
+      have h_irr : not (y * z < y * z) by lt_irrefl at (y * z)
+      have bot : false by h_irr and h_yzy
+      have concl : x = y by bot
+      then x = y by concl
+  done
+  then x = y by outer_res
+end
