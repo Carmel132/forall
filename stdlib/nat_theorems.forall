@@ -2648,3 +2648,40 @@ proof
   done
   then n = 0 by res
 end
+
+
+-- a + b + c = a + c + b.
+theorem add_swap : for all a : Nat, for all b : Nat, for all c : Nat,
+                   a + b + c = a + c + b
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have h_le_a : 0 <= a by zero_le at a
+  have h_le_b : 0 <= b by zero_le at b
+  have h_le_c : 0 <= c by zero_le at c
+  then a + b + c = a + c + b by omega
+end
+
+
+-- a * b * c = a * c * b.
+theorem mul_swap : for all a : Nat, for all b : Nat, for all c : Nat,
+                   a * b * c = a * c * b
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have h_bc1 : for all m : Nat, b * m = m * b by mul_comm_nm at b
+  have h_bc : b * c = c * b by h_bc1 at c
+  have h_cb : c * b = b * c by symm h_bc
+  have h_ass1 : for all y : Nat, for all z : Nat, a * y * z = a * (y * z) by mul_assoc at a
+  have h_ass_bc : for all z : Nat, a * b * z = a * (b * z) by h_ass1 at b
+  have h_n1 : a * b * c = a * (b * c) by h_ass_bc at c
+  have h_ass_cb : for all z : Nat, a * c * z = a * (c * z) by h_ass1 at c
+  have h_n2_sym : a * c * b = a * (c * b) by h_ass_cb at b
+  have h_n2 : a * (c * b) = a * c * b by symm h_n2_sym
+  have rfl_acb : a * (c * b) = a * (c * b) by refl
+  have h_sub : a * (b * c) = a * (c * b) by eq_subst h_bc and rfl_acb
+  have h_mid : a * (b * c) = a * c * b by trans h_sub and h_n2
+  then a * b * c = a * c * b by trans h_n1 and h_mid
+end
