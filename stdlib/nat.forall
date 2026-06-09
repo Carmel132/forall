@@ -37,4 +37,8 @@ axiom nat_zero_or_succ :
 -- Needed to bridge between ExprLit{"1"} and ExprCall{"succ",[0]} in proofs.
 axiom one_eq_succ_zero : 1 = succ(0)
 
+-- Recursive characterisation of exponentiation.
+axiom pow_zero : for all n : Nat, n ^ 0 = 1
+axiom pow_succ : for all n : Nat, for all k : Nat, n ^ succ(k) = n ^ k * n
+
 end Nat
