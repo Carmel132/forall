@@ -3059,10 +3059,8 @@ proof
   take m : Nat
   suppose h_le : n <= m
   have ls2 : m <= succ(m) by le_succ at m
-  have let1 : for all q : Nat, for all r : Nat, n <= q implies q <= r implies n <= r
-              by le_trans at n
-  have let2 : for all r : Nat, n <= m implies m <= r implies n <= r by let1 at m
-  have let3 : n <= m implies m <= succ(m) implies n <= succ(m) by let2 at (succ(m))
+  have let3 : n <= m implies m <= succ(m) implies n <= succ(m)
+              by le_trans at n at m at (succ(m))
   have let4 : m <= succ(m) implies n <= succ(m) by let3 and h_le
   then n <= succ(m) by let4 and ls2
 end
@@ -3075,10 +3073,8 @@ proof
   take m : Nat
   suppose h_lt : n < m
   have ls2 : m < succ(m) by lt_succ at m
-  have ltt1 : for all q : Nat, for all r : Nat, n < q implies q < r implies n < r
-              by lt_trans at n
-  have ltt2 : for all r : Nat, n < m implies m < r implies n < r by ltt1 at m
-  have ltt3 : n < m implies m < succ(m) implies n < succ(m) by ltt2 at (succ(m))
+  have ltt3 : n < m implies m < succ(m) implies n < succ(m)
+              by lt_trans at n at m at (succ(m))
   have ltt4 : m < succ(m) implies n < succ(m) by ltt3 and h_lt
   then n < succ(m) by ltt4 and ls2
 end
