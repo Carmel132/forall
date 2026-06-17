@@ -12,7 +12,7 @@ using pretty::to_string;
 // ── Justification helper ──────────────────────────────────────────────────────
 
 static std::string format_justification(const std::vector<std::string>& refs,
-                                        const std::optional<ast::ExprPtr>& witness = {})
+                                        const std::vector<ast::ExprPtr>& witnesses = {})
 {
     if (refs.size() == 1 && refs[0] == "__decide__")  return " by decide";
     if (refs.size() == 1 && refs[0] == "__norm_num__") return " by norm_num";
@@ -46,8 +46,8 @@ static std::string format_justification(const std::vector<std::string>& refs,
     std::string r = " by " + refs[0];
     for (std::size_t i = 1; i < refs.size(); ++i)
         r += " and " + refs[i];
-    if (witness)
-        r += " at " + to_string(**witness);
+    for (const auto& w : witnesses)
+        r += " at " + to_string(*w);
     return r;
 }
 
@@ -97,12 +97,12 @@ static std::string format_step(const ast::Step& step, const std::string& indent)
             }
             return indent + "have " + s.name + " : "
                    + to_string(s.prop)
-                   + format_justification(s.justification, s.witness);
+                   + format_justification(s.justification, s.witnesses);
         }
 
         if constexpr (std::is_same_v<T, ast::ThenStep>) {
             return indent + "then " + to_string(s.prop)
-                   + format_justification(s.justification, s.witness);
+                   + format_justification(s.justification, s.witnesses);
         }
 
         if constexpr (std::is_same_v<T, ast::ContradictionStep>) {
