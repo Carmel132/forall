@@ -2066,16 +2066,64 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            // expand any let-bound names in the witness expression and beta-reduce.
-            std::optional<ast::Expr> witness_expanded;
-            if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
-            const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
-            std::optional<RuleApp> app;
-            if (witness_ptr) {
-                app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
-            } else {
-                app = infer_rule(prop, *es, diag, step.loc);
+            // Multi-witness chaining: apply ForallElim once per "at <expr>" clause.
+            // Each step strips one ∀ and produces an intermediate judgment used as
+            // the premise for the next. A single witness also routes through here so
+            // ExistsIntro ("then ∃x,P by h at e") is handled via infer_quantifier_rule.
+            if (!s.witnesses.empty()) {
+                if (es->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'at' witness requires exactly one hypothesis reference"});
+                    return false;
+                }
+                if (s.witnesses.size() == 1) {
+                    // Single witness: delegate to infer_quantifier_rule (ForallElim or ExistsIntro).
+                    const ast::Expr w = apply_tdefs_expr(*s.witnesses[0].get());
+                    auto app2 = infer_quantifier_rule(prop, *es, &w, diag, step.loc);
+                    if (!app2) return false;
+                    auto r = kernel.apply(app2->rule, std::span{app2->premises}, prop, &w);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected '" + step_name + "': " + r.error().message});
+                        return false;
+                    }
+                    env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                    return true;
+                }
+                // Multiple witnesses: chain ForallElim, each stripping one ∀.
+                kernel::Judgment cur = es->front()->judgment;
+                for (std::size_t i = 0; i < s.witnesses.size(); ++i) {
+                    const ast::Expr witness = apply_tdefs_expr(*s.witnesses[i].get());
+                    const auto* fa = std::get_if<ast::PropForall>(&cur.prop().node);
+                    if (!fa) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "too many 'at' witnesses: hypothesis is not ∀ after "
+                                   + std::to_string(i) + " substitution(s)"});
+                        return false;
+                    }
+                    ast::Prop inter_conc =
+                        ast::beta_reduce(ast::subst(*fa->body, fa->var, witness));
+                    if (i + 1 == s.witnesses.size() && !ast::defn_eq(inter_conc, prop)) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "ForallElim: conclusion after all substitutions does not "
+                                   "match declared proposition"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::ForallElim,
+                                         std::span{&cur, 1}, inter_conc, &witness);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected ForallElim at witness " + std::to_string(i)
+                                   + ": " + r.error().message});
+                        return false;
+                    }
+                    cur = std::move(*r);
+                }
+                env.insert_or_assign(step_name, HypEntry{std::move(cur), EntryKind::Derived});
+                return true;
             }
+            std::optional<RuleApp> app;
+            app = infer_rule(prop, *es, diag, step.loc);
             if (!app) return false;
             // ForallIntro requires the bound variable to have been introduced via TakeStep.
             if (app->rule == kernel::Rule::ForallIntro) {
@@ -2087,7 +2135,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
             }
-            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, witness_ptr);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, nullptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected '" + step_name + "': " + r.error().message});
@@ -2137,7 +2185,7 @@ bool check_step(const ast::Step& step,
                 // Build a synthetic ThenStep with the inner goal and remaining refs.
                 std::vector<std::string> real_refs(s.justification.begin() + 1,
                                                    s.justification.end());
-                ast::Step synth{step.loc, ast::ThenStep{*inner, std::move(real_refs), s.witness}};
+                ast::Step synth{step.loc, ast::ThenStep{*inner, std::move(real_refs), s.witnesses}};
                 return check_step(synth, env, kernel, diag, ctx);
             }
 
@@ -2541,16 +2589,56 @@ bool check_step(const ast::Step& step,
             }
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
-            // expand let-bound names in the witness and beta-reduce.
-            std::optional<ast::Expr> witness_expanded;
-            if (s.witness) witness_expanded = apply_tdefs_expr(*s.witness->get());
-            const ast::Expr* witness_ptr = witness_expanded ? &*witness_expanded : nullptr;
-            std::optional<RuleApp> app;
-            if (witness_ptr) {
-                app = infer_quantifier_rule(prop, *es, witness_ptr, diag, step.loc);
-            } else {
-                app = infer_rule(prop, *es, diag, step.loc);
+            if (!s.witnesses.empty()) {
+                if (es->size() != 1) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'at' witness requires exactly one hypothesis reference"});
+                    return false;
+                }
+                if (s.witnesses.size() == 1) {
+                    const ast::Expr w = apply_tdefs_expr(*s.witnesses[0].get());
+                    auto app2 = infer_quantifier_rule(prop, *es, &w, diag, step.loc);
+                    if (!app2) return false;
+                    auto r = kernel.apply(app2->rule, std::span{app2->premises}, prop, &w);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected 'then' step: " + r.error().message});
+                        return false;
+                    }
+                    return true;
+                }
+                kernel::Judgment cur = es->front()->judgment;
+                for (std::size_t i = 0; i < s.witnesses.size(); ++i) {
+                    const ast::Expr witness = apply_tdefs_expr(*s.witnesses[i].get());
+                    const auto* fa = std::get_if<ast::PropForall>(&cur.prop().node);
+                    if (!fa) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "too many 'at' witnesses: hypothesis is not ∀ after "
+                                   + std::to_string(i) + " substitution(s)"});
+                        return false;
+                    }
+                    ast::Prop inter_conc =
+                        ast::beta_reduce(ast::subst(*fa->body, fa->var, witness));
+                    if (i + 1 == s.witnesses.size() && !ast::defn_eq(inter_conc, prop)) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "ForallElim: conclusion after all substitutions does not "
+                                   "match declared proposition"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::ForallElim,
+                                         std::span{&cur, 1}, inter_conc, &witness);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected ForallElim at witness " + std::to_string(i)
+                                   + ": " + r.error().message});
+                        return false;
+                    }
+                    cur = std::move(*r);
+                }
+                return true;
             }
+            std::optional<RuleApp> app;
+            app = infer_rule(prop, *es, diag, step.loc);
             if (!app) return false;
             // ForallIntro requires the bound variable to have been introduced via TakeStep.
             if (app->rule == kernel::Rule::ForallIntro) {
@@ -2562,7 +2650,7 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
             }
-            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, witness_ptr);
+            auto r = kernel.apply(app->rule, std::span{app->premises}, prop, nullptr);
             if (!r) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "kernel rejected 'then' step: " + r.error().message});
