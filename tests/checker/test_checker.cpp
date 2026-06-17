@@ -4782,3 +4782,49 @@ end
         return msg;
     }();
 }
+
+// ── LI10: multiple "at" witnesses per have/then step ──────────────────────────
+
+TEST(CheckerTest, LI10_DoubleAt_ForallElimChain) {
+    auto diag = run_checker("li10_double_at", R"(
+axiom h_fa : for all x : Nat, for all y : Nat, x + y = y + x
+theorem t : 3 + 4 = 4 + 3
+proof
+  have res : 3 + 4 = 4 + 3 by h_fa at 3 at 4
+  then 3 + 4 = 4 + 3 by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, LI10_TripleAt_ForallElimChain) {
+    auto diag = run_checker("li10_triple_at", R"(
+axiom h3 : for all x : Nat, for all y : Nat, for all z : Nat, x + y + z = z + y + x
+theorem t : 1 + 2 + 3 = 3 + 2 + 1
+proof
+  have res : 1 + 2 + 3 = 3 + 2 + 1 by h3 at 1 at 2 at 3
+  then 1 + 2 + 3 = 3 + 2 + 1 by res
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, LI10_DoubleAt_WrongConclusionError) {
+    auto diag = run_checker("li10_wrong_conc", R"(
+axiom h_fa : for all x : Nat, for all y : Nat, x + y = y + x
+theorem t : 3 + 4 = 4 + 3
+proof
+  have res : 3 + 5 = 5 + 3 by h_fa at 3 at 4
+  then 3 + 4 = 4 + 3 by res
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}

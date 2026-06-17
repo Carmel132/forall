@@ -1603,14 +1603,14 @@ end
     EXPECT_EQ(h->name, "q");
     ASSERT_EQ(h->justification.size(), 1u);
     EXPECT_EQ(h->justification[0], "forall_h");
-    ASSERT_TRUE(h->witness.has_value());
-    const auto* var = std::get_if<ExprVar>(&(*h->witness)->node);
+    ASSERT_EQ(h->witnesses.size(), 1u);
+    const auto* var = std::get_if<ExprVar>(&h->witnesses[0]->node);
     ASSERT_NE(var, nullptr);
     EXPECT_EQ(var->name, "n");
 }
 
 TEST(ParserTest, HaveStepWithoutWitnessNoChange) {
-    // A regular "have" step without "at" still has witness == nullopt.
+    // A regular "have" step without "at" still has witnesses empty.
     auto r = parse_str(R"(
 theorem t : P and Q
 proof
@@ -1623,7 +1623,7 @@ end
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* h = get_step<HaveStep>(*r.mod.decls[0]->proof, 2);
     ASSERT_NE(h, nullptr);
-    EXPECT_FALSE(h->witness.has_value());
+    EXPECT_TRUE(h->witnesses.empty());
 }
 
 TEST(ParserTest, ThenStepWithWitness) {
@@ -1640,8 +1640,8 @@ end
     ASSERT_NE(ts, nullptr);
     ASSERT_EQ(ts->justification.size(), 1u);
     EXPECT_EQ(ts->justification[0], "fact");
-    ASSERT_TRUE(ts->witness.has_value());
-    const auto* var = std::get_if<ExprVar>(&(*ts->witness)->node);
+    ASSERT_EQ(ts->witnesses.size(), 1u);
+    const auto* var = std::get_if<ExprVar>(&ts->witnesses[0]->node);
     ASSERT_NE(var, nullptr);
     EXPECT_EQ(var->name, "n");
 }
@@ -1659,10 +1659,32 @@ end
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* h = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
     ASSERT_NE(h, nullptr);
-    ASSERT_TRUE(h->witness.has_value());
-    const auto* add = std::get_if<ExprBinary>(&(*h->witness)->node);
+    ASSERT_EQ(h->witnesses.size(), 1u);
+    const auto* add = std::get_if<ExprBinary>(&h->witnesses[0]->node);
     ASSERT_NE(add, nullptr);
     EXPECT_EQ(add->op, BinOp::Add);
+}
+
+TEST(ParserTest, HaveStepDoubleAt) {
+    // "by th at a at b" — two witnesses parsed as a vector of size 2
+    auto r = parse_str(R"(
+theorem t : Q(a, b)
+proof
+  suppose h : for all x, for all y, Q(x, y)
+  have result : Q(a, b) by h at a at b
+  then Q(a, b) by result
+end
+)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* hs = get_step<HaveStep>(*r.mod.decls[0]->proof, 1);
+    ASSERT_NE(hs, nullptr);
+    ASSERT_EQ(hs->witnesses.size(), 2u);
+    const auto* v0 = std::get_if<ExprVar>(&hs->witnesses[0]->node);
+    ASSERT_NE(v0, nullptr);
+    EXPECT_EQ(v0->name, "a");
+    const auto* v1 = std::get_if<ExprVar>(&hs->witnesses[1]->node);
+    ASSERT_NE(v1, nullptr);
+    EXPECT_EQ(v1->name, "b");
 }
 
 // ── Cases step: "done" arm terminator ─────────────────────────────────────────
