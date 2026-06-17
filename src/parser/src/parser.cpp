@@ -1403,7 +1403,7 @@ ast::Step Parser::parseHaveStep() {
     if (check(lexer::TokenKind::KwProof)) {
         auto block = parseProofBlock();
         auto sub = std::make_unique<ast::ProofBlock>(std::move(block));
-        return {loc, ast::HaveStep{std::move(name), std::move(prop), {}, std::nullopt,
+        return {loc, ast::HaveStep{std::move(name), std::move(prop), {}, {},
                                    std::move(sub)}};
     }
 
@@ -1413,13 +1413,13 @@ ast::Step Parser::parseHaveStep() {
     else
         expect(lexer::TokenKind::KwBy, "expected 'by', 'from', or 'proof' after proposition");
     auto refs = parseJustification();
-    std::optional<ast::ExprPtr> witness;
-    if (check(lexer::TokenKind::KwAt)) {
+    std::vector<ast::ExprPtr> witnesses;
+    while (check(lexer::TokenKind::KwAt)) {
         advance();
-        witness = ast::make_expr(parseExpr());
+        witnesses.push_back(ast::make_expr(parseExpr()));
     }
     return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs),
-                               std::move(witness), nullptr}};
+                               std::move(witnesses), nullptr}};
 }
 
 // then [<prop>] [(by | from) <justification> [at <expr>]]
@@ -1449,7 +1449,7 @@ ast::Step Parser::parseThenStep() {
     };
 
     std::vector<std::string> refs;
-    std::optional<ast::ExprPtr> witness;
+    std::vector<ast::ExprPtr> witnesses;
 
     if (is_bare_then()) {
         // Goal-close form: defer prop to checker via sentinel.
@@ -1460,19 +1460,19 @@ ast::Step Parser::parseThenStep() {
             auto extra = parseJustification();
             refs.insert(refs.end(), extra.begin(), extra.end());
         }
-        return {loc, ast::ThenStep{std::move(dummy), std::move(refs), std::nullopt}};
+        return {loc, ast::ThenStep{std::move(dummy), std::move(refs), {}}};
     }
 
     auto prop = parseProp();
     if (check(K::KwBy) || check(K::KwFrom)) {
         advance();
         refs = parseJustification();
-        if (check(K::KwAt)) {
+        while (check(K::KwAt)) {
             advance();
-            witness = ast::make_expr(parseExpr());
+            witnesses.push_back(ast::make_expr(parseExpr()));
         }
     }
-    return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::move(witness)}};
+    return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::move(witnesses)}};
 }
 
 // contradiction (":" | "from") <justification>
@@ -1930,7 +1930,7 @@ ast::Step Parser::parseStep() {
             std::string ref{advance().lexeme}; // consume the ref name
             // Produce: have _ : ref by ref
             ast::Prop ref_prop{loc, ast::Atomic{ref}};
-            return {loc, ast::HaveStep{"_", std::move(ref_prop), {ref}, std::nullopt}};
+            return {loc, ast::HaveStep{"_", std::move(ref_prop), {ref}, {}}};
         }
         // "we prove that P"
         if (pos_ + 1 < tokens_.size()
@@ -1958,7 +1958,7 @@ ast::Step Parser::parseStep() {
             advance();
             refs = parseJustification();
         }
-        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), {}}};
     }
     if (check(K::KwContradiction)) return parseContradictionStep();
     if (check(K::KwCases))        return parseCasesStep();
@@ -2091,7 +2091,7 @@ ast::Step Parser::parseStep() {
             advance();
             refs = parseJustification();
         }
-        return {loc, ast::HaveStep{"_", std::move(prop), std::move(refs), std::nullopt}};
+        return {loc, ast::HaveStep{"_", std::move(prop), std::move(refs), {}}};
     }
 
     // "since h1 and h2, have name : P"
@@ -2119,7 +2119,7 @@ ast::Step Parser::parseStep() {
                         "expected hypothesis name after 'have'"});
         expect(K::Colon, "expected ':' after hypothesis name");
         auto prop = parseProp();
-        return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), std::nullopt}};
+        return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs), {}}};
     }
 
     // "it suffices to show P"
@@ -2156,7 +2156,7 @@ ast::Step Parser::parseStep() {
             advance();
             refs = parseJustification();
         }
-        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), {}}};
     }
 
     // "which gives P" / "which shows P" → ThenStep{P, []}
@@ -2173,7 +2173,7 @@ ast::Step Parser::parseStep() {
             advance();
             refs = parseJustification();
         }
-        return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::nullopt}};
+        return {loc, ast::ThenStep{std::move(prop), std::move(refs), {}}};
     }
 
     const auto loc = peek().loc;
