@@ -295,14 +295,14 @@ struct HaveStep {
     std::string              name;
     Prop                     prop;
     std::vector<std::string> justification; // ref names after "by"
-    std::optional<ExprPtr>      witness;    // term after "at" — for ForallElim / ExistsIntro
+    std::vector<ExprPtr>     witnesses;     // terms after "at" — chained ForallElim / ExistsIntro
     std::unique_ptr<ProofBlock> sub_proof;  // present when "proof ... end" follows
 };
 
 struct ThenStep {
     Prop                     prop;
     std::vector<std::string> justification;
-    std::optional<ExprPtr>   witness;       // term after "at" — for ForallElim / ExistsIntro
+    std::vector<ExprPtr>     witnesses;     // terms after "at" — chained ForallElim / ExistsIntro
 };
 
 struct ContradictionStep {
