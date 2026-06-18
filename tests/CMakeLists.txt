@@ -88,3 +88,8 @@ add_test(NAME e2e_int_equiv
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_equiv.forall"
 )
+
+add_test(NAME e2e_int_construction
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_construction.forall"
+)
