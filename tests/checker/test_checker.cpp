@@ -5049,6 +5049,31 @@ end
     EXPECT_TRUE(diag.hasErrors());
 }
 
+// ── CN1: Nat as inductive type — auto-generated constructor axioms ─────────────
+
+// Declaring an inductive type generates disjointness axioms for each pair of
+// distinct constructors.  For a two-constructor type (base + recursive),
+// the checker emits <rec>_ne_<base> and <base>_ne_<rec> automatically.
+TEST(CheckerTest, CN1_InductiveType_DisjointnessGenerated) {
+    auto diag = run_checker("cn1_disjointness", R"(
+inductive PeanoN :=
+  pzero : PeanoN
+  psucc : PeanoN -> PeanoN
+
+-- psucc_ne_pzero is auto-generated: for all a0 : PeanoN, not (psucc(a0) = pzero)
+theorem no_succ_zero : not (psucc(pzero) = pzero)
+proof
+  have h : not (psucc(pzero) = pzero) by psucc_ne_pzero at pzero
+  then not (psucc(pzero) = pzero) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // ── Universe levels (TU2) ─────────────────────────────────────────────────────
 
 TEST(CheckerTest, UniverseLevel_TakeType0_Valid) {
@@ -5060,6 +5085,30 @@ proof
   take P : Prop
   suppose h : P
   then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Injectivity axiom is auto-generated for any constructor with arguments.
+// psucc_injective : for all a0 : PeanoN, for all b0 : PeanoN,
+//                    psucc(a0) = psucc(b0) implies a0 = b0
+TEST(CheckerTest, CN1_InductiveType_InjectivityGenerated) {
+    auto diag = run_checker("cn1_injectivity", R"(
+inductive PeanoN :=
+  pzero : PeanoN
+  psucc : PeanoN -> PeanoN
+
+theorem injectivity_holds :
+  psucc(pzero) = psucc(psucc(pzero)) implies pzero = psucc(pzero)
+proof
+  have h : psucc(pzero) = psucc(psucc(pzero)) implies pzero = psucc(pzero)
+           by psucc_injective at pzero at (psucc(pzero))
+  then psucc(pzero) = psucc(psucc(pzero)) implies pzero = psucc(pzero) by h
 end
 )");
     EXPECT_FALSE(diag.hasErrors()) << [&]{
@@ -5085,6 +5134,35 @@ end
     }();
 }
 
+// Structural induction over the auto-declared PeanoN type works as expected.
+TEST(CheckerTest, CN1_InductiveType_InductionPrinciple) {
+    auto diag = run_checker("cn1_induction_principle", R"(
+inductive PeanoN :=
+  pzero : PeanoN
+  psucc : PeanoN -> PeanoN
+
+axiom P_pzero : P(pzero)
+axiom P_psucc : for all n : PeanoN, P(n) implies P(psucc(n))
+
+theorem all_P : for all n : PeanoN, P(n)
+proof
+  take n : PeanoN
+  induction h on n : P(n)
+    case pzero:
+      then P(pzero) by P_pzero
+    case psucc k ih:
+      have h_impl : P(k) implies P(psucc(k)) by P_psucc at k
+      then P(psucc(k)) by h_impl and ih
+  then for all n : PeanoN, P(n) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 TEST(CheckerTest, UniversePoly_TakeUniverseVar) {
     // take u : Universe is accepted; the proof body does not use u
     auto diag = run_checker("universe_poly_take_univ", R"(
@@ -5092,6 +5170,33 @@ theorem univ_binder_trivial : for all u : Universe, 1 = 1
 proof
   take u : Universe
   then 1 = 1 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Explicit axioms stated after an inductive declaration override the auto-generated
+// versions.  The explicit succ_ne_zero uses literal 0 on the RHS; the inductive
+// declaration generates succ_ne_zero with ExprVar{"zero"} on the RHS, but the
+// explicit axiom takes precedence.
+TEST(CheckerTest, CN1_ExplicitAxiomOverridesInductive) {
+    auto diag = run_checker("cn1_explicit_override", R"(
+inductive PeanoN :=
+  pzero : PeanoN
+  psucc : PeanoN -> PeanoN
+
+-- This explicit axiom overrides the auto-generated pzero_ne_psucc.
+axiom psucc_ne_pzero : for all n : PeanoN, not (psucc(n) = pzero)
+
+theorem no_succ_is_zero : for all n : PeanoN, not (psucc(n) = pzero)
+proof
+  take n : PeanoN
+  have h : not (psucc(n) = pzero) by psucc_ne_pzero at n
+  then for all n : PeanoN, not (psucc(n) = pzero) by h
 end
 )");
     EXPECT_FALSE(diag.hasErrors()) << [&]{
@@ -6049,6 +6154,27 @@ definition answer := 42
 theorem result : answer = 42
 proof
   then answer = 42 by refl
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// An inductive type with two base constructors generates the disjointness axiom
+// for the base-base pair as well (e.g., north_ne_south).
+TEST(CheckerTest, CN1_TwoBaseConstructors_Disjointness) {
+    auto diag = run_checker("cn1_two_base_ctors", R"(
+inductive Direction :=
+  north : Direction
+  south : Direction
+
+-- north_ne_south is auto-generated: not (north = south)
+theorem directions_differ : not (north = south)
+proof
+  then not (north = south) by north_ne_south
 end
 )");
     EXPECT_FALSE(diag.hasErrors()) << [&]{
