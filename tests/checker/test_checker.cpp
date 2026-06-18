@@ -4828,3 +4828,39 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── Universe levels (TU2) ─────────────────────────────────────────────────────
+
+TEST(CheckerTest, UniverseLevel_TakeType0_Valid) {
+    // "take T : Type 0" is accepted; the proof can use T as a type annotation.
+    auto diag = run_checker("universe_take_type0", R"(
+theorem type0_trivial : for all T : Type 0, for all P : Prop, P implies P
+proof
+  take T : Type 0
+  take P : Prop
+  suppose h : P
+  then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, UniverseLevel_TakeType1_Valid) {
+    // "take U : Type 1" is accepted — U ranges over Type 0 values.
+    auto diag = run_checker("universe_take_type1", R"(
+theorem type1_trivial : for all U : Type 1, 1 = 1
+proof
+  take U : Type 1
+  then 1 = 1 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}

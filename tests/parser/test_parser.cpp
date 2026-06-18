@@ -3522,3 +3522,35 @@ TEST(ParserTest, NamespaceAlias_SingleSegment) {
     EXPECT_EQ(r.mod.decls[0]->name, "A");
     EXPECT_EQ(r.mod.decls[0]->alias_target, "Foo");
 }
+
+// ── Universe levels (TU2) ─────────────────────────────────────────────────────
+
+TEST(ParserTest, UniverseLevel_Type0_InAxiom) {
+    // "axiom a : for all T : Type 0, T = T" parses the binder type as TypeType{0}
+    auto r = parse_str("axiom a : for all T : Type 0, T = T");
+    ASSERT_FALSE(r.diag.hasErrors()) << [&]{
+        std::string m; for (auto& d : r.diag.diagnostics()) m += d.message + "\n"; return m; }();
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto& prop = r.mod.decls[0]->statement;
+    const auto* fa = std::get_if<PropForall>(&prop.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* tt = std::get_if<TypeType>(&fa->type->node);
+    ASSERT_NE(tt, nullptr);
+    EXPECT_TRUE(tt->level.has_value());
+    EXPECT_EQ(*tt->level, 0u);
+}
+
+TEST(ParserTest, UniverseLevel_Type1_InAxiom) {
+    // "axiom a : for all U : Type 1, U = U" parses the binder type as TypeType{1}
+    auto r = parse_str("axiom a : for all U : Type 1, U = U");
+    ASSERT_FALSE(r.diag.hasErrors());
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    const auto* tt = std::get_if<TypeType>(&fa->type->node);
+    ASSERT_NE(tt, nullptr);
+    EXPECT_TRUE(tt->level.has_value());
+    EXPECT_EQ(*tt->level, 1u);
+}
