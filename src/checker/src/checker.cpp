@@ -5967,6 +5967,137 @@ ModuleResult check_module(const std::filesystem::path& path,
                     }
                     break;
                 }
+                case ast::DeclKind::Inductive: {
+                    // Register the inductive type and generate auto-axioms.
+                    const std::string& itype = inner->name;
+                    const std::string iprefix = prefix;
+                    inductive_env[itype] = inner->inductive_ctors;
+                    const auto& ictors = inner->inductive_ctors;
+
+                    auto make_type_node_ns = [&](const std::string& tname) -> ast::TypeNode {
+                        if (tname == "Nat")  return ast::TypeNode{{ast::TypeNat{}}};
+                        if (tname == "Int")  return ast::TypeNode{{ast::TypeInt{}}};
+                        if (tname == "Real") return ast::TypeNode{{ast::TypeReal{}}};
+                        if (tname == "Rat")  return ast::TypeNode{{ast::TypeRat{}}};
+                        return ast::TypeNode{{ast::TypeUser{tname}}};
+                    };
+
+                    auto wrap_forall_ns = [&](ast::Prop p,
+                        const std::vector<std::pair<std::string,ast::TypeNode>>& binders) -> ast::Prop {
+                        for (int i = static_cast<int>(binders.size()) - 1; i >= 0; --i) {
+                            const auto& [v, t] = binders[static_cast<std::size_t>(i)];
+                            p = ast::Prop{{}, ast::PropForall{v, std::make_optional(t), ast::make_prop(std::move(p))}};
+                        }
+                        return p;
+                    };
+
+                    auto ctor_expr_ns = [&](const std::string& cname,
+                                            const std::vector<std::string>& vars) -> ast::Expr {
+                        if (vars.empty()) return ast::Expr{{}, ast::ExprVar{cname}};
+                        std::vector<ast::ExprPtr> ae;
+                        for (const auto& v : vars)
+                            ae.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{v}}));
+                        return ast::Expr{{}, ast::ExprCall{cname, std::move(ae)}};
+                    };
+
+                    // Induction principle
+                    ast::TypeNode it_type{{ast::TypeUser{itype}}};
+                    const std::string ind_nm = itype + "_ind";
+                    ast::Prop ind_pr{{}, ast::PropForall{"_n", std::make_optional(it_type),
+                                                          ast::make_prop(ast::Prop{{}, ast::Atomic{"_P"}})}};
+                    if (auto ri = kernel.introduce_axiom(ind_pr)) {
+                        const std::string qind = iprefix + ind_nm;
+                        module_env.try_emplace(ind_nm, HypEntry{*ri, EntryKind::Derived});
+                        module_env.try_emplace(qind,   HypEntry{std::move(*ri), EntryKind::Derived});
+                    }
+
+                    // Disjointness axioms
+                    for (std::size_t ii = 0; ii < ictors.size(); ++ii) {
+                        for (std::size_t ji = 0; ji < ictors.size(); ++ji) {
+                            if (ii == ji) continue;
+                            const auto& cii = ictors[ii];
+                            const auto& cji = ictors[ji];
+                            if (ii > ji && cii.arg_types.empty() && cji.arg_types.empty()) continue;
+                            if (ii > ji && !cii.arg_types.empty() && !cji.arg_types.empty()) continue;
+                            std::vector<std::pair<std::string,ast::TypeNode>> ci_b, cj_b;
+                            std::vector<std::string> ci_v, cj_v;
+                            for (std::size_t k = 0; k < cii.arg_types.size(); ++k) {
+                                std::string v = "a" + std::to_string(k);
+                                ci_v.push_back(v);
+                                ci_b.emplace_back(v, make_type_node_ns(cii.arg_types[k]));
+                            }
+                            for (std::size_t k = 0; k < cji.arg_types.size(); ++k) {
+                                std::string v = "b" + std::to_string(k);
+                                cj_v.push_back(v);
+                                cj_b.emplace_back(v, make_type_node_ns(cji.arg_types[k]));
+                            }
+                            ast::Prop neq{{}, ast::PropNot{ast::make_prop(ast::Prop{{},
+                                ast::PropRel{
+                                    ast::make_expr(ctor_expr_ns(cii.name, ci_v)),
+                                    ast::make_expr(ctor_expr_ns(cji.name, cj_v)),
+                                    ast::RelOp::Eq}})}};
+                            std::vector<std::pair<std::string,ast::TypeNode>> all_b;
+                            all_b.insert(all_b.end(), ci_b.begin(), ci_b.end());
+                            all_b.insert(all_b.end(), cj_b.begin(), cj_b.end());
+                            ast::Prop dp = wrap_forall_ns(std::move(neq), all_b);
+                            const std::string dn = cii.name + "_ne_" + cji.name;
+                            if (auto dr = kernel.introduce_axiom(dp)) {
+                                const std::string qdn = iprefix + dn;
+                                module_env.try_emplace(dn,  HypEntry{*dr,            EntryKind::Derived});
+                                module_env.try_emplace(qdn, HypEntry{std::move(*dr), EntryKind::Derived});
+                            }
+                        }
+                    }
+
+                    // Injectivity axioms
+                    for (const auto& cii : ictors) {
+                        if (cii.arg_types.empty()) continue;
+                        std::vector<std::pair<std::string,ast::TypeNode>> ab, bb;
+                        std::vector<std::string> av, bv;
+                        for (std::size_t k = 0; k < cii.arg_types.size(); ++k) {
+                            std::string va = "a" + std::to_string(k);
+                            std::string vb = "b" + std::to_string(k);
+                            ast::TypeNode t = make_type_node_ns(cii.arg_types[k]);
+                            av.push_back(va); bv.push_back(vb);
+                            ab.emplace_back(va, t); bb.emplace_back(vb, t);
+                        }
+                        ast::Prop eq_c{{}, ast::PropRel{
+                            ast::make_expr(ctor_expr_ns(cii.name, av)),
+                            ast::make_expr(ctor_expr_ns(cii.name, bv)),
+                            ast::RelOp::Eq}};
+                        ast::Prop conc;
+                        if (cii.arg_types.size() == 1) {
+                            conc = ast::Prop{{}, ast::PropRel{
+                                ast::make_expr(ast::Expr{{}, ast::ExprVar{av[0]}}),
+                                ast::make_expr(ast::Expr{{}, ast::ExprVar{bv[0]}}),
+                                ast::RelOp::Eq}};
+                        } else {
+                            conc = ast::Prop{{}, ast::PropRel{
+                                ast::make_expr(ast::Expr{{}, ast::ExprVar{av.back()}}),
+                                ast::make_expr(ast::Expr{{}, ast::ExprVar{bv.back()}}),
+                                ast::RelOp::Eq}};
+                            for (int k2 = static_cast<int>(cii.arg_types.size()) - 2; k2 >= 0; --k2) {
+                                ast::Prop lk{{}, ast::PropRel{
+                                    ast::make_expr(ast::Expr{{}, ast::ExprVar{av[static_cast<std::size_t>(k2)]}}),
+                                    ast::make_expr(ast::Expr{{}, ast::ExprVar{bv[static_cast<std::size_t>(k2)]}}),
+                                    ast::RelOp::Eq}};
+                                conc = ast::Prop{{}, ast::PropAnd{ast::make_prop(std::move(lk)), ast::make_prop(std::move(conc))}};
+                            }
+                        }
+                        ast::Prop impl{{}, ast::PropImpl{ast::make_prop(std::move(eq_c)), ast::make_prop(std::move(conc))}};
+                        std::vector<std::pair<std::string,ast::TypeNode>> all_b;
+                        all_b.insert(all_b.end(), ab.begin(), ab.end());
+                        all_b.insert(all_b.end(), bb.begin(), bb.end());
+                        ast::Prop inj_p = wrap_forall_ns(std::move(impl), all_b);
+                        const std::string in_nm = cii.name + "_injective";
+                        if (auto ir = kernel.introduce_axiom(inj_p)) {
+                            const std::string qin = iprefix + in_nm;
+                            module_env.try_emplace(in_nm, HypEntry{*ir,            EntryKind::Derived});
+                            module_env.try_emplace(qin,   HypEntry{std::move(*ir), EntryKind::Derived});
+                        }
+                    }
+                    break;
+                }
                 default:
                     // Other kinds (imports, structures, etc.) inside a namespace
                     // are not yet supported; ignore silently.
@@ -6089,6 +6220,41 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Inductive: {
             const std::string& type_name = decl->name;
             inductive_env[type_name] = decl->inductive_ctors;
+            const auto& ctors = decl->inductive_ctors;
+
+            // Helper: convert a raw arg-type string to a TypeNode.
+            auto make_type_node = [&](const std::string& tname) -> ast::TypeNode {
+                if (tname == "Nat")  return ast::TypeNode{{ast::TypeNat{}}};
+                if (tname == "Int")  return ast::TypeNode{{ast::TypeInt{}}};
+                if (tname == "Real") return ast::TypeNode{{ast::TypeReal{}}};
+                if (tname == "Rat")  return ast::TypeNode{{ast::TypeRat{}}};
+                return ast::TypeNode{{ast::TypeUser{tname}}};
+            };
+
+            // Helper: wrap prop P in ∀ v : T, P for a list of (var, type) pairs
+            // (outermost first in the list → innermost in the nesting).
+            auto wrap_forall = [&](ast::Prop p,
+                                   const std::vector<std::pair<std::string,ast::TypeNode>>& binders)
+                -> ast::Prop {
+                for (int i = static_cast<int>(binders.size()) - 1; i >= 0; --i) {
+                    const auto& [v, t] = binders[static_cast<std::size_t>(i)];
+                    p = ast::Prop{{}, ast::PropForall{v, std::make_optional(t),
+                                                      ast::make_prop(std::move(p))}};
+                }
+                return p;
+            };
+
+            // Helper: build ExprCall{ctor_name, [ExprVar{v0}, ExprVar{v1}, ...]}
+            // (or ExprVar{ctor_name} when there are no args).
+            auto ctor_expr = [&](const std::string& cname,
+                                 const std::vector<std::string>& vars) -> ast::Expr {
+                if (vars.empty())
+                    return ast::Expr{{}, ast::ExprVar{cname}};
+                std::vector<ast::ExprPtr> arg_exprs;
+                for (const auto& v : vars)
+                    arg_exprs.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{v}}));
+                return ast::Expr{{}, ast::ExprCall{cname, std::move(arg_exprs)}};
+            };
 
             // Generate induction principle as an axiom:
             //   Name_ind : ∀ var : T, P(var)
@@ -6102,9 +6268,6 @@ ModuleResult check_module(const std::filesystem::path& path,
             // The axiom is stored under "T_ind" so users can reference it if needed.
             ast::TypeNode t_type{{ast::TypeUser{type_name}}};
             const std::string ind_name = type_name + "_ind";
-            // The principle is: ∀ n : T, P(n)  (symbolic; the body P is universally abstracted)
-            // We use an opaque prop so the axiom exists in module_env but is only
-            // applied structurally through check_induction_step.
             ast::Prop ind_principle{{},
                 ast::PropForall{"_n", std::make_optional(t_type),
                                 ast::make_prop(ast::Prop{{}, ast::Atomic{"_P"}})}};
@@ -6112,6 +6275,128 @@ ModuleResult check_module(const std::filesystem::path& path,
             if (r)
                 module_env.insert_or_assign(ind_name,
                                             HypEntry{std::move(*r), EntryKind::Derived});
+
+            // Generate disjointness axioms: for each pair of distinct constructors
+            // (ci, cj) where ci has at least one arg and cj has no args, generate:
+            //   ci_ne_cj : ∀ a1:T1, ..., ci(a1,...) ≠ cj
+            // For two 0-arg constructors (like red ≠ blue) also generate both directions.
+            for (std::size_t i = 0; i < ctors.size(); ++i) {
+                for (std::size_t j = 0; j < ctors.size(); ++j) {
+                    if (i == j) continue;
+                    const auto& ci = ctors[i];
+                    const auto& cj = ctors[j];
+                    // Only generate ci_ne_cj (not cj_ne_ci separately) when i < j
+                    // to avoid duplicate names; generate both directions when needed.
+                    if (i > j && ci.arg_types.empty() && cj.arg_types.empty()) continue;
+                    if (i > j && !ci.arg_types.empty() && !cj.arg_types.empty()) continue;
+
+                    // Build binder list for ci's args: a0:T0, a1:T1, ...
+                    std::vector<std::pair<std::string,ast::TypeNode>> ci_binders;
+                    std::vector<std::string> ci_vars;
+                    for (std::size_t k = 0; k < ci.arg_types.size(); ++k) {
+                        std::string v = "a" + std::to_string(k);
+                        ci_vars.push_back(v);
+                        ci_binders.emplace_back(v, make_type_node(ci.arg_types[k]));
+                    }
+                    // Build binder list for cj's args.
+                    std::vector<std::pair<std::string,ast::TypeNode>> cj_binders;
+                    std::vector<std::string> cj_vars;
+                    for (std::size_t k = 0; k < cj.arg_types.size(); ++k) {
+                        std::string v = "b" + std::to_string(k);
+                        cj_vars.push_back(v);
+                        cj_binders.emplace_back(v, make_type_node(cj.arg_types[k]));
+                    }
+
+                    // ci(a0,...) ≠ cj(b0,...)
+                    ast::Prop neq{{},
+                        ast::PropNot{ast::make_prop(ast::Prop{{},
+                            ast::PropRel{
+                                ast::make_expr(ctor_expr(ci.name, ci_vars)),
+                                ast::make_expr(ctor_expr(cj.name, cj_vars)),
+                                ast::RelOp::Eq}})}};
+
+                    // Wrap in ∀ for all binders (ci first, then cj).
+                    std::vector<std::pair<std::string,ast::TypeNode>> all_binders;
+                    all_binders.insert(all_binders.end(), ci_binders.begin(), ci_binders.end());
+                    all_binders.insert(all_binders.end(), cj_binders.begin(), cj_binders.end());
+                    ast::Prop disjoint_prop = wrap_forall(std::move(neq), all_binders);
+
+                    const std::string dname = ci.name + "_ne_" + cj.name;
+                    auto dr = kernel.introduce_axiom(disjoint_prop);
+                    if (dr)
+                        module_env.try_emplace(dname,
+                                               HypEntry{std::move(*dr), EntryKind::Derived});
+                }
+            }
+
+            // Generate injectivity axioms: for each constructor ci with args, generate:
+            //   ci_injective : ∀ a0:T0, ∀ b0:T0, ci(a0,...) = ci(b0,...) → a0=b0 ∧ ...
+            // For single-arg constructors (the common case) this simplifies to:
+            //   ci_injective : ∀ a0:T0, ∀ b0:T0, ci(a0) = ci(b0) → a0 = b0
+            for (const auto& ci : ctors) {
+                if (ci.arg_types.empty()) continue;  // no injectivity for 0-arg ctors
+
+                // Build "a" vars and "b" vars.
+                std::vector<std::pair<std::string,ast::TypeNode>> a_binders, b_binders;
+                std::vector<std::string> a_vars, b_vars;
+                for (std::size_t k = 0; k < ci.arg_types.size(); ++k) {
+                    std::string av = "a" + std::to_string(k);
+                    std::string bv = "b" + std::to_string(k);
+                    ast::TypeNode t = make_type_node(ci.arg_types[k]);
+                    a_vars.push_back(av);
+                    b_vars.push_back(bv);
+                    a_binders.emplace_back(av, t);
+                    b_binders.emplace_back(bv, t);
+                }
+
+                // Build ci(a0,...) = ci(b0,...) → conclusion
+                ast::Prop eq_ctors{{},
+                    ast::PropRel{
+                        ast::make_expr(ctor_expr(ci.name, a_vars)),
+                        ast::make_expr(ctor_expr(ci.name, b_vars)),
+                        ast::RelOp::Eq}};
+
+                // Conclusion: a0=b0 ∧ a1=b1 ∧ ... (right-associated)
+                ast::Prop conclusion;
+                if (ci.arg_types.size() == 1) {
+                    conclusion = ast::Prop{{}, ast::PropRel{
+                        ast::make_expr(ast::Expr{{}, ast::ExprVar{a_vars[0]}}),
+                        ast::make_expr(ast::Expr{{}, ast::ExprVar{b_vars[0]}}),
+                        ast::RelOp::Eq}};
+                } else {
+                    // Build right-spine conjunction.
+                    conclusion = ast::Prop{{}, ast::PropRel{
+                        ast::make_expr(ast::Expr{{}, ast::ExprVar{a_vars.back()}}),
+                        ast::make_expr(ast::Expr{{}, ast::ExprVar{b_vars.back()}}),
+                        ast::RelOp::Eq}};
+                    for (int k = static_cast<int>(ci.arg_types.size()) - 2; k >= 0; --k) {
+                        ast::Prop lk{{}, ast::PropRel{
+                            ast::make_expr(ast::Expr{{}, ast::ExprVar{a_vars[static_cast<std::size_t>(k)]}}),
+                            ast::make_expr(ast::Expr{{}, ast::ExprVar{b_vars[static_cast<std::size_t>(k)]}}),
+                            ast::RelOp::Eq}};
+                        conclusion = ast::Prop{{}, ast::PropAnd{
+                            ast::make_prop(std::move(lk)),
+                            ast::make_prop(std::move(conclusion))}};
+                    }
+                }
+
+                ast::Prop impl{{}, ast::PropImpl{
+                    ast::make_prop(std::move(eq_ctors)),
+                    ast::make_prop(std::move(conclusion))}};
+
+                // Wrap in ∀ a0:T0, ∀ b0:T0, ...
+                std::vector<std::pair<std::string,ast::TypeNode>> all_binders;
+                all_binders.insert(all_binders.end(), a_binders.begin(), a_binders.end());
+                all_binders.insert(all_binders.end(), b_binders.begin(), b_binders.end());
+                ast::Prop inj_prop = wrap_forall(std::move(impl), all_binders);
+
+                const std::string iname = ci.name + "_injective";
+                auto ir = kernel.introduce_axiom(inj_prop);
+                if (ir)
+                    module_env.try_emplace(iname,
+                                           HypEntry{std::move(*ir), EntryKind::Derived});
+            }
+
             break;
         }
         }
