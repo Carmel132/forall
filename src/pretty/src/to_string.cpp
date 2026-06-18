@@ -10,8 +10,11 @@ std::string to_string(const ast::TypeNode& t) {
         if constexpr (std::is_same_v<T, ast::TypeRat>)  return "Rat";
         if constexpr (std::is_same_v<T, ast::TypeReal>) return "Real";
         if constexpr (std::is_same_v<T, ast::TypeProp>) return "Prop";
-        if constexpr (std::is_same_v<T, ast::TypeType>)
+        if constexpr (std::is_same_v<T, ast::TypeType>) {
+            if (!n.univ_expr.empty()) return "Type " + n.univ_expr;
             return n.level.has_value() ? "Type " + std::to_string(*n.level) : "Type";
+        }
+        if constexpr (std::is_same_v<T, ast::TypeUniv>) return "Universe";
         if constexpr (std::is_same_v<T, ast::TypeUser>) return n.name;
         if constexpr (std::is_same_v<T, ast::TypeFun>) {
             // right-associative: lhs needs parens only when it is also a TypeFun
