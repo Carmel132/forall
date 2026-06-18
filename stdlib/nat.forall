@@ -1,15 +1,24 @@
 -- Peano arithmetic for Nat
 --
--- succ(n) is the successor of n. It is not a built-in; it appears here as
--- an ordinary function name in axiom statements (ExprCall). No FuncSigTable
--- entry is needed — axioms are accepted unconditionally by the kernel.
+-- succ(n) is the successor of n.  The inductive declaration below
+-- auto-generates the induction principle (Nat_ind) and the constructor
+-- separation axioms (succ_ne_zero, zero_ne_succ, succ_injective).
+-- Explicit axioms override the auto-generated ones where the literal 0
+-- must appear instead of the constructor name "zero".
 --
 -- All declarations live in the Nat namespace; import this file and use
 -- "open Nat" or qualified names like "Nat.add_zero".
 
 namespace Nat
 
--- Successor is never zero, and is injective.
+-- Declare Nat as an inductive type.  Auto-generates Nat_ind (induction
+-- principle), succ_ne_zero, zero_ne_succ, succ_injective.
+inductive Nat :=
+  zero : Nat
+  succ : Nat -> Nat
+
+-- Override auto-generated succ_ne_zero/succ_injective with forms that use
+-- the numeric literal 0 on the right-hand side, matching how proofs write 0.
 axiom succ_ne_zero : for all n : Nat, not (succ(n) = 0)
 axiom succ_injective : for all n : Nat, for all m : Nat, succ(n) = succ(m) implies n = m
 
