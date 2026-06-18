@@ -1098,19 +1098,60 @@ ast::TypeNode Parser::parseType() {
     else if (name == "Rat")  base = ast::TypeNode{ast::TypeRat{}};
     else if (name == "Real") base = ast::TypeNode{ast::TypeReal{}};
     else if (name == "Prop") base = ast::TypeNode{ast::TypeProp{}};
+    else if (name == "Universe") {
+        base = ast::TypeNode{ast::TypeUniv{}};
+    }
     else if (name == "Type") {
-        // Optional numeric level: "Type 0", "Type 1", "Type 2", ...
+        // Numeric level: "Type 0", "Type 1", ...
         if (check(K::Number) && peek().lexeme.find('.') == std::string::npos) {
             std::size_t pos = 0;
             unsigned long lv = std::stoul(peek().lexeme, &pos);
             if (pos == peek().lexeme.size()) {
                 advance();
-                base = ast::TypeNode{ast::TypeType{static_cast<unsigned>(lv)}};
+                base = ast::TypeNode{ast::TypeType{static_cast<unsigned>(lv), ""}};
             } else {
-                base = ast::TypeNode{ast::TypeType{std::nullopt}};
+                base = ast::TypeNode{ast::TypeType{std::nullopt, ""}};
             }
-        } else {
-            base = ast::TypeNode{ast::TypeType{std::nullopt}};
+        }
+        // Universe-variable level: "Type u", "Type u+1" where u is a single
+        // lowercase letter (universe variable convention: u, v, w).
+        // Restrict to single-character names to avoid consuming field names or
+        // type names that appear after "Type" on the following line.
+        else if (check(K::Identifier) && peek().lexeme.size() == 1
+                 && peek().lexeme[0] >= 'a' && peek().lexeme[0] <= 'z') {
+            std::string uvar = peek().lexeme;
+            advance();
+            // Check for successor: u+1
+            if (check(K::Plus)) {
+                advance();
+                if (check(K::Number) && peek().lexeme == "1") {
+                    advance();
+                    base = ast::TypeNode{ast::TypeType{std::nullopt, uvar + "+1"}};
+                } else {
+                    base = ast::TypeNode{ast::TypeType{std::nullopt, uvar}};
+                }
+            } else {
+                base = ast::TypeNode{ast::TypeType{std::nullopt, uvar}};
+            }
+        }
+        // "Type (max u v)"
+        else if (check(K::LParen)) {
+            // Peek ahead: if next identifier after '(' is "max", parse max expr
+            std::size_t saved = pos_;
+            advance(); // consume '('
+            if (check(K::Identifier) && peek().lexeme == "max") {
+                advance(); // consume "max"
+                std::string u = check(K::Identifier) ? (advance(), tokens_[pos_-1].lexeme) : "?";
+                std::string v = check(K::Identifier) ? (advance(), tokens_[pos_-1].lexeme) : "?";
+                if (check(K::RParen)) advance();
+                base = ast::TypeNode{ast::TypeType{std::nullopt, "max " + u + " " + v}};
+            } else {
+                pos_ = saved; // restore: not a max expr, bare "Type"
+                base = ast::TypeNode{ast::TypeType{std::nullopt, ""}};
+            }
+        }
+        else {
+            base = ast::TypeNode{ast::TypeType{std::nullopt, ""}};
         }
     }
     else if (name == "Set") {
