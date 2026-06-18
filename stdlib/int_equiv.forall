@@ -1,0 +1,56 @@
+import "nat_theorems.forall"
+open Nat
+
+-- Construction of ℤ from pairs (a, b) : Nat × Nat representing a - b.
+--
+-- Two pairs (a, b) and (c, d) represent the same integer when a - b = c - d,
+-- equivalently when a + d = b + c.  This is int_equiv.
+
+-- The equivalence relation on difference pairs.
+-- int_equiv a b c d means the pairs (a,b) and (c,d) represent the same integer.
+definition int_equiv (a : Nat) (b : Nat) (c : Nat) (d : Nat) : Prop :=
+    a + d = b + c
+
+-- Reflexivity: (a, b) ~ (a, b)  since  a + b = b + a.
+theorem int_equiv_refl : for all a : Nat, for all b : Nat, a + b = b + a
+proof
+  take a : Nat
+  take b : Nat
+  -- add_comm : ∀ a b, a + b = b + a.  at a → ∀ b, a + b = b + a.  at b → a + b = b + a.
+  have h1 : for all b : Nat, a + b = b + a by add_comm at a
+  then a + b = b + a by h1 at b
+end
+
+-- Symmetry: if (a,b) ~ (c,d)  then  (c,d) ~ (a,b).
+-- Condition: a + d = b + c  implies  c + b = d + a.
+theorem int_equiv_symm :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        a + d = b + c implies c + b = d + a
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h : a + d = b + c
+  then c + b = d + a by omega
+end
+
+-- Transitivity: if (a,b) ~ (c,d) and (c,d) ~ (e,f)  then  (a,b) ~ (e,f).
+-- Conditions: a + d = b + c  and  c + f = d + e  imply  a + f = b + e.
+-- Proof: add the two equations:  (a+d) + (c+f) = (b+c) + (d+e)
+--        cancel c+d from both sides to get  a + f = b + e.
+theorem int_equiv_trans :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+    for all d : Nat, for all e : Nat, for all f : Nat,
+        a + d = b + c implies c + f = d + e implies a + f = b + e
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  suppose h1 : a + d = b + c
+  suppose h2 : c + f = d + e
+  then a + f = b + e by omega
+end
