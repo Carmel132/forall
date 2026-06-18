@@ -103,3 +103,8 @@ add_test(NAME e2e_rat_theorems
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/rat_theorems.forall"
 )
+
+add_test(NAME e2e_real_theorems
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_theorems.forall"
+)
