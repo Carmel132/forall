@@ -1,4 +1,5 @@
 build/
+build_msvc/
 .cache/
 compile_commands.json
 CMakeFiles/
