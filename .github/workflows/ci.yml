@@ -29,6 +29,13 @@ jobs:
           echo "CC=gcc-14"   >> $GITHUB_ENV
           echo "CXX=g++-14" >> $GITHUB_ENV
 
+      # windows-latest ships VS 2022 with MSVC cl.exe.  Use Ninja so the build
+      # is single-config (Release only) and avoids VS generator quirks.
+      # cl.exe is on PATH inside the runner's MSVC Developer environment.
+      - name: Set MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       # Cache the FetchContent download of googletest.
       # FETCHCONTENT_BASE_DIR points CMake at .cmake-deps/ (gitignored) instead of
       # build/_deps/, so the cached tree persists across runs without touching the repo.
@@ -41,10 +48,20 @@ jobs:
           key: ${{ runner.os }}-cmake-deps-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: ${{ runner.os }}-cmake-deps-
 
-      - name: Configure
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_BASE_DIR="${{ github.workspace }}/.cmake-deps"
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=cl
+          -DCMAKE_C_COMPILER=cl
           -DFETCHCONTENT_BASE_DIR="${{ github.workspace }}/.cmake-deps"
 
       - name: Build
