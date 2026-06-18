@@ -26,7 +26,13 @@ struct TypeInt  { bool operator==(const TypeInt&)  const = default; };  // ℤ
 struct TypeRat  { bool operator==(const TypeRat&)  const = default; };  // ℚ
 struct TypeReal { bool operator==(const TypeReal&) const = default; };  // ℝ
 struct TypeProp { bool operator==(const TypeProp&) const = default; };  // Prop
-struct TypeType { bool operator==(const TypeType&) const = default; };  // Type (universe)
+// Type universe.  level==nullopt means "Type" (level-polymorphic / unspecified).
+// level==0 is "Type 0", level==1 is "Type 1", etc.
+// Ground types like Nat live in Type 0; Type 0 itself lives in Type 1.
+struct TypeType {
+    std::optional<unsigned> level;
+    bool operator==(const TypeType& o) const = default;
+};
 struct TypeUser {
     std::string name;
     bool operator==(const TypeUser&) const = default;
@@ -78,7 +84,8 @@ inline TypeNode type_int()                   { return TypeNode{TypeInt{}}; }
 inline TypeNode type_rat()                   { return TypeNode{TypeRat{}}; }
 inline TypeNode type_real()                  { return TypeNode{TypeReal{}}; }
 inline TypeNode type_prop()                  { return TypeNode{TypeProp{}}; }
-inline TypeNode type_type()                  { return TypeNode{TypeType{}}; }
+inline TypeNode type_type()                  { return TypeNode{TypeType{std::nullopt}}; }
+inline TypeNode type_type(unsigned level)    { return TypeNode{TypeType{level}}; }
 inline TypeNode type_user(std::string name)  { return TypeNode{TypeUser{std::move(name)}}; }
 inline TypeNode type_fun(TypeNode domain, TypeNode codomain) {
     return TypeNode{TypeFun{std::make_shared<TypeNode>(std::move(domain)),
@@ -596,6 +603,11 @@ Expr subst(const Expr& expr, const std::string& var, const Expr& replacement);
 // Replaces every structurally-equal occurrence of `find` inside `prop` with
 // `replace`.  Used to implement `rewrite ↔ h` (propositional rewriting).
 [[nodiscard]] Prop subst_prop(const Prop& prop, const Prop& find, const Prop& replace);
+
+// infer_type_of_type: given a TypeNode, return the universe it lives in.
+// Nat / Int / Rat / Real / Prop / TypeUser / TypeFun / TypeTuple / TypeSet / TypePi → Type 0
+// Type n → Type (n+1);  Type (no level) → Type 1
+[[nodiscard]] TypeNode infer_type_of_type(const TypeNode& t);
 
 // subst_type: type-level substitution of a term variable.
 // Replaces every occurrence of TypeUser{var} in `t` with TypeUser{arg_name}
