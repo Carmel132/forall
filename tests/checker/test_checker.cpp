@@ -4899,3 +4899,74 @@ end
         return msg;
     }();
 }
+
+TEST(CheckerTest, IntEquivRefl) {
+    // int_equiv_refl: a + b = b + a, proved using inlined add_comm axiom
+    auto diag = run_checker("int_equiv_refl", R"(
+axiom add_comm : for all a : Nat, for all b : Nat, a + b = b + a
+
+definition int_equiv (a : Nat) (b : Nat) (c : Nat) (d : Nat) : Prop :=
+    a + d = b + c
+
+theorem int_equiv_refl : for all a : Nat, for all b : Nat, a + b = b + a
+proof
+  take a : Nat
+  take b : Nat
+  have h1 : for all b : Nat, a + b = b + a by add_comm at a
+  then a + b = b + a by h1 at b
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntEquivSymm) {
+    // int_equiv_symm: a + d = b + c implies c + b = d + a, proved by omega
+    auto diag = run_checker("int_equiv_symm", R"(
+theorem int_equiv_symm :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        a + d = b + c implies c + b = d + a
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h : a + d = b + c
+  then c + b = d + a by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntEquivTrans) {
+    // int_equiv_trans: a+d=b+c and c+f=d+e implies a+f=b+e, proved by omega
+    auto diag = run_checker("int_equiv_trans", R"(
+theorem int_equiv_trans :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+    for all d : Nat, for all e : Nat, for all f : Nat,
+        a + d = b + c implies c + f = d + e implies a + f = b + e
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  suppose h1 : a + d = b + c
+  suppose h2 : c + f = d + e
+  then a + f = b + e by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
