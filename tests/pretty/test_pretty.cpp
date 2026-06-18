@@ -413,10 +413,14 @@ TEST(PrettyType, GroundTypes) {
     EXPECT_EQ(tst(type_real()),         "Real");
     EXPECT_EQ(tst(type_prop()),         "Prop");
     EXPECT_EQ(tst(type_user("Group")),  "Group");
-    EXPECT_EQ(tst(type_type()),         "Type");
-    EXPECT_EQ(tst(type_type(0u)),       "Type 0");
-    EXPECT_EQ(tst(type_type(1u)),       "Type 1");
-    EXPECT_EQ(tst(type_type(2u)),       "Type 2");
+    EXPECT_EQ(tst(type_type()),              "Type");
+    EXPECT_EQ(tst(type_type(0u)),            "Type 0");
+    EXPECT_EQ(tst(type_type(1u)),            "Type 1");
+    EXPECT_EQ(tst(type_type(2u)),            "Type 2");
+    EXPECT_EQ(tst(type_type(std::string{"u"})),      "Type u");
+    EXPECT_EQ(tst(type_type(std::string{"u+1"})),    "Type u+1");
+    EXPECT_EQ(tst(type_type(std::string{"max u v"})),"Type max u v");
+    EXPECT_EQ(tst(type_univ()),              "Universe");
 }
 
 TEST(PrettyType, FunctionTypeSimple) {

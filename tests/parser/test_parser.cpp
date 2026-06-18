@@ -3554,3 +3554,63 @@ TEST(ParserTest, UniverseLevel_Type1_InAxiom) {
     EXPECT_TRUE(tt->level.has_value());
     EXPECT_EQ(*tt->level, 1u);
 }
+
+TEST(ParserTest, UniversePoly_UniverseKeyword) {
+    // "axiom a : for all u : Universe, 1 = 1" — Universe is a valid type keyword
+    auto r = parse_str("axiom a : for all u : Universe, 1 = 1");
+    ASSERT_FALSE(r.diag.hasErrors()) << [&]{
+        std::string m; for (auto& d : r.diag.diagnostics()) m += d.message + "\n"; return m; }();
+    ASSERT_EQ(r.mod.decls.size(), 1u);
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_TRUE(std::holds_alternative<TypeUniv>(fa->type->node));
+}
+
+TEST(ParserTest, UniversePoly_TypeVarLevel) {
+    // "for all u : Universe, for all T : Type u, T = T"
+    // The inner binder "Type u" produces TypeType{nullopt, "u"}
+    auto r = parse_str("axiom a : for all u : Universe, for all T : Type u, T = T");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    EXPECT_TRUE(std::holds_alternative<TypeUniv>(fa->type->node));
+    const auto* inner = std::get_if<PropForall>(&fa->body->node);
+    ASSERT_NE(inner, nullptr);
+    ASSERT_TRUE(inner->type.has_value());
+    const auto* tt = std::get_if<TypeType>(&inner->type->node);
+    ASSERT_NE(tt, nullptr);
+    EXPECT_FALSE(tt->level.has_value());
+    EXPECT_EQ(tt->univ_expr, "u");
+}
+
+TEST(ParserTest, UniversePoly_TypeSuccLevel) {
+    // "Type u+1" produces TypeType{nullopt, "u+1"}
+    auto r = parse_str("axiom a : for all u : Universe, for all T : Type u+1, T = T");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    const auto* inner = std::get_if<PropForall>(&fa->body->node);
+    ASSERT_NE(inner, nullptr);
+    ASSERT_TRUE(inner->type.has_value());
+    const auto* tt = std::get_if<TypeType>(&inner->type->node);
+    ASSERT_NE(tt, nullptr);
+    EXPECT_EQ(tt->univ_expr, "u+1");
+}
+
+TEST(ParserTest, UniversePoly_TypeMaxLevel) {
+    // "Type (max u v)" produces TypeType{nullopt, "max u v"}
+    auto r = parse_str(
+        "axiom a : for all u : Universe, for all v : Universe, for all T : Type (max u v), T = T");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr);
+    const auto* fa2 = std::get_if<PropForall>(&fa->body->node);
+    ASSERT_NE(fa2, nullptr);
+    const auto* fa3 = std::get_if<PropForall>(&fa2->body->node);
+    ASSERT_NE(fa3, nullptr);
+    ASSERT_TRUE(fa3->type.has_value());
+    const auto* tt = std::get_if<TypeType>(&fa3->type->node);
+    ASSERT_NE(tt, nullptr);
+    EXPECT_EQ(tt->univ_expr, "max u v");
+}

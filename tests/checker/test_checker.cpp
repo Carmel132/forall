@@ -4864,3 +4864,38 @@ end
         return msg;
     }();
 }
+
+TEST(CheckerTest, UniversePoly_TakeUniverseVar) {
+    // take u : Universe is accepted; the proof body does not use u
+    auto diag = run_checker("universe_poly_take_univ", R"(
+theorem univ_binder_trivial : for all u : Universe, 1 = 1
+proof
+  take u : Universe
+  then 1 = 1 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, UniversePoly_TakeTypeAtVarLevel) {
+    // take u : Universe followed by take T : Type u
+    auto diag = run_checker("universe_poly_type_u", R"(
+theorem univ_poly_trivial : for all u : Universe, for all T : Type u, for all P : Prop, P implies P
+proof
+  take u : Universe
+  take T : Type u
+  take P : Prop
+  suppose h : P
+  then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
