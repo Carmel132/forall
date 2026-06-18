@@ -1,0 +1,99 @@
+import "int.forall"
+
+-- Derived theorems about integers, proved from the ring and order axioms.
+
+-- ¬(a < a)  (strict inequality on Int is irreflexive).
+theorem int_lt_irrefl : for all a : Int, not (a < a)
+proof
+  take a : Int
+  have result : not (a < a)
+    proof
+      suppose h : a < a
+      have f : false by omega
+      then not (a < a) by h and f
+    end
+  then not (a < a) by result
+end
+
+-- a < b → a + c < b + c  (addition is strictly monotone on the right).
+theorem int_add_lt_add_right : for all a : Int, for all b : Int, for all c : Int,
+    a < b implies a + c < b + c
+proof
+  take a : Int
+  take b : Int
+  take c : Int
+  suppose h : a < b
+  -- Int_lt_add : ∀ x y z, x < y → x + z < y + z.  at a → ∀ y z, a < y → a+z < y+z.
+  have lt0 : for all y : Int, for all z : Int, a < y implies a + z < y + z
+             by Int_lt_add at a
+  have lt1 : for all z : Int, a < b implies a + z < b + z by lt0 at b
+  have lt2 : a < b implies a + c < b + c by lt1 at c
+  then a + c < b + c by lt2 and h
+end
+
+-- a < b → c + a < c + b  (addition is strictly monotone on the left).
+theorem int_add_lt_add_left : for all a : Int, for all b : Int, for all c : Int,
+    a < b implies c + a < c + b
+proof
+  take a : Int
+  take b : Int
+  take c : Int
+  suppose h : a < b
+  have lt0 : for all y : Int, for all z : Int, a < y implies a + z < y + z
+             by Int_lt_add at a
+  have lt1 : for all z : Int, a < b implies a + z < b + z by lt0 at b
+  have lt2 : a < b implies a + c < b + c by lt1 at c
+  have lt3 : a + c < b + c by lt2 and h
+  then c + a < c + b by omega
+end
+
+-- a + b = a + c → b = c  (left cancellation of addition).
+theorem int_add_right_cancel : for all a : Int, for all b : Int, for all c : Int,
+    a + b = a + c implies b = c
+proof
+  take a : Int
+  take b : Int
+  take c : Int
+  suppose h : a + b = a + c
+  then b = c by omega
+end
+
+-- b + a = c + a → b = c  (right cancellation of addition).
+theorem int_add_left_cancel : for all a : Int, for all b : Int, for all c : Int,
+    b + a = c + a implies b = c
+proof
+  take a : Int
+  take b : Int
+  take c : Int
+  suppose h : b + a = c + a
+  then b = c by omega
+end
+
+-- a * b * c = a * c * b  (commutativity inside an associative product).
+-- Useful lemma for reordering factors in ring proofs.
+theorem int_mul_comm_assoc : for all a : Int, for all b : Int, for all c : Int,
+    a * b * c = a * c * b
+proof
+  take a : Int
+  take b : Int
+  take c : Int
+  -- (a*b)*c = a*(b*c) by Int_mul_assoc at a at b at c
+  have ass0 : for all y : Int, for all z : Int, (a * y) * z = a * (y * z)
+              by Int_mul_assoc at a
+  have ass1 : for all z : Int, (a * b) * z = a * (b * z) by ass0 at b
+  have ass2 : (a * b) * c = a * (b * c) by ass1 at c
+  -- b * c = c * b  by Int_mul_comm at b at c
+  have comm0 : for all y : Int, b * y = y * b by Int_mul_comm at b
+  have comm1 : b * c = c * b by comm0 at c
+  -- a * (b * c) = a * (c * b)  by congruence
+  have h_r : a * (c * b) = a * (c * b) by refl
+  have h_bc : a * (b * c) = a * (c * b) by eq_subst comm1 and h_r
+  -- (a * c) * b = a * (c * b)  by Int_mul_assoc at a at c at b
+  have ass3 : for all z : Int, (a * c) * z = a * (c * z) by ass0 at c
+  have ass4 : (a * c) * b = a * (c * b) by ass3 at b
+  have h_sym : a * (c * b) = (a * c) * b by symm ass4
+  -- Chain: (a*b)*c = a*(b*c) = a*(c*b) = (a*c)*b
+  have h1 : (a * b) * c = a * (c * b) by trans ass2 and h_bc
+  have h2 : (a * b) * c = (a * c) * b by trans h1 and h_sym
+  then a * b * c = a * c * b by h2
+end
