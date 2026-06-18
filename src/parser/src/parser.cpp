@@ -1098,7 +1098,21 @@ ast::TypeNode Parser::parseType() {
     else if (name == "Rat")  base = ast::TypeNode{ast::TypeRat{}};
     else if (name == "Real") base = ast::TypeNode{ast::TypeReal{}};
     else if (name == "Prop") base = ast::TypeNode{ast::TypeProp{}};
-    else if (name == "Type") base = ast::TypeNode{ast::TypeType{}};
+    else if (name == "Type") {
+        // Optional numeric level: "Type 0", "Type 1", "Type 2", ...
+        if (check(K::Number) && peek().lexeme.find('.') == std::string::npos) {
+            std::size_t pos = 0;
+            unsigned long lv = std::stoul(peek().lexeme, &pos);
+            if (pos == peek().lexeme.size()) {
+                advance();
+                base = ast::TypeNode{ast::TypeType{static_cast<unsigned>(lv)}};
+            } else {
+                base = ast::TypeNode{ast::TypeType{std::nullopt}};
+            }
+        } else {
+            base = ast::TypeNode{ast::TypeType{std::nullopt}};
+        }
+    }
     else if (name == "Set") {
         // Set T — element type is the next type (parsed recursively).
         if (!check(K::Identifier)) {
