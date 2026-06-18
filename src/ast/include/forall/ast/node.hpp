@@ -28,9 +28,13 @@ struct TypeReal { bool operator==(const TypeReal&) const = default; };  // ℝ
 struct TypeProp { bool operator==(const TypeProp&) const = default; };  // Prop
 // Type universe.  level==nullopt means "Type" (level-polymorphic / unspecified).
 // level==0 is "Type 0", level==1 is "Type 1", etc.
+// univ_expr, when non-empty, carries a universe-level expression such as "u",
+// "u+1", or "max u v" produced by a universe-polymorphic binder.  When present,
+// the numeric `level` is nullopt (the level is symbolic, not a literal).
 // Ground types like Nat live in Type 0; Type 0 itself lives in Type 1.
 struct TypeType {
-    std::optional<unsigned> level;
+    std::optional<unsigned>  level;       // numeric level ("Type 0", "Type 1")
+    std::string              univ_expr;   // symbolic level ("Type u", "Type u+1")
     bool operator==(const TypeType& o) const = default;
 };
 struct TypeUser {
@@ -70,8 +74,28 @@ struct TypePi {
     bool operator==(const TypePi& o) const;
 };
 
+// The type of universe levels themselves.  A variable "u : Universe" ranges
+// over universe levels 0, 1, 2, …  Written "Universe" in source.
+struct TypeUniv { bool operator==(const TypeUniv&) const = default; };
+
+// ── Universe-level expressions ────────────────────────────────────────────────
+//
+// Used in "Type u", "Type u+1", "Type (max u v)" — positions where previously
+// only a numeric literal was accepted.  The level expression is embedded in
+// TypeType::univ_expr (stored as a string for simplicity; evaluation is deferred
+// to a separate universe-level solver not yet implemented).
+//
+// UnivLevel is a lightweight string representation:
+//   "0", "1", ...     literal levels
+//   "u", "v", ...     universe variables
+//   "u+1"             successor of u
+//   "max u v"         maximum of two levels
+//
+// The parser produces these strings; the checker treats any TypeType with a
+// non-nullopt univ_expr as level-polymorphic (equivalent to TypeType{nullopt}).
+
 using TypeVariant = std::variant<TypeNat, TypeInt, TypeRat, TypeReal, TypeProp, TypeType, TypeUser,
-                                 TypeFun, TypeTuple, TypeSet, TypePi>;
+                                 TypeFun, TypeTuple, TypeSet, TypePi, TypeUniv>;
 
 struct TypeNode {
     TypeVariant node;
@@ -84,8 +108,10 @@ inline TypeNode type_int()                   { return TypeNode{TypeInt{}}; }
 inline TypeNode type_rat()                   { return TypeNode{TypeRat{}}; }
 inline TypeNode type_real()                  { return TypeNode{TypeReal{}}; }
 inline TypeNode type_prop()                  { return TypeNode{TypeProp{}}; }
-inline TypeNode type_type()                  { return TypeNode{TypeType{std::nullopt}}; }
-inline TypeNode type_type(unsigned level)    { return TypeNode{TypeType{level}}; }
+inline TypeNode type_type()                        { return TypeNode{TypeType{std::nullopt, ""}}; }
+inline TypeNode type_type(unsigned level)          { return TypeNode{TypeType{level, ""}}; }
+inline TypeNode type_type(std::string univ_expr)   { return TypeNode{TypeType{std::nullopt, std::move(univ_expr)}}; }
+inline TypeNode type_univ()                        { return TypeNode{TypeUniv{}}; }
 inline TypeNode type_user(std::string name)  { return TypeNode{TypeUser{std::move(name)}}; }
 inline TypeNode type_fun(TypeNode domain, TypeNode codomain) {
     return TypeNode{TypeFun{std::make_shared<TypeNode>(std::move(domain)),

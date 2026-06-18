@@ -861,8 +861,11 @@ static std::string type_name(const TypeNode& t) {
         if constexpr (std::is_same_v<T, TypeRat>)   return "Rat";
         if constexpr (std::is_same_v<T, TypeReal>)  return "Real";
         if constexpr (std::is_same_v<T, TypeProp>)  return "Prop";
-        if constexpr (std::is_same_v<T, TypeType>)
+        if constexpr (std::is_same_v<T, TypeType>) {
+            if (!v.univ_expr.empty()) return "Type " + v.univ_expr;
             return v.level.has_value() ? "Type " + std::to_string(*v.level) : "Type";
+        }
+        if constexpr (std::is_same_v<T, TypeUniv>) return "Universe";
         if constexpr (std::is_same_v<T, TypeUser>)  return v.name;
         if constexpr (std::is_same_v<T, TypeFun>)   return "function type";
         if constexpr (std::is_same_v<T, TypeTuple>) return "tuple type";
@@ -1077,12 +1080,16 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
 //     → TypeType{0}   (concrete ground types and first-order type constructors live in Type 0)
 //   TypeType{n}  → TypeType{n+1}  (universe hierarchy: Type 0 : Type 1 : Type 2 : ...)
 //   TypeType{}   → TypeType{1}    (unspecified level is treated as Type 0 for this purpose)
+//   TypeUniv     → TypeType{1}    (Universe itself lives in Type 1)
 TypeNode infer_type_of_type(const TypeNode& t) {
     if (const auto* tt = std::get_if<TypeType>(&t.node)) {
+        if (!tt->univ_expr.empty()) return TypeNode{TypeType{std::nullopt, ""}};  // symbolic: stays polymorphic
         unsigned n = tt->level.value_or(0);
-        return TypeNode{TypeType{n + 1}};
+        return TypeNode{TypeType{n + 1, ""}};
     }
-    return TypeNode{TypeType{0u}};
+    if (std::get_if<TypeUniv>(&t.node))
+        return TypeNode{TypeType{1u, ""}};
+    return TypeNode{TypeType{0u, ""}};
 }
 
 TypeNode expand_type_aliases(TypeNode t, const TypeAliasTable& aliases) {
