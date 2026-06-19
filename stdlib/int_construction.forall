@@ -36,3 +36,15 @@ abstract definition nat_to_intq (n : Nat) : Prop
 -- zero = [(0, 0)], one = [(1, 0)].
 abstract definition intq_zero : Prop
 abstract definition intq_one  : Prop
+
+-- Injectivity of the embedding at the representative level:
+-- [m, 0] ~ [n, 0]  iff  m + 0 = n + 0  iff  m = n.
+theorem nat_to_intq_inj_rep :
+    for all m : Nat, for all n : Nat,
+        m + 0 = n + 0 implies m = n
+proof
+  take m : Nat
+  take n : Nat
+  suppose h : m + 0 = n + 0
+  then m = n by omega
+end
