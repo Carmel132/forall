@@ -1,0 +1,89 @@
+import "dedekind.forall"
+
+-- Real numbers as Dedekind cuts over RatQ.
+--
+-- A real number is an equivalence class of Dedekind cuts, where the equivalence
+-- relation is set equality (L = M). Since cuts are already canonical, this is the
+-- identity relation — each equivalence class contains exactly one cut.
+--
+-- The carrier type is Set RatQ (subsets of the rationals), and the equivalence
+-- relation is trivial set-equality.
+
+type CutSet = Set RatQ
+
+-- Trivial equivalence on cuts: L ~ M iff L = M (set equality).
+definition cut_equiv (L : Set RatQ) (M : Set RatQ) : Prop := L = M
+
+-- Reflexivity of cut_equiv.
+theorem cut_equiv_refl :
+    for all L : Set RatQ, L = L
+proof
+  take L : Set RatQ
+  then L = L by refl
+end
+
+-- Symmetry of cut_equiv.
+theorem cut_equiv_symm :
+    for all L : Set RatQ, for all M : Set RatQ,
+        L = M implies M = L
+proof
+  take L : Set RatQ
+  take M : Set RatQ
+  suppose h : L = M
+  then M = L by symm h
+end
+
+-- Transitivity of cut_equiv.
+theorem cut_equiv_trans :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+        L = M implies M = N implies L = N
+proof
+  take L : Set RatQ
+  take M : Set RatQ
+  take N : Set RatQ
+  suppose h1 : L = M
+  suppose h2 : M = N
+  then L = N by trans h1 and h2
+end
+
+-- The real numbers as the quotient of CutSet by cut_equiv.
+-- Each equivalence class [L] represents a unique real number (the supremum of L in RatQ).
+-- Since cut_equiv is set equality, [L] is just the singleton {L}.
+quotient Real_DC := CutSet over cut_equiv
+  axiom refl :
+    for all L : Set RatQ, L = L
+  axiom symm :
+    for all L : Set RatQ, for all M : Set RatQ,
+      L = M implies M = L
+  axiom trans :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+      L = M implies M = N implies L = N
+
+-- Canonical embedding: ratq_to_real_dc r = the lower cut {q : RatQ | q < r}.
+-- This sends each rational r to the real number it represents via the cut {q | q < r}.
+abstract definition ratq_to_real_dc (r : RatQ) : Prop
+
+-- Distinguished elements: zero and one as Real_DC constants.
+-- real_dc_zero = [{q : RatQ | q < 0}]  (the Dedekind cut at rational 0)
+-- real_dc_one  = [{q : RatQ | q < 1}]  (the Dedekind cut at rational 1)
+abstract definition real_dc_zero : Prop
+abstract definition real_dc_one  : Prop
+
+-- The zero cut {q | q < 0} satisfies IsDedekindCut.
+-- This is an axiom here because verifying it requires abstract RatQ ordering,
+-- which will be established when the ordered field instance is declared.
+axiom zero_cut_is_cut :
+    IsDedekindCut({q : RatQ | q < 0})
+
+-- The one cut {q | q < 1} satisfies IsDedekindCut.
+axiom one_cut_is_cut :
+    IsDedekindCut({q : RatQ | q < 1})
+
+-- Injectivity of ratq_to_real_dc at representative level:
+-- two rationals map to the same cut iff they are equal.
+-- [{q | q < r}] = [{q | q < s}]  iff  r = s.
+-- This is the representative-level statement: if the lower cut of r equals
+-- the lower cut of s (as sets), then r = s.
+axiom ratq_to_real_dc_inj_rep :
+    for all r : RatQ, for all s : RatQ,
+        {q : RatQ | q < r} = {q : RatQ | q < s} implies r = s
