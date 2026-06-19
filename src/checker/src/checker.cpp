@@ -709,6 +709,7 @@ static bool gcongr_tactic(const ast::Prop& goal, const ScopeStack& env,
                            diag::DiagnosticEngine& diag,
                            const diag::SourceLocation& loc);
 static bool omega_tactic(const ast::Prop& goal, const ScopeStack& env);
+static bool nlinarith_tactic(const ast::Prop& goal, const ScopeStack& env);
 
 // Forward declaration for push_neg (defined in the tactics section below).
 static ast::Prop push_neg(const ast::Prop& p);
@@ -1883,6 +1884,25 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            if (s.justification.size() == 1 && s.justification[0] == "__nlinarith__") {
+                bool is_rel   = std::get_if<ast::PropRel>(&prop.node) != nullptr;
+                bool is_false = std::get_if<ast::PropFalse>(&prop.node) != nullptr;
+                if (!is_rel && !is_false) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by nlinarith' only applies to relational propositions or 'false'"});
+                    return false;
+                }
+                if (!nlinarith_tactic(prop, env)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by nlinarith' could not verify `"
+                               + forall::pretty::to_string(prop)
+                               + "` — check that the goal follows from nonlinear arithmetic"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(prop);
+                env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
             // "by simp" / "by simp [h1, h2]" — propositional simplification (MT2)
             if (!s.justification.empty() && s.justification[0] == "__simp__") {
                 std::vector<std::string> lemma_set(s.justification.begin() + 1,
@@ -2382,6 +2402,25 @@ bool check_step(const ast::Step& step,
                                "'by omega' could not verify `"
                                + forall::pretty::to_string(prop)
                                + "` — check that the goal follows from integer arithmetic"});
+                    return false;
+                }
+                kernel.introduce_axiom(prop);
+                return true;
+            }
+            // "by nlinarith" — nonlinear arithmetic (ThenStep variant)
+            if (s.justification.size() == 1 && s.justification[0] == "__nlinarith__") {
+                bool is_rel   = std::get_if<ast::PropRel>(&prop.node) != nullptr;
+                bool is_false = std::get_if<ast::PropFalse>(&prop.node) != nullptr;
+                if (!is_rel && !is_false) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by nlinarith' only applies to relational propositions or 'false'"});
+                    return false;
+                }
+                if (!nlinarith_tactic(prop, env)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by nlinarith' could not verify `"
+                               + forall::pretty::to_string(prop)
+                               + "` — check that the goal follows from nonlinear arithmetic"});
                     return false;
                 }
                 kernel.introduce_axiom(prop);
@@ -4659,6 +4698,148 @@ static bool omega_tactic(const ast::Prop& goal, const ScopeStack& env)
         return lt_unsat && gt_unsat;
     }
 
+    hyps.push_back(std::move(*neg_goal));
+    return fourier_motzkin(hyps);
+}
+
+// ── nlinarith: nonlinear arithmetic over ℤ/ℕ ─────────────────────────────
+//
+// Extends omega to handle relational goals involving polynomial expressions.
+// Strategy: treat every nonlinear monomial (degree ≥ 2, e.g. a*b, a*b*c) as a
+// fresh linear atom named "__nl_<sorted variable list>__".  This maps the
+// polynomial system onto a linear system where the product atoms are treated as
+// independent variables.  Soundness relies on hypotheses in scope that equate
+// combinations of these atoms (e.g. "a*c + b2*c = a2*c + b*c" provides a
+// linear constraint in the atom basis).
+//
+// The tactic is:
+//   1. Extract ALL PropRel hypotheses (including those that are nonlinear in
+//      original vars but linear in product-atoms).
+//   2. Negate the goal and add it to the hypothesis set.
+//   3. Run Fourier-Motzkin on the augmented linear system over atom-vars.
+//
+// This is sound but incomplete: it can only prove goals that are linear
+// consequences of the hypothesis set AFTER linearisation.  It cannot handle
+// arbitrary polynomial arithmetic (e.g. a^2 ≥ 0 cannot be derived this way
+// without extra certificates).
+
+// Map a Poly monomial to a canonical atom name for nlinarith.
+// A linear monomial {x:1} → "x".
+// A nonlinear monomial {a:1,b:1} → "__nl_a_b__" (sorted).
+// A higher-degree monomial {a:2} → "__nl_a_a__".
+static std::string monomial_atom_name(const Monomial& m) {
+    if (m.empty()) return "__const__"; // should not arise
+    std::vector<std::string> parts;
+    for (const auto& [var, exp] : m)
+        for (int i = 0; i < exp; ++i)
+            parts.push_back(var);
+    std::sort(parts.begin(), parts.end());
+    if (parts.size() == 1) return parts[0]; // linear — return var name directly
+    std::string name = "__nl";
+    for (const auto& p : parts) name += "_" + p;
+    name += "__";
+    return name;
+}
+
+// Like extract_linear but linearises nonlinear monomials as atoms.
+// Returns nullopt only if the expression cannot be normalised at all.
+static std::optional<LinConstraint>
+extract_linear_nl(const ast::PropRel& rel) {
+    auto lp = normalize_expr(*rel.lhs);
+    auto rp = normalize_expr(*rel.rhs);
+    // Compute lp - rp
+    Poly diff = lp;
+    for (const auto& [m, c] : rp)
+        diff[m] = rat_add(poly_get(diff, m), rat_neg(c));
+    // Trim zeros
+    for (auto it = diff.begin(); it != diff.end(); )
+        if (it->second.first == 0) it = diff.erase(it); else ++it;
+
+    LinConstraint lc;
+    lc.rhs   = {0, 1};
+    lc.sense = 0;
+    for (const auto& [mono, coeff] : diff) {
+        if (coeff.first == 0) continue;
+        if (mono.empty()) {
+            lc.rhs = rat_add(lc.rhs, rat_neg(coeff)); // constant moves to rhs
+        } else {
+            const std::string atom = monomial_atom_name(mono);
+            auto it = lc.coeffs.find(atom);
+            if (it == lc.coeffs.end()) lc.coeffs[atom] = coeff;
+            else it->second = rat_add(it->second, coeff);
+        }
+    }
+    // Remove any zero coefficients added above
+    for (auto it = lc.coeffs.begin(); it != lc.coeffs.end(); )
+        if (it->second.first == 0) it = lc.coeffs.erase(it); else ++it;
+
+    int sense = 0;
+    switch (rel.op) {
+        case ast::RelOp::Lt:    sense = -1; break;
+        case ast::RelOp::LtEq:  sense =  1; break;
+        case ast::RelOp::Eq:    sense =  0; break;
+        case ast::RelOp::GtEq:
+            for (auto& [v,c] : lc.coeffs) c = rat_neg(c);
+            lc.rhs = rat_neg(lc.rhs);
+            sense = 1;
+            break;
+        case ast::RelOp::Gt:
+            for (auto& [v,c] : lc.coeffs) c = rat_neg(c);
+            lc.rhs = rat_neg(lc.rhs);
+            sense = -1;
+            break;
+        default: return std::nullopt;
+    }
+    lc.sense = sense;
+    return lc;
+}
+
+static std::vector<LinConstraint> collect_nl_hypotheses(const ScopeStack& env) {
+    std::vector<LinConstraint> result;
+    env.for_each([&](const std::string&, const HypEntry& e) {
+        const auto* rel = std::get_if<ast::PropRel>(&e.judgment.prop().node);
+        if (!rel) return;
+        auto lc = extract_linear_nl(*rel);
+        if (lc) result.push_back(std::move(*lc));
+    });
+    return result;
+}
+
+static bool nlinarith_tactic(const ast::Prop& goal, const ScopeStack& env)
+{
+    auto hyps = collect_nl_hypotheses(env);
+
+    if (std::get_if<ast::PropFalse>(&goal.node))
+        return fourier_motzkin(hyps);
+
+    const auto* goal_rel = std::get_if<ast::PropRel>(&goal.node);
+    if (!goal_rel) return false;
+
+    auto goal_lc = extract_linear_nl(*goal_rel);
+    if (!goal_lc) return false;
+
+    // For equality goals: try both directions of negation.
+    if (goal_lc->sense == 0) {
+        LinConstraint lt_neg;
+        lt_neg.sense  = -1;
+        lt_neg.rhs    = goal_lc->rhs;
+        lt_neg.coeffs = goal_lc->coeffs;
+        LinConstraint gt_neg;
+        gt_neg.sense = -1;
+        gt_neg.rhs   = rat_neg(goal_lc->rhs);
+        for (const auto& [v, c] : goal_lc->coeffs)
+            gt_neg.coeffs[v] = rat_neg(c);
+        auto hyps_lt = hyps;
+        hyps_lt.push_back(lt_neg);
+        bool lt_unsat = fourier_motzkin(hyps_lt);
+        auto hyps_gt = hyps;
+        hyps_gt.push_back(gt_neg);
+        bool gt_unsat = fourier_motzkin(hyps_gt);
+        return lt_unsat && gt_unsat;
+    }
+
+    auto neg_goal = negate_linear(*goal_lc);
+    if (!neg_goal) return false;
     hyps.push_back(std::move(*neg_goal));
     return fourier_motzkin(hyps);
 }
