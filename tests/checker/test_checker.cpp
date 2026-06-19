@@ -5036,3 +5036,161 @@ end
         return msg;
     }();
 }
+
+// ── CN3: ℚ from ℤ quotient — representative-level theorems ────────────────────
+
+TEST(CheckerTest, RatqAddWellDefined) {
+    // rat_equiv cross-multiplication: p*q2=p2*q and r*s2=r2*s implies
+    // (p*s+r*q)*(q2*s2) = (p2*s2+r2*q2)*(q*s).
+    auto diag = run_checker("ratq_add_well_defined", R"(
+theorem ratq_add_well_defined :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all p2 : Int, for all q2 : Int, for all r2 : Int, for all s2 : Int,
+        p * q2 = p2 * q implies r * s2 = r2 * s implies
+        (p * s + r * q) * (q2 * s2) = (p2 * s2 + r2 * q2) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take p2 : Int
+  take q2 : Int
+  take r2 : Int
+  take s2 : Int
+  suppose h1 : p * q2 = p2 * q
+  suppose h2 : r * s2 = r2 * s
+  have ref1 : (p2 * q) * (s * s2) = (p2 * q) * (s * s2) by refl
+  have sc1  : (p * q2) * (s * s2) = (p2 * q) * (s * s2) by eq_subst h1 and ref1
+  have ref2 : (r2 * s) * (q * q2) = (r2 * s) * (q * q2) by refl
+  have sc2  : (r * s2) * (q * q2) = (r2 * s) * (q * q2) by eq_subst h2 and ref2
+  then (p * s + r * q) * (q2 * s2) = (p2 * s2 + r2 * q2) * (q * s) by nlinarith
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, RatqNegWellDefined) {
+    // If p*q2 = p2*q then (-p)*q2 = (-p2)*q.
+    auto diag = run_checker("ratq_neg_well_defined", R"(
+theorem ratq_neg_well_defined :
+    for all p : Int, for all q : Int, for all p2 : Int, for all q2 : Int,
+        p * q2 = p2 * q implies (-p) * q2 = (-p2) * q
+proof
+  take p : Int
+  take q : Int
+  take p2 : Int
+  take q2 : Int
+  suppose h : p * q2 = p2 * q
+  have ref : (-p2) * q = (-p2) * q by refl
+  have sc  : (-p) * q2 = (-p2) * q by nlinarith
+  then (-p) * q2 = (-p2) * q by sc
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, RatqMulWellDefined) {
+    // If p*q2=p2*q and r*s2=r2*s then (p*r)*(q2*s2) = (p2*r2)*(q*s).
+    auto diag = run_checker("ratq_mul_well_defined", R"(
+theorem ratq_mul_well_defined :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all p2 : Int, for all q2 : Int, for all r2 : Int, for all s2 : Int,
+        p * q2 = p2 * q implies r * s2 = r2 * s implies
+        (p * r) * (q2 * s2) = (p2 * r2) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take p2 : Int
+  take q2 : Int
+  take r2 : Int
+  take s2 : Int
+  suppose h1 : p * q2 = p2 * q
+  suppose h2 : r * s2 = r2 * s
+  have ref1 : (p2 * q) * (r * s2) = (p2 * q) * (r * s2) by refl
+  have sc1  : (p * q2) * (r * s2) = (p2 * q) * (r * s2) by eq_subst h1 and ref1
+  have ref2 : (p2 * q) * (r2 * s) = (p2 * q) * (r2 * s) by refl
+  have sc2  : (p2 * q) * (r * s2) = (p2 * q) * (r2 * s) by eq_subst h2 and ref2
+  then (p * r) * (q2 * s2) = (p2 * r2) * (q * s) by nlinarith
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntToRatqInjRep) {
+    // Injectivity of int_to_ratq at representative level: m*1=n*1 → m=n.
+    auto diag = run_checker("int_to_ratq_inj_rep", R"(
+theorem int_to_ratq_inj_rep :
+    for all m : Int, for all n : Int,
+        m * 1 = n * 1 implies m = n
+proof
+  take m : Int
+  take n : Int
+  suppose h : m * 1 = n * 1
+  then m = n by omega
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, RatqAddCommRep) {
+    // Addition commutativity for RatQ at representative level.
+    auto diag = run_checker("ratq_add_comm_rep", R"(
+theorem ratq_add_comm_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        (p * s + r * q) * (s * q) = (r * q + p * s) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  then (p * s + r * q) * (s * q) = (r * q + p * s) * (q * s) by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, RatqMulAssocRep) {
+    // Multiplication associativity for RatQ at representative level.
+    auto diag = run_checker("ratq_mul_assoc_rep", R"(
+theorem ratq_mul_assoc_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        ((p*r)*t) * (q*(s*u)) = (p*(r*t)) * ((q*s)*u)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  then ((p*r)*t) * (q*(s*u)) = (p*(r*t)) * ((q*s)*u) by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
