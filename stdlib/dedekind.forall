@@ -1,0 +1,126 @@
+import "rat_ring.forall"
+
+-- Dedekind cut construction of the real numbers.
+--
+-- A Dedekind cut is a subset L ⊆ RatQ satisfying four conditions:
+--   1. Nonempty:        ∃ q : RatQ, q ∈ L
+--   2. Bounded above:   ∃ q : RatQ, q ∉ L
+--   3. Downward closed: ∀ p q : RatQ, p < q → q ∈ L → p ∈ L
+--   4. No maximum:      ∀ q : RatQ, q ∈ L → ∃ r : RatQ, q < r ∧ r ∈ L
+--
+-- Each Dedekind cut uniquely represents a real number as the supremum of its elements.
+
+-- The four conditions are packaged into a named predicate.
+-- Parsing note: `and` binds left, so
+--   A and B and C and D  =  ((A and B) and C) and D.
+-- We label the four fields for easy extraction via AndElimL/R chains.
+
+-- Helper: conjunction type for the four cut conditions.
+-- Cut4(L) = (ne ∧ bd) ∧ dc) ∧ nm
+-- where ne = nonempty, bd = bounded, dc = downward-closed, nm = no-max.
+
+definition IsDedekindCut (L : Set RatQ) : Prop :=
+    (there exists q : RatQ, q in L) and
+    (there exists q : RatQ, not (q in L)) and
+    (for all p : RatQ, for all q : RatQ,
+        p < q implies q in L implies p in L) and
+    (for all q : RatQ, q in L implies
+        there exists r : RatQ, q < r and r in L)
+
+-- Extract: a cut is nonempty.
+-- IsDedekindCut(L) = (((ne ∧ bd) ∧ dc) ∧ nm)
+-- AndElimL three times to peel off outer layers, then AndElimL/R to get ne.
+theorem cut_nonempty :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        there exists q : RatQ, q in L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have hfull : (there exists q : RatQ, q in L) and
+               (there exists q : RatQ, not (q in L)) and
+               (for all p : RatQ, for all q : RatQ,
+                   p < q implies q in L implies p in L) and
+               (for all q : RatQ, q in L implies
+                   there exists r : RatQ, q < r and r in L) by h
+  -- hfull : ((ne ∧ bd) ∧ dc) ∧ nm
+  -- AndElimL gives (ne ∧ bd) ∧ dc
+  have h3 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) and
+            (for all p : RatQ, for all q : RatQ,
+                p < q implies q in L implies p in L) by hfull
+  -- h3 : (ne ∧ bd) ∧ dc
+  -- AndElimL gives ne ∧ bd
+  have h2 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) by h3
+  -- h2 : ne ∧ bd; AndElimL gives ne
+  then there exists q : RatQ, q in L by h2
+end
+
+-- Extract: a cut is bounded above.
+theorem cut_bounded :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        there exists q : RatQ, not (q in L)
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have hfull : (there exists q : RatQ, q in L) and
+               (there exists q : RatQ, not (q in L)) and
+               (for all p : RatQ, for all q : RatQ,
+                   p < q implies q in L implies p in L) and
+               (for all q : RatQ, q in L implies
+                   there exists r : RatQ, q < r and r in L) by h
+  have h3 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) and
+            (for all p : RatQ, for all q : RatQ,
+                p < q implies q in L implies p in L) by hfull
+  have h2 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) by h3
+  then there exists q : RatQ, not (q in L) by h2
+end
+
+-- Extract: a cut is downward closed.
+theorem cut_down_closed :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        for all p : RatQ, for all q : RatQ,
+            p < q implies q in L implies p in L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have hfull : (there exists q : RatQ, q in L) and
+               (there exists q : RatQ, not (q in L)) and
+               (for all p : RatQ, for all q : RatQ,
+                   p < q implies q in L implies p in L) and
+               (for all q : RatQ, q in L implies
+                   there exists r : RatQ, q < r and r in L) by h
+  -- hfull : ((ne ∧ bd) ∧ dc) ∧ nm; AndElimL gives (ne ∧ bd) ∧ dc
+  have h3 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) and
+            (for all p : RatQ, for all q : RatQ,
+                p < q implies q in L implies p in L) by hfull
+  -- h3 : (ne ∧ bd) ∧ dc; AndElimR gives dc
+  then for all p : RatQ, for all q : RatQ,
+      p < q implies q in L implies p in L by h3
+end
+
+-- Extract: a cut has no maximum.
+theorem cut_no_max :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        for all q : RatQ, q in L implies
+            there exists r : RatQ, q < r and r in L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have hfull : (there exists q : RatQ, q in L) and
+               (there exists q : RatQ, not (q in L)) and
+               (for all p : RatQ, for all q : RatQ,
+                   p < q implies q in L implies p in L) and
+               (for all q : RatQ, q in L implies
+                   there exists r : RatQ, q < r and r in L) by h
+  -- hfull : ((ne ∧ bd) ∧ dc) ∧ nm; AndElimR gives nm
+  then for all q : RatQ, q in L implies
+      there exists r : RatQ, q < r and r in L by hfull
+end
