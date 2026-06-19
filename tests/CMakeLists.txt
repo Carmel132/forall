@@ -123,3 +123,8 @@ add_test(NAME e2e_int_ops
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_ops.forall"
 )
+
+add_test(NAME e2e_int_ring
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_ring.forall"
+)
