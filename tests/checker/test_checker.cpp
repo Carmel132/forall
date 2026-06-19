@@ -3530,6 +3530,72 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+// ── nlinarith tactic tests ───────────────────────────────────────────────
+
+// nlinarith proves a nonlinear equality given scaled linear hypotheses derived
+// from two linear hypotheses via eq_subst+ring (simulating mul_well_defined).
+TEST(CheckerTest, Nlinarith_MulWellDefined) {
+    auto diag = run_checker("nlinarith_mul_wd", R"(
+axiom Nat_add : for all a : Nat, for all b : Nat, for all c : Nat,
+    a + b = c implies c = a + b
+theorem t :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all a2 : Nat, for all b2 : Nat,
+        a + b2 = a2 + b implies c + 0 = c implies
+        a * c + b2 * c = a2 * c + b * c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take a2 : Nat
+  take b2 : Nat
+  suppose h1 : a + b2 = a2 + b
+  suppose h2 : c + 0 = c
+  have ref1 : (a2 + b) * c = (a2 + b) * c by refl
+  have mul1 : (a + b2) * c = (a2 + b) * c by eq_subst h1 and ref1
+  have lhs1 : (a + b2) * c = a * c + b2 * c by ring
+  have rhs1 : (a2 + b) * c = a2 * c + b * c by ring
+  have lhs1s : a * c + b2 * c = (a + b2) * c by symm lhs1
+  have m1a : a * c + b2 * c = (a2 + b) * c by trans lhs1s and mul1
+  then a * c + b2 * c = a2 * c + b * c by trans m1a and rhs1
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// nlinarith closes a nonlinear equality goal directly from product-atom hypotheses.
+TEST(CheckerTest, Nlinarith_DirectProductAtoms) {
+    auto diag = run_checker("nlinarith_direct", R"(
+theorem t :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        a * c + b * c = a * c + b * c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  then a * c + b * c = a * c + b * c by nlinarith
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+// nlinarith fails when the goal does not follow from hypotheses.
+TEST(CheckerTest, Nlinarith_FalseClaim_Error) {
+    auto diag = run_checker("nlinarith_false", R"(
+theorem t :
+    for all a : Nat, for all b : Nat,
+        a * b = b * a + 1
+proof
+  take a : Nat
+  take b : Nat
+  then a * b = b * a + 1 by nlinarith
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "nlinarith"));
+}
+
 // ── push neg tactic tests ────────────────────────────────────────────────
 
 // push neg on goal ¬(A ∧ B) → ¬A ∨ ¬B
