@@ -163,3 +163,8 @@ add_test(NAME e2e_real_ring
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/real_ring.forall"
 )
+
+add_test(NAME e2e_real_dc_field
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_dc_field.forall"
+)
