@@ -1,0 +1,302 @@
+import "rat_ops.forall"
+open Int
+
+-- Ordered field structure for RatQ at representative level.
+--
+-- A rational number is an equivalence class [p, q] where p, q : Int.
+-- rat_equiv p q r s  ≡  p * s = r * q.
+--
+-- Operations on representatives:
+--   ratq_add [p,q] [r,s] = [p*s + r*q, q*s]
+--   ratq_neg [p,q]       = [-p, q]
+--   ratq_mul [p,q] [r,s] = [p*r, q*s]
+--   ratq_zero            = [0, 1]
+--   ratq_one             = [1, 1]
+--   ratq_inv  [p,q]      = [q, p]   (requires p ≠ 0)
+
+-- Addition is commutative: [p,q]+[r,s] ~ [r,s]+[p,q]
+-- LHS = [p*s+r*q, q*s],  RHS = [r*q+p*s, s*q]
+-- Condition: (p*s+r*q)*(s*q) = (r*q+p*s)*(q*s)
+theorem ratq_add_comm_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        (p * s + r * q) * (s * q) = (r * q + p * s) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  then (p * s + r * q) * (s * q) = (r * q + p * s) * (q * s) by ring
+end
+
+-- Addition is associative: ([p,q]+[r,s])+[t,u] ~ [p,q]+([r,s]+[t,u])
+-- LHS num = (p*s+r*q)*u + t*(q*s),  LHS den = (q*s)*u
+-- RHS num = p*(s*u) + (r*u+t*s)*q,  RHS den = q*(s*u)
+-- Condition: LHS.num * RHS.den = RHS.num * LHS.den
+theorem ratq_add_assoc_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        ((p*s + r*q)*u + t*(q*s)) * (q*(s*u)) =
+        (p*(s*u) + (r*u + t*s)*q) * ((q*s)*u)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  then ((p*s + r*q)*u + t*(q*s)) * (q*(s*u)) =
+       (p*(s*u) + (r*u + t*s)*q) * ((q*s)*u) by ring
+end
+
+-- Zero is the additive identity: [p,q]+[0,1] ~ [p,q]
+-- [p,q]+[0,1] = [p*1+0*q, q*1] = [p, q]
+-- Condition: (p*1+0*q)*(q) = p*(q*1)
+theorem ratq_add_zero_rep :
+    for all p : Int, for all q : Int,
+        (p * 1 + 0 * q) * q = p * (q * 1)
+proof
+  take p : Int
+  take q : Int
+  then (p * 1 + 0 * q) * q = p * (q * 1) by ring
+end
+
+theorem ratq_zero_add_rep :
+    for all p : Int, for all q : Int,
+        (0 * q + p * 1) * q = p * (1 * q)
+proof
+  take p : Int
+  take q : Int
+  then (0 * q + p * 1) * q = p * (1 * q) by ring
+end
+
+-- Negation: [p,q]+[neg(p),q] ~ [0,1]
+-- LHS = [p*q+(-p)*q, q*q]
+-- Condition: (p*q + (-p)*q)*(1) = 0*(q*q)
+theorem ratq_add_neg_rep :
+    for all p : Int, for all q : Int,
+        (p * q + (-p) * q) * 1 = 0 * (q * q)
+proof
+  take p : Int
+  take q : Int
+  then (p * q + (-p) * q) * 1 = 0 * (q * q) by ring
+end
+
+-- Multiplication is commutative: [p,q]*[r,s] ~ [r,s]*[p,q]
+-- LHS = [p*r, q*s],  RHS = [r*p, s*q]
+-- Condition: (p*r)*(s*q) = (r*p)*(q*s)
+theorem ratq_mul_comm_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        (p * r) * (s * q) = (r * p) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  then (p * r) * (s * q) = (r * p) * (q * s) by ring
+end
+
+-- Multiplication is associative: ([p,q]*[r,s])*[t,u] ~ [p,q]*([r,s]*[t,u])
+-- LHS = [(p*r)*t, (q*s)*u],  RHS = [p*(r*t), q*(s*u)]
+-- Condition: ((p*r)*t)*(q*(s*u)) = (p*(r*t))*((q*s)*u)
+theorem ratq_mul_assoc_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        ((p*r)*t) * (q*(s*u)) = (p*(r*t)) * ((q*s)*u)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  then ((p*r)*t) * (q*(s*u)) = (p*(r*t)) * ((q*s)*u) by ring
+end
+
+-- One is the multiplicative identity: [p,q]*[1,1] ~ [p,q]
+-- [p,q]*[1,1] = [p*1, q*1] ~ [p, q]
+-- Condition: (p*1)*(q) = p*(q*1)
+theorem ratq_mul_one_rep :
+    for all p : Int, for all q : Int,
+        (p * 1) * q = p * (q * 1)
+proof
+  take p : Int
+  take q : Int
+  then (p * 1) * q = p * (q * 1) by ring
+end
+
+theorem ratq_one_mul_rep :
+    for all p : Int, for all q : Int,
+        (1 * p) * q = p * (1 * q)
+proof
+  take p : Int
+  take q : Int
+  then (1 * p) * q = p * (1 * q) by ring
+end
+
+-- Distributivity (left): [p,q]*([r,s]+[t,u]) ~ [p,q]*[r,s]+[p,q]*[t,u]
+-- LHS: [p,q]*[r*u+t*s, s*u] = [p*(r*u+t*s), q*(s*u)]
+-- RHS: [p*r,q*s]+[p*t,q*u] = [(p*r)*(q*u)+(p*t)*(q*s), (q*s)*(q*u)]
+-- Condition: (p*(r*u+t*s))*((q*s)*(q*u)) = ((p*r)*(q*u)+(p*t)*(q*s))*(q*(s*u))
+theorem ratq_distrib_left_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        (p*(r*u + t*s)) * ((q*s)*(q*u)) =
+        ((p*r)*(q*u) + (p*t)*(q*s)) * (q*(s*u))
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  then (p*(r*u + t*s)) * ((q*s)*(q*u)) =
+       ((p*r)*(q*u) + (p*t)*(q*s)) * (q*(s*u)) by ring
+end
+
+-- Distributivity (right): ([p,q]+[r,s])*[t,u] ~ [p,q]*[t,u]+[r,s]*[t,u]
+-- [p,q]+[r,s] = [p*s+r*q, q*s]
+-- LHS: [(p*s+r*q)*t, (q*s)*u]
+-- RHS: [p*t,q*u]+[r*t,s*u] = [(p*t)*(s*u)+(r*t)*(q*u), (q*u)*(s*u)]
+-- Condition: ((p*s+r*q)*t)*((q*u)*(s*u)) = ((p*t)*(s*u)+(r*t)*(q*u))*((q*s)*u)
+theorem ratq_distrib_right_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        ((p*s + r*q)*t) * ((q*u)*(s*u)) =
+        ((p*t)*(s*u) + (r*t)*(q*u)) * ((q*s)*u)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  then ((p*s + r*q)*t) * ((q*u)*(s*u)) =
+       ((p*t)*(s*u) + (r*t)*(q*u)) * ((q*s)*u) by ring
+end
+
+-- One is not equal to zero at representative level: [1,1] ≠ [0,1]
+-- Condition: 1*(1) ≠ 0*(1)
+theorem ratq_one_ne_zero_rep : not (1 * 1 = 0 * 1)
+proof
+  suppose h : 1 * 1 = 0 * 1
+  have bot : false by omega
+  then not (1 * 1 = 0 * 1) by h and bot
+end
+
+-- Multiplicative inverse: [p,q] * [q,p] ~ [1,1]
+-- [p,q]*[q,p] = [p*q, q*p]
+-- Condition: (p*q)*(1) = 1*(q*p)
+theorem ratq_mul_inv_rep :
+    for all p : Int, for all q : Int,
+        (p * q) * 1 = 1 * (q * p)
+proof
+  take p : Int
+  take q : Int
+  then (p * q) * 1 = 1 * (q * p) by ring
+end
+
+-- No zero divisors: p*r = 0 implies p = 0 or r = 0.
+-- This is Int_no_zero_div applied directly.
+theorem ratq_no_zero_div_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        p * r = 0 implies p = 0 or r = 0
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  suppose h : p * r = 0
+  have impl : p * r = 0 implies p = 0 or r = 0 by Int_no_zero_div at p at r
+  then p = 0 or r = 0 by impl and h
+end
+
+-- Transitivity of the RatQ order.
+-- [p,q]<[r,s] iff p*s<r*q; [r,s]<[t,u] iff r*u<t*s.
+-- Goal: [p,q]<[t,u] iff p*u<t*q.
+-- When q,s,u share sign (all positive), nlinarith closes:
+--   from (p*s<r*q) and (r*u<t*s) and s>0: p*s*u < r*q*u and r*u*q < t*s*q
+--   so p*u*s < r*q*u < t*q*s, hence p*u < t*q.
+theorem ratq_lt_trans_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        p * s < r * q implies r * u < t * s implies s > 0 implies
+        p * u < t * q
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  suppose h1 : p * s < r * q
+  suppose h2 : r * u < t * s
+  suppose hs : s > 0
+  then p * u < t * q by nlinarith
+end
+
+-- Addition preserves order.
+-- [p,q]+[t,u] = [p*u+t*q, q*u]; [r,s]+[t,u] = [r*u+t*s, s*u].
+-- [p,q]<[r,s] iff p*s < r*q.  Derived: (p*u+t*q)*(s*u) < (r*u+t*s)*(q*u).
+-- When q*u and s*u share sign (same-sign denominators), nlinarith closes
+-- from p*s<r*q and q>0 and s>0 and u>0.
+theorem ratq_lt_add_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all t : Int, for all u : Int,
+        p * s < r * q implies q > 0 implies s > 0 implies u > 0 implies
+        (p * u + t * q) * (s * u) < (r * u + t * s) * (q * u)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  suppose h : p * s < r * q
+  suppose hq : q > 0
+  suppose hs : s > 0
+  suppose hu : u > 0
+  then (p * u + t * q) * (s * u) < (r * u + t * s) * (q * u) by nlinarith
+end
+
+-- Product of positives is positive.
+-- [p,q]>[0,1]: p > 0 (when q > 0).
+-- [r,s]>[0,1]: r > 0 (when s > 0).
+-- [p,q]*[r,s] = [p*r,q*s]; condition: p*r > 0.
+theorem ratq_lt_mul_pos_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        p > 0 implies q > 0 implies r > 0 implies s > 0 implies
+        p * r > 0
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  suppose hp : p > 0
+  suppose hq : q > 0
+  suppose hr : r > 0
+  suppose hs : s > 0
+  then p * r > 0 by nlinarith
+end
+
+-- Totality of the RatQ order.
+-- p*s < r*q  or  p*s = r*q  or  r*q < p*s.
+theorem ratq_lt_total_rep :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        p * s < r * q or p * s = r * q or r * q < p * s
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  have tri : for all y : Int, (p * s) < y or (p * s) = y or y < (p * s)
+             by Int_order_total at (p * s)
+  then (p * s) < (r * q) or (p * s) = (r * q) or (r * q) < (p * s)
+       by tri at (r * q)
+end
+
+-- Zero < One at representative level: [0,1] < [1,1]
+-- Condition: 0*1 < 1*1.
+theorem ratq_zero_lt_one_rep : 0 * 1 < 1 * 1
+proof
+  then 0 * 1 < 1 * 1 by omega
+end
