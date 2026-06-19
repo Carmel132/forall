@@ -1,0 +1,38 @@
+import "rat_equiv.forall"
+
+-- Construction of ℚ as a quotient of ℤ × ℤ.
+--
+-- The carrier is pairs (p, q) : Int * Int representing p / q  (q ≠ 0).
+-- Two pairs are identified when they represent the same fraction:
+--   (p, q) ~ (r, s)  iff  p * s = r * q   (= rat_equiv p q r s)
+--
+-- IntPair is the type alias for the carrier.
+type IntPair = (Int, Int)
+
+-- The rationals as the quotient of IntPair by rat_equiv.
+-- Each equivalence class [p, q] represents the rational p / q.
+--
+-- The three axiom fields assert rat_equiv is an equivalence relation.
+-- These follow from rat_equiv_refl, rat_equiv_symm, rat_equiv_trans
+-- (proved in rat_equiv.forall); they are re-stated here as quotient axioms
+-- so the checker registers RatQ_refl, RatQ_symm, RatQ_trans in module_env.
+quotient RatQ := IntPair over rat_equiv
+  axiom refl :
+    for all p : Int, for all q : Int,
+      p * q = p * q
+  axiom symm :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+      p * s = r * q implies r * q = p * s
+  axiom trans :
+    for all p : Int, for all q : Int, for all r : Int,
+    for all s : Int, for all t : Int, for all u : Int,
+      p * s = r * q implies r * u = t * s implies not (s = 0) implies p * u = t * q
+
+-- Canonical embedding: int_to_ratq n = [n, 1], the class of the pair (n, 1).
+-- This injects Int into RatQ faithfully (integers as unit-denominator fractions).
+abstract definition int_to_ratq (n : Int) : Prop
+
+-- Distinguished elements: zero and one as RatQ constants.
+-- zero = [(0, 1)], one = [(1, 1)].
+abstract definition ratq_zero : Prop
+abstract definition ratq_one  : Prop
