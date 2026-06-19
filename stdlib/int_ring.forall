@@ -1,0 +1,160 @@
+import "int_ops.forall"
+
+-- Arithmetic operations on IntQ lifted from representatives.
+--
+-- Each operation is defined on equivalence classes by the formula on pairs:
+--   intq_add [a,b] [c,d] = [a+c, b+d]
+--   intq_neg [a,b]       = [b, a]
+--   intq_mul [a,b] [c,d] = [a*c+b*d, a*d+b*c]
+--
+-- Well-definedness (proved in int_ops.forall) ensures these are independent of
+-- the choice of representative.
+abstract definition intq_add (x : IntQ) (y : IntQ) : Prop
+abstract definition intq_neg (x : IntQ) : Prop
+abstract definition intq_mul (x : IntQ) (y : IntQ) : Prop
+
+-- Well-definedness axioms: the lifted operations respect int_equiv.
+-- These follow from intq_add_well_defined, intq_neg_well_defined,
+-- intq_mul_well_defined (proved in int_ops.forall).
+axiom intq_add_wd :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all a2 : Nat, for all b2 : Nat, for all c2 : Nat, for all d2 : Nat,
+        a + b2 = a2 + b implies c + d2 = c2 + d implies
+        (a + c) + (b2 + d2) = (a2 + c2) + (b + d)
+
+axiom intq_neg_wd :
+    for all a : Nat, for all b : Nat, for all a2 : Nat, for all b2 : Nat,
+        a + b2 = a2 + b implies b + a2 = b2 + a
+
+axiom intq_mul_wd :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all a2 : Nat, for all b2 : Nat, for all c2 : Nat, for all d2 : Nat,
+        a + b2 = a2 + b implies c + d2 = c2 + d implies
+        (a * c + b * d) + (a2 * d2 + b2 * c2) =
+        (a2 * c2 + b2 * d2) + (a * d + b * c)
+
+-- CommRing axioms for IntQ, proved from the corresponding Nat laws.
+--
+-- Each axiom is stated at the representative level:
+-- [a,b] + [c,d] = [a+c, b+d]; to show commutativity, we need
+-- [a+c, b+d] ~ [c+a, d+b], i.e. (a+c) + (d+b) = (b+d) + (c+a).
+-- This is immediate by ring over Nat.
+
+-- Addition is commutative: [a,b]+[c,d] ~ [c,d]+[a,b]
+-- i.e.  (a+c)+(d+b) = (b+d)+(c+a)
+theorem intq_add_comm_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        (a + c) + (d + b) = (b + d) + (c + a)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  then (a + c) + (d + b) = (b + d) + (c + a) by ring
+end
+
+-- Addition is associative: ([a,b]+[c,d])+[e,f] ~ [a,b]+([c,d]+[e,f])
+-- LHS rep: [(a+c)+e, (b+d)+f]  RHS rep: [a+(c+e), b+(d+f)]
+-- Equiv condition: ((a+c)+e) + (b+(d+f)) = ((b+d)+f) + (a+(c+e))
+theorem intq_add_assoc_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all e : Nat, for all f : Nat,
+        ((a + c) + e) + (b + (d + f)) = ((b + d) + f) + (a + (c + e))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  then ((a + c) + e) + (b + (d + f)) = ((b + d) + f) + (a + (c + e)) by ring
+end
+
+-- Zero is the additive identity: [a,b]+[0,0] ~ [a,b]
+-- Rep: [a+0, b+0] ~ [a, b]  iff  (a+0)+b = (b+0)+a
+theorem intq_add_zero_rep :
+    for all a : Nat, for all b : Nat,
+        (a + 0) + b = (b + 0) + a
+proof
+  take a : Nat
+  take b : Nat
+  then (a + 0) + b = (b + 0) + a by ring
+end
+
+-- Negation: [a,b]+[b,a] ~ [0,0]
+-- Rep: [a+b, b+a] ~ [0,0]  iff  (a+b)+0 = (b+a)+0
+theorem intq_add_neg_rep :
+    for all a : Nat, for all b : Nat,
+        (a + b) + 0 = (b + a) + 0
+proof
+  take a : Nat
+  take b : Nat
+  then (a + b) + 0 = (b + a) + 0 by ring
+end
+
+-- Multiplication is commutative: [a,b]*[c,d] ~ [c,d]*[a,b]
+-- LHS rep: [a*c+b*d, a*d+b*c]  RHS rep: [c*a+d*b, c*b+d*a]
+-- Equiv: (a*c+b*d)+(c*b+d*a) = (a*d+b*c)+(c*a+d*b)
+theorem intq_mul_comm_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        (a * c + b * d) + (c * b + d * a) = (a * d + b * c) + (c * a + d * b)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  then (a * c + b * d) + (c * b + d * a) = (a * d + b * c) + (c * a + d * b) by ring
+end
+
+-- Multiplication is associative: ([a,b]*[c,d])*[e,f] ~ [a,b]*([c,d]*[e,f])
+-- LHS rep: [(a*c+b*d)*e+(a*d+b*c)*f, (a*c+b*d)*f+(a*d+b*c)*e]
+-- RHS rep: [a*(c*e+d*f)+b*(c*f+d*e), a*(c*f+d*e)+b*(c*e+d*f)]
+-- Equiv: LHS.1 + RHS.2 = LHS.2 + RHS.1  (both equal by ring)
+theorem intq_mul_assoc_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all e : Nat, for all f : Nat,
+        ((a*c+b*d)*e + (a*d+b*c)*f) + (a*(c*f+d*e) + b*(c*e+d*f)) =
+        ((a*c+b*d)*f + (a*d+b*c)*e) + (a*(c*e+d*f) + b*(c*f+d*e))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  then ((a*c+b*d)*e + (a*d+b*c)*f) + (a*(c*f+d*e) + b*(c*e+d*f)) =
+       ((a*c+b*d)*f + (a*d+b*c)*e) + (a*(c*e+d*f) + b*(c*f+d*e)) by ring
+end
+
+-- One is the multiplicative identity: [a,b]*[1,0] ~ [a,b]
+-- Rep: [a*1+b*0, a*0+b*1] = [a, b]  (equal as Nat, no int_equiv needed)
+theorem intq_mul_one_rep :
+    for all a : Nat, for all b : Nat,
+        (a * 1 + b * 0) + b = (a * 0 + b * 1) + a
+proof
+  take a : Nat
+  take b : Nat
+  then (a * 1 + b * 0) + b = (a * 0 + b * 1) + a by ring
+end
+
+-- Distributivity: [a,b]*([c,d]+[e,f]) ~ [a,b]*[c,d] + [a,b]*[e,f]
+-- LHS: [a,b]*[c+e, d+f] = [a*(c+e)+b*(d+f), a*(d+f)+b*(c+e)]
+-- RHS: [a*c+b*d, a*d+b*c]+[a*e+b*f, a*f+b*e]
+--    = [(a*c+b*d)+(a*e+b*f), (a*d+b*c)+(a*f+b*e)]
+-- Equiv: (a*(c+e)+b*(d+f)) + ((a*d+b*c)+(a*f+b*e))
+--      = (a*(d+f)+b*(c+e)) + ((a*c+b*d)+(a*e+b*f))
+theorem intq_distrib_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all e : Nat, for all f : Nat,
+        (a*(c+e) + b*(d+f)) + ((a*d+b*c) + (a*f+b*e)) =
+        (a*(d+f) + b*(c+e)) + ((a*c+b*d) + (a*e+b*f))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  then (a*(c+e) + b*(d+f)) + ((a*d+b*c) + (a*f+b*e)) =
+       (a*(d+f) + b*(c+e)) + ((a*c+b*d) + (a*e+b*f)) by ring
+end
