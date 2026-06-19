@@ -128,3 +128,8 @@ add_test(NAME e2e_int_ring
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_ring.forall"
 )
+
+add_test(NAME e2e_int_ordered_ring
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_ordered_ring.forall"
+)
