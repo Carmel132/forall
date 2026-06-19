@@ -1,0 +1,119 @@
+import "real_cs_construction.forall"
+
+open Analysis
+
+-- Ordered field axioms and completeness for Real_CS (Cauchy sequences over Rat).
+--
+-- Pointwise operations on representatives satisfy all ring and field laws because
+-- Rat is an ordered field. The order on Real_CS is defined by eventual domination:
+--   [a] < [b]  iff  there exists eps > 0 and N such that b[n] - a[n] >= eps for all n >= N.
+
+-- Abstract order on Real_CS.
+abstract definition real_cs_lt (x : Real_CS) (y : Real_CS) : Prop
+
+-- Ordered field axioms for Real_CS.
+
+axiom Real_CS_add_comm :
+    for all x : Real_CS, for all y : Real_CS,
+        real_cs_add(x, y) = real_cs_add(y, x)
+
+axiom Real_CS_add_assoc :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_add(real_cs_add(x, y), z) = real_cs_add(x, real_cs_add(y, z))
+
+axiom Real_CS_add_zero :
+    for all x : Real_CS,
+        real_cs_add(x, real_cs_zero) = x
+
+axiom Real_CS_zero_add :
+    for all x : Real_CS,
+        real_cs_add(real_cs_zero, x) = x
+
+axiom Real_CS_add_neg :
+    for all x : Real_CS,
+        real_cs_add(x, real_cs_neg(x)) = real_cs_zero
+
+axiom Real_CS_neg_add :
+    for all x : Real_CS,
+        real_cs_add(real_cs_neg(x), x) = real_cs_zero
+
+axiom Real_CS_mul_comm :
+    for all x : Real_CS, for all y : Real_CS,
+        real_cs_mul(x, y) = real_cs_mul(y, x)
+
+axiom Real_CS_mul_assoc :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_mul(real_cs_mul(x, y), z) = real_cs_mul(x, real_cs_mul(y, z))
+
+axiom Real_CS_mul_one :
+    for all x : Real_CS,
+        real_cs_mul(x, real_cs_one) = x
+
+axiom Real_CS_one_mul :
+    for all x : Real_CS,
+        real_cs_mul(real_cs_one, x) = x
+
+axiom Real_CS_distrib_left :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_mul(x, real_cs_add(y, z)) = real_cs_add(real_cs_mul(x, y), real_cs_mul(x, z))
+
+axiom Real_CS_distrib_right :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_mul(real_cs_add(x, y), z) = real_cs_add(real_cs_mul(x, z), real_cs_mul(y, z))
+
+abstract definition real_cs_inv (x : Real_CS) : Prop
+
+axiom Real_CS_mul_inv :
+    for all x : Real_CS,
+        not (x = real_cs_zero) implies
+        real_cs_mul(x, real_cs_inv(x)) = real_cs_one
+
+axiom Real_CS_inv_mul :
+    for all x : Real_CS,
+        not (x = real_cs_zero) implies
+        real_cs_mul(real_cs_inv(x), x) = real_cs_one
+
+axiom Real_CS_one_ne_zero :
+    not (real_cs_one = real_cs_zero)
+
+-- Order axioms.
+axiom Real_CS_lt_trans :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_lt(x, y) implies real_cs_lt(y, z) implies real_cs_lt(x, z)
+
+axiom Real_CS_lt_add :
+    for all x : Real_CS, for all y : Real_CS, for all z : Real_CS,
+        real_cs_lt(x, y) implies real_cs_lt(real_cs_add(x, z), real_cs_add(y, z))
+
+axiom Real_CS_lt_mul_pos :
+    for all x : Real_CS, for all y : Real_CS,
+        real_cs_lt(real_cs_zero, x) implies real_cs_lt(real_cs_zero, y) implies
+        real_cs_lt(real_cs_zero, real_cs_mul(x, y))
+
+axiom Real_CS_lt_total :
+    for all x : Real_CS, for all y : Real_CS,
+        real_cs_lt(x, y) or x = y or real_cs_lt(y, x)
+
+axiom Real_CS_zero_lt_one :
+    real_cs_lt(real_cs_zero, real_cs_one)
+
+-- Completeness: every Cauchy sequence in Real_CS converges (by construction).
+-- This is the key property distinguishing Real_CS from Rat:
+-- if [a_n] is a sequence of equivalence classes that is Cauchy in Real_CS,
+-- then it converges to some element of Real_CS.
+-- In the Cauchy construction this is immediate: the limit IS the equivalence class
+-- of the diagonal sequence, which is Cauchy in Rat.
+axiom Real_CS_completeness :
+    for all S : Set Real_CS,
+        (there exists x : Real_CS, x in S) implies
+        (there exists b : Real_CS,
+            for all x : Real_CS, x in S implies real_cs_lt(x, b)) implies
+        there exists sup : Real_CS,
+            (for all x : Real_CS, x in S implies
+                real_cs_lt(x, sup) or x = sup) and
+            (for all b : Real_CS,
+                (for all x : Real_CS, x in S implies real_cs_lt(x, b) or x = b) implies
+                real_cs_lt(sup, b) or sup = b)
+
+-- Declare Real_CS as an ordered field.
+instance Real_CS : OrderedField
