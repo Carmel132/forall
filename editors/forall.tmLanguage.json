@@ -48,7 +48,7 @@
 
     "proof-justification": {
       "name": "keyword.operator.proof.forall",
-      "match": "\\b(by|with|at|from|because|decide|norm_num|ring|linarith|omega|simp|field_simp|positivity|gcongr|contra|contrapositive|refl|symm|trans|congr|eq_subst|funext|push_neg|hypothesis|assumption)\\b"
+      "match": "\\b(by|with|at|from|because|decide|norm_num|ring|linarith|nlinarith|omega|simp|field_simp|positivity|gcongr|contra|contrapositive|refl|symm|trans|congr|eq_subst|funext|push_neg|hypothesis|assumption)\\b"
     },
 
     "logical-connective": {
