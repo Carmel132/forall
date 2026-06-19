@@ -183,3 +183,8 @@ add_test(NAME e2e_complex
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/complex.forall"
 )
+
+add_test(NAME e2e_real_isomorphism
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_isomorphism.forall"
+)
