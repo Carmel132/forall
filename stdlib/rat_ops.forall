@@ -1,0 +1,99 @@
+import "rat_construction.forall"
+
+-- Well-definedness of arithmetic operations on RatQ representatives.
+--
+-- A rational number is an equivalence class [p, q] where p, q : Int, q ≠ 0.
+-- Two pairs are equivalent: rat_equiv p q r s  iff  p * s = r * q.
+--
+-- Operations on representatives:
+--   ratq_add [p,q] [r,s] := [p*s + r*q,  q*s]   (common-denominator sum)
+--   ratq_neg [p,q]       := [-p, q]              (negation)
+--   ratq_mul [p,q] [r,s] := [p*r, q*s]           (product)
+--
+-- Well-definedness: the equivalence class of the result depends only on the
+-- class of the inputs, not on the choice of representative.
+
+abstract definition ratq_add (x : RatQ) (y : RatQ) : Prop
+abstract definition ratq_neg (x : RatQ) : Prop
+abstract definition ratq_mul (x : RatQ) (y : RatQ) : Prop
+
+-- Addition is well-defined on equivalence classes.
+-- If [p,q] ~ [p',q']  and  [r,s] ~ [r',s'],
+-- then [p*s + r*q, q*s] ~ [p'*s' + r'*q', q'*s'].
+-- Equivalence condition: (p*s + r*q) * (q'*s') = (p'*s' + r'*q') * (q*s).
+-- Proof: from h1 (p*q' = p'*q) and h2 (r*s' = r'*s), derive two linear
+-- atoms via eq_subst, then close by nlinarith.
+theorem ratq_add_well_defined :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all p2 : Int, for all q2 : Int, for all r2 : Int, for all s2 : Int,
+        p * q2 = p2 * q implies r * s2 = r2 * s implies
+        (p * s + r * q) * (q2 * s2) = (p2 * s2 + r2 * q2) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take p2 : Int
+  take q2 : Int
+  take r2 : Int
+  take s2 : Int
+  suppose h1 : p * q2 = p2 * q
+  suppose h2 : r * s2 = r2 * s
+  -- From h1: (p*q2)*(s*s2) = (p2*q)*(s*s2).
+  have ref1 : (p2 * q) * (s * s2) = (p2 * q) * (s * s2) by refl
+  have sc1  : (p * q2) * (s * s2) = (p2 * q) * (s * s2) by eq_subst h1 and ref1
+  -- From h2: (r*s2)*(q*q2) = (r2*s)*(q*q2).
+  have ref2 : (r2 * s) * (q * q2) = (r2 * s) * (q * q2) by refl
+  have sc2  : (r * s2) * (q * q2) = (r2 * s) * (q * q2) by eq_subst h2 and ref2
+  -- nlinarith: expand both sides and use sc1, sc2 to identify atom equalities.
+  then (p * s + r * q) * (q2 * s2) = (p2 * s2 + r2 * q2) * (q * s) by nlinarith
+end
+
+-- Negation is well-defined on equivalence classes.
+-- If [p,q] ~ [p',q'],  then [-p, q] ~ [-p', q'].
+-- Equivalence condition: (-p) * q' = (-p') * q.
+-- Proof: (-p)*q' = -(p*q') = -(p'*q) = (-p')*q  by ring + h.
+theorem ratq_neg_well_defined :
+    for all p : Int, for all q : Int, for all p2 : Int, for all q2 : Int,
+        p * q2 = p2 * q implies (-p) * q2 = (-p2) * q
+proof
+  take p : Int
+  take q : Int
+  take p2 : Int
+  take q2 : Int
+  suppose h : p * q2 = p2 * q
+  have ref : (-p2) * q = (-p2) * q by refl
+  have sc  : (-p) * q2 = (-p2) * q by nlinarith
+  then (-p) * q2 = (-p2) * q by sc
+end
+
+-- Multiplication is well-defined on equivalence classes.
+-- If [p,q] ~ [p',q']  and  [r,s] ~ [r',s'],
+-- then [p*r, q*s] ~ [p'*r', q'*s'].
+-- Equivalence condition: (p*r) * (q'*s') = (p'*r') * (q*s).
+-- Proof: (p*r)*(q'*s') = (p*q')*(r*s') = (p'*q)*(r'*s) = (p'*r')*(q*s) by ring.
+theorem ratq_mul_well_defined :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+    for all p2 : Int, for all q2 : Int, for all r2 : Int, for all s2 : Int,
+        p * q2 = p2 * q implies r * s2 = r2 * s implies
+        (p * r) * (q2 * s2) = (p2 * r2) * (q * s)
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take p2 : Int
+  take q2 : Int
+  take r2 : Int
+  take s2 : Int
+  suppose h1 : p * q2 = p2 * q
+  suppose h2 : r * s2 = r2 * s
+  -- From h1: (p*q2)*(r*s2) = (p2*q)*(r*s2).
+  have ref1 : (p2 * q) * (r * s2) = (p2 * q) * (r * s2) by refl
+  have sc1  : (p * q2) * (r * s2) = (p2 * q) * (r * s2) by eq_subst h1 and ref1
+  -- From h2: (p2*q)*(r*s2) = (p2*q)*(r2*s).
+  have ref2 : (p2 * q) * (r2 * s) = (p2 * q) * (r2 * s) by refl
+  have sc2  : (p2 * q) * (r * s2) = (p2 * q) * (r2 * s) by eq_subst h2 and ref2
+  -- nlinarith: atoms p*q2, p2*q, r*s2, r2*s and their products.
+  then (p * r) * (q2 * s2) = (p2 * r2) * (q * s) by nlinarith
+end
