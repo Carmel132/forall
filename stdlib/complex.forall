@@ -1,0 +1,151 @@
+import "real_dc_field.forall"
+
+-- Complex numbers as pairs of real numbers.
+--
+-- ℂ = Real_DC × Real_DC with:
+--   (a, b) + (c, d) = (a+c, b+d)
+--   (a, b) * (c, d) = (ac - bd, ad + bc)
+--   conjugate(a, b) = (a, -b)
+--   norm²(a, b)     = a² + b²
+--   i               = (0, 1)
+--
+-- ℂ is a field (every nonzero element has an inverse) but not an ordered field
+-- (no total order on ℂ is compatible with its field structure).
+-- It is algebraically closed (Fundamental Theorem of Algebra), but proving that
+-- is far beyond current scope.
+
+-- The Complex type: pairs of reals.
+-- Declared abstractly so the type-checker treats Complex as an opaque user type,
+-- avoiding spurious tuple-type mismatch warnings.
+abstract definition Complex : Prop
+
+-- Component accessors.
+abstract definition complex_re (z : Complex) : Prop
+abstract definition complex_im (z : Complex) : Prop
+
+-- Constructor: mk_complex(a, b) builds the pair (a, b).
+abstract definition mk_complex (a : Real_DC) (b : Real_DC) : Prop
+
+-- Arithmetic operations.
+abstract definition complex_add (z : Complex) (w : Complex) : Prop
+abstract definition complex_neg (z : Complex) : Prop
+abstract definition complex_mul (z : Complex) (w : Complex) : Prop
+abstract definition complex_inv (z : Complex) : Prop
+
+-- Conjugate and norm squared.
+abstract definition complex_conj (z : Complex) : Prop
+abstract definition complex_norm_sq (z : Complex) : Prop
+
+-- Distinguished elements.
+-- zero_C = mk_complex(0, 0)   (additive identity)
+-- one_C  = mk_complex(1, 0)   (multiplicative identity)
+-- i_C    = mk_complex(0, 1)   (imaginary unit)
+abstract definition zero_C : Prop
+abstract definition one_C  : Prop
+abstract definition i_C    : Prop
+
+-- Embedding of real numbers: real_to_complex r = mk_complex(r, 0).
+abstract definition real_to_complex (r : Real_DC) : Prop
+
+-- Field axioms for ℂ.
+
+axiom Complex_add_comm :
+    for all z : Complex, for all w : Complex,
+        complex_add(z, w) = complex_add(w, z)
+
+axiom Complex_add_assoc :
+    for all z : Complex, for all w : Complex, for all v : Complex,
+        complex_add(complex_add(z, w), v) = complex_add(z, complex_add(w, v))
+
+axiom Complex_add_zero :
+    for all z : Complex,
+        complex_add(z, zero_C) = z
+
+axiom Complex_zero_add :
+    for all z : Complex,
+        complex_add(zero_C, z) = z
+
+axiom Complex_add_neg :
+    for all z : Complex,
+        complex_add(z, complex_neg(z)) = zero_C
+
+axiom Complex_neg_add :
+    for all z : Complex,
+        complex_add(complex_neg(z), z) = zero_C
+
+axiom Complex_mul_comm :
+    for all z : Complex, for all w : Complex,
+        complex_mul(z, w) = complex_mul(w, z)
+
+axiom Complex_mul_assoc :
+    for all z : Complex, for all w : Complex, for all v : Complex,
+        complex_mul(complex_mul(z, w), v) = complex_mul(z, complex_mul(w, v))
+
+axiom Complex_mul_one :
+    for all z : Complex,
+        complex_mul(z, one_C) = z
+
+axiom Complex_one_mul :
+    for all z : Complex,
+        complex_mul(one_C, z) = z
+
+axiom Complex_distrib_left :
+    for all z : Complex, for all w : Complex, for all v : Complex,
+        complex_mul(z, complex_add(w, v)) = complex_add(complex_mul(z, w), complex_mul(z, v))
+
+axiom Complex_distrib_right :
+    for all z : Complex, for all w : Complex, for all v : Complex,
+        complex_mul(complex_add(z, w), v) = complex_add(complex_mul(z, v), complex_mul(w, v))
+
+axiom Complex_mul_inv :
+    for all z : Complex,
+        not (z = zero_C) implies
+        complex_mul(z, complex_inv(z)) = one_C
+
+axiom Complex_inv_mul :
+    for all z : Complex,
+        not (z = zero_C) implies
+        complex_mul(complex_inv(z), z) = one_C
+
+axiom Complex_one_ne_zero :
+    not (one_C = zero_C)
+
+-- Declare ℂ as a Field (not OrderedField — ℂ admits no compatible total order).
+instance Complex : Field
+
+-- The imaginary unit satisfies i² = −1.
+-- Computation: (0,1)*(0,1) = (0·0 − 1·1, 0·1 + 1·0) = (−1, 0) = −one_C.
+-- Stated as an axiom (the arithmetic is at the representation level).
+axiom Complex_i_sq :
+    complex_mul(i_C, i_C) = complex_neg(one_C)
+
+-- Theorem restating i² = −1 with the standard name.
+theorem i_squared_eq_neg_one :
+    complex_mul(i_C, i_C) = complex_neg(one_C)
+proof
+  then complex_mul(i_C, i_C) = complex_neg(one_C) by Complex_i_sq
+end
+
+-- Conjugate properties.
+
+axiom Complex_conj_invol :
+    for all z : Complex,
+        complex_conj(complex_conj(z)) = z
+
+axiom Complex_conj_add :
+    for all z : Complex, for all w : Complex,
+        complex_conj(complex_add(z, w)) = complex_add(complex_conj(z), complex_conj(w))
+
+axiom Complex_conj_mul :
+    for all z : Complex, for all w : Complex,
+        complex_conj(complex_mul(z, w)) = complex_mul(complex_conj(z), complex_conj(w))
+
+-- z * conj(z) = norm_sq(z) (a nonneg real embedded in ℂ).
+axiom Complex_mul_conj :
+    for all z : Complex,
+        complex_mul(z, complex_conj(z)) = complex_norm_sq(z)
+
+-- norm_sq(z) = 0 implies z = 0.
+axiom Complex_norm_sq_zero :
+    for all z : Complex,
+        complex_norm_sq(z) = zero_C implies z = zero_C
