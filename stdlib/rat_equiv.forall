@@ -1,0 +1,80 @@
+import "int.forall"
+
+-- Construction of ℚ from pairs (p, q) : Int × Int representing p / q.
+--
+-- Two pairs (p, q) and (r, s) represent the same rational when p * s = r * q
+-- (cross-multiplication equality).  This is rat_equiv.
+--
+-- Note: rat_equiv is stated with four separate Int parameters to avoid
+-- tuple projection (p.1, p.2 not yet available).  The denominator is
+-- treated as a nonzero Int; the nonzero condition appears explicitly in
+-- the transitivity hypothesis.
+
+-- The equivalence relation on fraction pairs.
+-- rat_equiv p q r s means the fractions p/q and r/s are equal.
+definition rat_equiv (p : Int) (q : Int) (r : Int) (s : Int) : Prop :=
+    p * s = r * q
+
+-- Reflexivity: p/q = p/q  since  p * q = p * q.
+theorem rat_equiv_refl : for all p : Int, for all q : Int, p * q = p * q
+proof
+  take p : Int
+  take q : Int
+  then p * q = p * q by refl
+end
+
+-- Symmetry: if p * s = r * q  then  r * q = p * s.
+theorem rat_equiv_symm :
+    for all p : Int, for all q : Int, for all r : Int, for all s : Int,
+        p * s = r * q implies r * q = p * s
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  suppose h : p * s = r * q
+  then r * q = p * s by symm h
+end
+
+-- Transitivity: p*s = r*q, r*u = t*s, s ≠ 0  =>  p*u = t*q.
+-- Proof: chain s*(p*u) = (p*s)*u = (r*q)*u = (r*u)*q = (t*s)*q = s*(t*q),
+--        then cancel s via Int_mul_left_cancel.
+theorem rat_equiv_trans :
+    for all p : Int, for all q : Int, for all r : Int,
+    for all s : Int, for all t : Int, for all u : Int,
+        p * s = r * q implies r * u = t * s implies not (s = 0) implies p * u = t * q
+proof
+  take p : Int
+  take q : Int
+  take r : Int
+  take s : Int
+  take t : Int
+  take u : Int
+  suppose h1 : p * s = r * q
+  suppose h2 : r * u = t * s
+  suppose hne : not (s = 0)
+  -- Chain: s*(p*u) → (p*s)*u → (r*q)*u → (r*u)*q → (t*s)*q → s*(t*q)
+  have e1 : s * (p * u) = (p * s) * u by ring
+  have ref_rqu : (r * q) * u = (r * q) * u by refl
+  have e2 : (p * s) * u = (r * q) * u by eq_subst h1 and ref_rqu
+  have e3 : (r * q) * u = (r * u) * q by ring
+  have ref_tsq : (t * s) * q = (t * s) * q by refl
+  have e4 : (r * u) * q = (t * s) * q by eq_subst h2 and ref_tsq
+  have e5 : (t * s) * q = s * (t * q) by ring
+  have c1 : s * (p * u) = (r * q) * u by trans e1 and e2
+  have c2 : (r * q) * u = (t * s) * q by trans e3 and e4
+  have c3 : s * (p * u) = (t * s) * q by trans c1 and c2
+  have combined : s * (p * u) = s * (t * q) by trans c3 and e5
+  -- Cancel s: Int_mul_left_cancel : ¬(s=0) → s*y = s*z → y = z
+  have cancel0 : for all y : Int, for all z : Int,
+                 not (s = 0) implies s * y = s * z implies y = z
+                 by Int_mul_left_cancel at s
+  have cancel1 : for all z : Int,
+                 not (s = 0) implies s * (p * u) = s * z implies p * u = z
+                 by cancel0 at (p * u)
+  have cancel2 : not (s = 0) implies s * (p * u) = s * (t * q) implies p * u = t * q
+                 by cancel1 at (t * q)
+  have cancel3 : s * (p * u) = s * (t * q) implies p * u = t * q
+                 by cancel2 and hne
+  then p * u = t * q by cancel3 and combined
+end
