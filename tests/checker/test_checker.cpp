@@ -5194,3 +5194,131 @@ end
         return msg;
     }();
 }
+
+// Dedekind cut: IsDedekindCut predicate definition and nonempty extraction.
+TEST(CheckerTest, DedekindCutNonempty) {
+    auto diag = run_checker("dedekind_cut_nonempty", R"(
+definition IsDedekindCut (L : Set RatQ) : Prop :=
+    (there exists q : RatQ, q in L) and
+    (there exists q : RatQ, not (q in L)) and
+    (for all p : RatQ, for all q : RatQ,
+        p < q implies q in L implies p in L) and
+    (for all q : RatQ, q in L implies
+        there exists r : RatQ, q < r and r in L)
+
+theorem cut_nonempty :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        there exists q : RatQ, q in L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have hfull : (there exists q : RatQ, q in L) and
+               (there exists q : RatQ, not (q in L)) and
+               (for all p : RatQ, for all q : RatQ,
+                   p < q implies q in L implies p in L) and
+               (for all q : RatQ, q in L implies
+                   there exists r : RatQ, q < r and r in L) by h
+  have h3 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) and
+            (for all p : RatQ, for all q : RatQ,
+                p < q implies q in L implies p in L) by hfull
+  have h2 : (there exists q : RatQ, q in L) and
+            (there exists q : RatQ, not (q in L)) by h3
+  then there exists q : RatQ, q in L by h2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Dedekind cut: cut_equiv transitivity.
+TEST(CheckerTest, DedekindCutEquivTrans) {
+    auto diag = run_checker("dedekind_cut_equiv_trans", R"(
+theorem cut_equiv_trans :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+        L = M implies M = N implies L = N
+proof
+  take L : Set RatQ
+  take M : Set RatQ
+  take N : Set RatQ
+  suppose h1 : L = M
+  suppose h2 : M = N
+  then L = N by trans h1 and h2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Real_DC: add_zero_is_neutral can be derived from the rep-level axiom.
+TEST(CheckerTest, RealDCAddZeroNeutral) {
+    auto diag = run_checker("real_dc_add_zero_neutral", R"(
+definition IsDedekindCut (L : Set RatQ) : Prop :=
+    (there exists q : RatQ, q in L) and
+    (there exists q : RatQ, not (q in L)) and
+    (for all p : RatQ, for all q : RatQ,
+        p < q implies q in L implies p in L) and
+    (for all q : RatQ, q in L implies
+        there exists r : RatQ, q < r and r in L)
+
+axiom real_dc_add_zero_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 0} and r = p + q} = L
+
+theorem real_dc_add_zero_is_neutral_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 0} and r = p + q} = L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have impl : IsDedekindCut(L) implies
+      {r : RatQ | there exists p : RatQ,
+          there exists q : RatQ,
+          p in L and q in {s : RatQ | s < 0} and r = p + q} = L by real_dc_add_zero_rep at L
+  then {r : RatQ | there exists p : RatQ,
+      there exists q : RatQ,
+      p in L and q in {s : RatQ | s < 0} and r = p + q} = L by impl and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Real_DC: one_ne_zero axiom is accepted by the checker.
+TEST(CheckerTest, RealDCOneNeZero) {
+    auto diag = run_checker("real_dc_one_ne_zero", R"(
+abstract definition real_dc_zero : Prop
+abstract definition real_dc_one  : Prop
+axiom Real_DC_one_ne_zero : not (real_dc_one = real_dc_zero)
+
+theorem not_zero_eq_one :
+    not (real_dc_zero = real_dc_one)
+proof
+  suppose h : real_dc_zero = real_dc_one
+  have hflip : real_dc_one = real_dc_zero by symm h
+  have bot : false by Real_DC_one_ne_zero and hflip
+  then not (real_dc_zero = real_dc_one) by bot
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
