@@ -27,9 +27,16 @@ axiom Int_one_mul         : for all x : Int, 1 * x = x
 axiom Int_distrib_left    : for all x : Int, for all y : Int, for all z : Int, x * (y + z) = x * y + x * z
 axiom Int_distrib_right   : for all x : Int, for all y : Int, for all z : Int, (x + y) * z = x * z + y * z
 
+-- Integral domain: no zero divisors; multiplicative cancellation
+axiom Int_no_zero_div     : for all x : Int, for all y : Int, x * y = 0 implies x = 0 or y = 0
+axiom Int_mul_left_cancel : for all x : Int, for all y : Int, for all z : Int,
+    not (x = 0) implies x * y = x * z implies y = z
+
 -- Order (ℤ is a totally ordered ring)
 axiom Int_order_total     : for all x : Int, for all y : Int, x < y or x = y or y < x
 axiom Int_lt_trans        : for all x : Int, for all y : Int, for all z : Int, x < y implies y < z implies x < z
 axiom Int_lt_add          : for all x : Int, for all y : Int, for all z : Int, x < y implies x + z < y + z
+axiom Int_lt_mul_pos      : for all x : Int, for all y : Int, x > 0 implies y > 0 implies x * y > 0
+axiom Int_zero_lt_one     : 0 < 1
 
 instance Int : CommRing
