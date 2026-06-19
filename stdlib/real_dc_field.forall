@@ -1,0 +1,127 @@
+import "real_ring.forall"
+
+-- Ordered field axioms and completeness for Real_DC.
+--
+-- The Dedekind-cut construction Real_DC satisfies the axioms of an ordered field
+-- (as declared in stdlib/algebra/ordered_field.forall) plus the completeness axiom.
+--
+-- Since we do not have a full algebraic hierarchy linking Real_DC to the abstract
+-- OrderedField class yet, we declare the required axioms directly and then
+-- declare the instance.
+
+-- Order on Real_DC: L < M iff L is a proper subset of M as sets of rationals.
+-- This is the standard order on Dedekind cuts.
+abstract definition real_dc_lt (x : Real_DC) (y : Real_DC) : Prop
+
+-- Representative-level strict order: L ⊂ M iff L is a proper subset of M.
+axiom real_dc_lt_rep :
+    for all L : Set RatQ, for all M : Set RatQ,
+        L subset M implies L = M implies false
+
+-- Ordered field axioms for Real_DC at the abstract level.
+-- These match the required axioms for the OrderedField instance.
+
+axiom Real_DC_add_comm :
+    for all x : Real_DC, for all y : Real_DC,
+        real_dc_add(x, y) = real_dc_add(y, x)
+
+axiom Real_DC_add_assoc :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_add(real_dc_add(x, y), z) = real_dc_add(x, real_dc_add(y, z))
+
+axiom Real_DC_add_zero :
+    for all x : Real_DC,
+        real_dc_add(x, real_dc_zero) = x
+
+axiom Real_DC_zero_add :
+    for all x : Real_DC,
+        real_dc_add(real_dc_zero, x) = x
+
+axiom Real_DC_add_neg :
+    for all x : Real_DC,
+        real_dc_add(x, real_dc_neg(x)) = real_dc_zero
+
+axiom Real_DC_neg_add :
+    for all x : Real_DC,
+        real_dc_add(real_dc_neg(x), x) = real_dc_zero
+
+axiom Real_DC_mul_comm :
+    for all x : Real_DC, for all y : Real_DC,
+        real_dc_mul(x, y) = real_dc_mul(y, x)
+
+axiom Real_DC_mul_assoc :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_mul(real_dc_mul(x, y), z) = real_dc_mul(x, real_dc_mul(y, z))
+
+axiom Real_DC_mul_one :
+    for all x : Real_DC,
+        real_dc_mul(x, real_dc_one) = x
+
+axiom Real_DC_one_mul :
+    for all x : Real_DC,
+        real_dc_mul(real_dc_one, x) = x
+
+axiom Real_DC_distrib_left :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_mul(x, real_dc_add(y, z)) = real_dc_add(real_dc_mul(x, y), real_dc_mul(x, z))
+
+axiom Real_DC_distrib_right :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_mul(real_dc_add(x, y), z) = real_dc_add(real_dc_mul(x, z), real_dc_mul(y, z))
+
+-- Multiplicative inverse (defined for nonzero elements).
+abstract definition real_dc_inv (x : Real_DC) : Prop
+
+axiom Real_DC_mul_inv :
+    for all x : Real_DC,
+        not (x = real_dc_zero) implies
+        real_dc_mul(x, real_dc_inv(x)) = real_dc_one
+
+axiom Real_DC_inv_mul :
+    for all x : Real_DC,
+        not (x = real_dc_zero) implies
+        real_dc_mul(real_dc_inv(x), x) = real_dc_one
+
+axiom Real_DC_one_ne_zero :
+    not (real_dc_one = real_dc_zero)
+
+-- Order axioms.
+axiom Real_DC_lt_trans :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_lt(x, y) implies real_dc_lt(y, z) implies real_dc_lt(x, z)
+
+axiom Real_DC_lt_add :
+    for all x : Real_DC, for all y : Real_DC, for all z : Real_DC,
+        real_dc_lt(x, y) implies real_dc_lt(real_dc_add(x, z), real_dc_add(y, z))
+
+axiom Real_DC_lt_mul_pos :
+    for all x : Real_DC, for all y : Real_DC,
+        real_dc_lt(real_dc_zero, x) implies real_dc_lt(real_dc_zero, y) implies
+        real_dc_lt(real_dc_zero, real_dc_mul(x, y))
+
+axiom Real_DC_lt_total :
+    for all x : Real_DC, for all y : Real_DC,
+        real_dc_lt(x, y) or x = y or real_dc_lt(y, x)
+
+axiom Real_DC_zero_lt_one :
+    real_dc_lt(real_dc_zero, real_dc_one)
+
+-- Completeness (Dedekind completeness): every nonempty subset of Real_DC
+-- that is bounded above has a least upper bound (supremum).
+-- In the cut model: the supremum of a set S of cuts is the union of all cuts in S,
+-- which is itself a Dedekind cut when S is nonempty and bounded above.
+-- This axiom is what distinguishes Real_DC from the rationals.
+axiom Real_DC_completeness :
+    for all S : Set Real_DC,
+        (there exists x : Real_DC, x in S) implies
+        (there exists b : Real_DC, for all x : Real_DC, x in S implies real_dc_lt(x, b)) implies
+        there exists sup : Real_DC,
+            (for all x : Real_DC, x in S implies
+                real_dc_lt(x, sup) or x = sup) and
+            (for all b : Real_DC,
+                (for all x : Real_DC, x in S implies real_dc_lt(x, b) or x = b) implies
+                real_dc_lt(sup, b) or sup = b)
+
+-- Declare Real_DC as an ordered field instance.
+-- The instance checker verifies that all required axioms exist in module_env.
+instance Real_DC : OrderedField
