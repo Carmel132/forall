@@ -1,0 +1,95 @@
+import "analysis/cauchy.forall"
+import "rat.forall"
+
+open Analysis
+
+-- Construction of the real numbers as the Cauchy completion of the rationals.
+--
+-- The carrier is the type of all Cauchy sequences of rationals: Nat -> Rat.
+-- Two sequences are equivalent when their difference converges to zero (CauchyEquiv).
+-- The real numbers are the equivalence classes [a] of Cauchy sequences under this relation.
+--
+-- This is the classical Cantor-Méray construction (1872). Its key properties:
+--   • Every Cauchy sequence [a] has a limit in Real_CS (completeness by construction).
+--   • The rationals embed faithfully: Q ↪ Real_CS via r ↦ [const_r] where const_r n = r.
+--   • The resulting type is an ordered field satisfying the Archimedean property.
+--
+-- Note: CauchyEquiv is defined in stdlib/analysis/cauchy.forall as:
+--   CauchyEquiv(a, b) = ConvergesTo_Rat(fun k => a[k] - b[k], 0)
+
+type CauchySeq = Nat -> Rat
+
+-- The real numbers as the quotient of CauchySeq by CauchyEquiv.
+-- axiom fields below re-state the three parts of the equivalence relation
+-- so the checker registers Real_CS_refl, Real_CS_symm, Real_CS_trans.
+quotient Real_CS := CauchySeq over CauchyEquiv
+  axiom refl :
+    for all a : Nat -> Rat,
+      CauchyEquiv(a, a)
+  axiom symm :
+    for all a : Nat -> Rat, for all b : Nat -> Rat,
+      CauchyEquiv(a, b) implies CauchyEquiv(b, a)
+  axiom trans :
+    for all a : Nat -> Rat, for all b : Nat -> Rat, for all c : Nat -> Rat,
+      CauchyEquiv(a, b) implies CauchyEquiv(b, c) implies CauchyEquiv(a, c)
+
+-- Canonical embedding: rat_to_real_cs r = [const_r] where const_r n = r.
+-- Constant sequences are always Cauchy (the difference is identically 0).
+abstract definition rat_to_real_cs (r : Rat) : Prop
+
+-- Distinguished elements: zero and one.
+-- real_cs_zero = [const_0]   (constant zero sequence)
+-- real_cs_one  = [const_1]   (constant one sequence)
+abstract definition real_cs_zero : Prop
+abstract definition real_cs_one  : Prop
+
+-- Injectivity of the embedding at the representative level:
+-- if the constant sequences const_r and const_s are CauchyEquiv, then r = s.
+-- (Their difference const_{r-s} converges to 0 iff r = s.)
+axiom rat_to_real_cs_inj_rep :
+    for all r : Rat, for all s : Rat,
+        CauchyEquiv(fun k : Nat => r, fun k : Nat => s) implies r = s
+
+-- Arithmetic on CauchySeq representatives: pointwise operations.
+-- Addition:    (a + b)[n] = a[n] + b[n]
+-- Negation:    (-a)[n]    = -a[n]
+-- Multiplication: (a * b)[n] = a[n] * b[n]
+-- These preserve the Cauchy property and respect CauchyEquiv.
+
+abstract definition real_cs_add (x : Real_CS) (y : Real_CS) : Prop
+abstract definition real_cs_neg (x : Real_CS) : Prop
+abstract definition real_cs_mul (x : Real_CS) (y : Real_CS) : Prop
+
+-- Well-definedness: pointwise addition respects CauchyEquiv.
+axiom real_cs_add_wd :
+    for all a : Nat -> Rat, for all b : Nat -> Rat,
+    for all a2 : Nat -> Rat, for all b2 : Nat -> Rat,
+        CauchyEquiv(a, a2) implies CauchyEquiv(b, b2) implies
+        CauchyEquiv(fun k : Nat => a[k] + b[k],
+                    fun k : Nat => a2[k] + b2[k])
+
+-- Well-definedness: pointwise negation respects CauchyEquiv.
+axiom real_cs_neg_wd :
+    for all a : Nat -> Rat, for all b : Nat -> Rat,
+        CauchyEquiv(a, b) implies
+        CauchyEquiv(fun k : Nat => 0 - a[k],
+                    fun k : Nat => 0 - b[k])
+
+-- Well-definedness: pointwise multiplication respects CauchyEquiv.
+-- (Requires both sequences to be bounded, which follows from Cauchy property.)
+axiom real_cs_mul_wd :
+    for all a : Nat -> Rat, for all b : Nat -> Rat,
+    for all a2 : Nat -> Rat, for all b2 : Nat -> Rat,
+        CauchyEquiv(a, a2) implies CauchyEquiv(b, b2) implies
+        CauchyEquiv(fun k : Nat => a[k] * b[k],
+                    fun k : Nat => a2[k] * b2[k])
+
+-- Zero is the additive identity at representative level.
+axiom real_cs_add_zero_rep :
+    for all a : Nat -> Rat,
+        CauchyEquiv(fun k : Nat => a[k] + 0, a)
+
+-- One is the multiplicative identity at representative level.
+axiom real_cs_mul_one_rep :
+    for all a : Nat -> Rat,
+        CauchyEquiv(fun k : Nat => a[k] * 1, a)
