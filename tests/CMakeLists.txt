@@ -178,3 +178,8 @@ add_test(NAME e2e_real_cs_field
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/real_cs_field.forall"
 )
+
+add_test(NAME e2e_complex
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/complex.forall"
+)
