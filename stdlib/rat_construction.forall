@@ -36,3 +36,15 @@ abstract definition int_to_ratq (n : Int) : Prop
 -- zero = [(0, 1)], one = [(1, 1)].
 abstract definition ratq_zero : Prop
 abstract definition ratq_one  : Prop
+
+-- Injectivity of the embedding at the representative level:
+-- [m, 1] ~ [n, 1]  iff  m * 1 = n * 1  iff  m = n.
+theorem int_to_ratq_inj_rep :
+    for all m : Int, for all n : Int,
+        m * 1 = n * 1 implies m = n
+proof
+  take m : Int
+  take n : Int
+  suppose h : m * 1 = n * 1
+  then m = n by omega
+end
