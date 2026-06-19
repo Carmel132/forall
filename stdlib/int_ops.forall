@@ -1,0 +1,54 @@
+import "int_construction.forall"
+
+-- Well-definedness of arithmetic operations on IntQ representatives.
+--
+-- Each operation is defined pointwise on (Nat, Nat) pairs:
+--   intq_add (a,b) (c,d) := (a+c, b+d)     represents (a-b)+(c-d) = (a+c)-(b+d)
+--   intq_neg (a,b)       := (b, a)          represents -(a-b) = b-a
+--   intq_mul (a,b) (c,d) := (a*c+b*d, a*d+b*c)  represents (a-b)*(c-d)
+--
+-- Well-definedness means the class of the result depends only on the class of the
+-- inputs, not on the choice of representative.
+
+-- Addition is well-defined on equivalence classes.
+-- If (a,b) ~ (a',b')  and  (c,d) ~ (c',d')
+-- then  (a+c, b+d) ~ (a'+c', b'+d').
+-- Condition: a+b' = a'+b  and  c+d' = c'+d  imply  (a+c)+(b'+d') = (a'+c')+(b+d).
+theorem intq_add_well_defined :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all a2 : Nat, for all b2 : Nat, for all c2 : Nat, for all d2 : Nat,
+        a + b2 = a2 + b implies c + d2 = c2 + d implies
+        (a + c) + (b2 + d2) = (a2 + c2) + (b + d)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take a2 : Nat
+  take b2 : Nat
+  take c2 : Nat
+  take d2 : Nat
+  suppose h1 : a + b2 = a2 + b
+  suppose h2 : c + d2 = c2 + d
+  then (a + c) + (b2 + d2) = (a2 + c2) + (b + d) by omega
+end
+
+-- Negation is well-defined on equivalence classes.
+-- If (a,b) ~ (a',b')  then  (b,a) ~ (b',a').
+-- Condition: a + b' = a' + b  implies  b + a' = b' + a.
+theorem intq_neg_well_defined :
+    for all a : Nat, for all b : Nat, for all a2 : Nat, for all b2 : Nat,
+        a + b2 = a2 + b implies b + a2 = b2 + a
+proof
+  take a : Nat
+  take b : Nat
+  take a2 : Nat
+  take b2 : Nat
+  suppose h : a + b2 = a2 + b
+  then b + a2 = b2 + a by omega
+end
+
+-- Note: multiplication well-definedness requires nonlinear arithmetic
+-- (a*c + b*d + a2*d2 + b2*c2 = a2*c2 + b2*d2 + a*d + b*c given a+b2=a2+b, c+d2=c2+d).
+-- This is not provable by omega (nonlinear) or ring (conditional).
+-- Deferred until a nonlinear arithmetic tactic is available.
