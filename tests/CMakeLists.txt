@@ -148,3 +148,8 @@ add_test(NAME e2e_dedekind
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/dedekind.forall"
 )
+
+add_test(NAME e2e_real_construction
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_construction.forall"
+)
