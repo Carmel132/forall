@@ -168,3 +168,13 @@ add_test(NAME e2e_real_dc_field
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/real_dc_field.forall"
 )
+
+add_test(NAME e2e_real_cs_construction
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_cs_construction.forall"
+)
+
+add_test(NAME e2e_real_cs_field
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/real_cs_field.forall"
+)
