@@ -48,7 +48,57 @@ proof
   then b + a2 = b2 + a by omega
 end
 
--- Note: multiplication well-definedness requires nonlinear arithmetic
--- (a*c + b*d + a2*d2 + b2*c2 = a2*c2 + b2*d2 + a*d + b*c given a+b2=a2+b, c+d2=c2+d).
--- This is not provable by omega (nonlinear) or ring (conditional).
--- Deferred until a nonlinear arithmetic tactic is available.
+-- Multiplication is well-defined on equivalence classes.
+-- If (a,b) ~ (a',b')  and  (c,d) ~ (c',d')
+-- then  (a*c+b*d, a*d+b*c) ~ (a'*c'+b'*d', a'*d'+b'*c').
+-- Condition: a+b' = a'+b  and  c+d' = c'+d  imply
+--   (a*c+b*d) + (a'*d'+b'*c') = (a'*c'+b'*d') + (a*d+b*c).
+-- Proof: derive four scaled equalities via eq_subst+ring, then close with nlinarith.
+theorem intq_mul_well_defined :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all a2 : Nat, for all b2 : Nat, for all c2 : Nat, for all d2 : Nat,
+        a + b2 = a2 + b implies c + d2 = c2 + d implies
+        (a * c + b * d) + (a2 * d2 + b2 * c2) =
+        (a2 * c2 + b2 * d2) + (a * d + b * c)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take a2 : Nat
+  take b2 : Nat
+  take c2 : Nat
+  take d2 : Nat
+  suppose h1 : a + b2 = a2 + b
+  suppose h2 : c + d2 = c2 + d
+  have ref1  : (a2 + b) * c = (a2 + b) * c by refl
+  have mul1  : (a + b2) * c = (a2 + b) * c by eq_subst h1 and ref1
+  have lhs1  : (a + b2) * c = a * c + b2 * c by ring
+  have rhs1  : (a2 + b) * c = a2 * c + b * c by ring
+  have lhs1s : a * c + b2 * c = (a + b2) * c by symm lhs1
+  have m1a   : a * c + b2 * c = (a2 + b) * c by trans lhs1s and mul1
+  have sc1   : a * c + b2 * c = a2 * c + b * c by trans m1a and rhs1
+  have ref2  : (a2 + b) * d2 = (a2 + b) * d2 by refl
+  have mul2  : (a + b2) * d2 = (a2 + b) * d2 by eq_subst h1 and ref2
+  have lhs2  : (a + b2) * d2 = a * d2 + b2 * d2 by ring
+  have rhs2  : (a2 + b) * d2 = a2 * d2 + b * d2 by ring
+  have lhs2s : a * d2 + b2 * d2 = (a + b2) * d2 by symm lhs2
+  have m2a   : a * d2 + b2 * d2 = (a2 + b) * d2 by trans lhs2s and mul2
+  have sc2   : a * d2 + b2 * d2 = a2 * d2 + b * d2 by trans m2a and rhs2
+  have ref3  : a * (c2 + d) = a * (c2 + d) by refl
+  have mul3  : a * (c + d2) = a * (c2 + d) by eq_subst h2 and ref3
+  have lhs3  : a * (c + d2) = a * c + a * d2 by ring
+  have rhs3  : a * (c2 + d) = a * c2 + a * d by ring
+  have lhs3s : a * c + a * d2 = a * (c + d2) by symm lhs3
+  have m3a   : a * c + a * d2 = a * (c2 + d) by trans lhs3s and mul3
+  have sa1   : a * c + a * d2 = a * c2 + a * d by trans m3a and rhs3
+  have ref4  : b2 * (c2 + d) = b2 * (c2 + d) by refl
+  have mul4  : b2 * (c + d2) = b2 * (c2 + d) by eq_subst h2 and ref4
+  have lhs4  : b2 * (c + d2) = b2 * c + b2 * d2 by ring
+  have rhs4  : b2 * (c2 + d) = b2 * c2 + b2 * d by ring
+  have lhs4s : b2 * c + b2 * d2 = b2 * (c + d2) by symm lhs4
+  have m4a   : b2 * c + b2 * d2 = b2 * (c2 + d) by trans lhs4s and mul4
+  have sb2   : b2 * c + b2 * d2 = b2 * c2 + b2 * d by trans m4a and rhs4
+  then (a * c + b * d) + (a2 * d2 + b2 * c2) =
+       (a2 * c2 + b2 * d2) + (a * d + b * c) by nlinarith
+end
