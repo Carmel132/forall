@@ -5412,3 +5412,78 @@ end
         return msg;
     }();
 }
+
+// Complex: i² = −1 theorem derivable from i_sq axiom.
+TEST(CheckerTest, ComplexISquared) {
+    auto diag = run_checker("complex_i_squared", R"(
+abstract definition Complex : Prop
+abstract definition complex_mul (z : Complex) (w : Complex) : Prop
+abstract definition complex_neg (z : Complex) : Prop
+abstract definition zero_C : Prop
+abstract definition one_C  : Prop
+abstract definition i_C    : Prop
+
+axiom Complex_i_sq :
+    complex_mul(i_C, i_C) = complex_neg(one_C)
+
+theorem i_squared_eq_neg_one :
+    complex_mul(i_C, i_C) = complex_neg(one_C)
+proof
+  then complex_mul(i_C, i_C) = complex_neg(one_C) by Complex_i_sq
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Complex: one_ne_zero axiom.
+TEST(CheckerTest, ComplexOneNeZero) {
+    auto diag = run_checker("complex_one_ne_zero", R"(
+abstract definition Complex : Prop
+abstract definition zero_C : Prop
+abstract definition one_C  : Prop
+axiom Complex_one_ne_zero : not (one_C = zero_C)
+
+theorem complex_zero_ne_one :
+    not (zero_C = one_C)
+proof
+  suppose h : zero_C = one_C
+  have hflip : one_C = zero_C by symm h
+  have bot : false by Complex_one_ne_zero and hflip
+  then not (zero_C = one_C) by bot
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Complex: addition commutativity axiom accessible.
+TEST(CheckerTest, ComplexAddComm) {
+    auto diag = run_checker("complex_add_comm", R"(
+abstract definition Complex : Prop
+abstract definition complex_add (z : Complex) (w : Complex) : Prop
+axiom Complex_add_comm :
+    for all z : Complex, for all w : Complex,
+        complex_add(z, w) = complex_add(w, z)
+
+theorem complex_comm_instance :
+    for all a : Complex, for all b : Complex,
+        complex_add(a, b) = complex_add(b, a)
+proof
+  take a : Complex
+  take b : Complex
+  then complex_add(a, b) = complex_add(b, a) by Complex_add_comm at a at b
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
