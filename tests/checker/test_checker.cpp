@@ -5322,3 +5322,93 @@ end
         return msg;
     }();
 }
+
+// Real_CS: CauchyEquiv transitivity works via quotient axioms.
+TEST(CheckerTest, RealCSCauchyEquivTrans) {
+    auto diag = run_checker("real_cs_cauchy_equiv_trans", R"(
+definition ConvergesTo_Rat (a : Nat -> Rat) (L : Rat) : Prop :=
+  for all eps : Rat, eps > 0 implies
+    there exists N : Nat, for all n : Nat, n >= N implies
+      a[n] - L < eps and a[n] - L > (0 - eps)
+
+definition CauchyEquiv (a : Nat -> Rat) (b : Nat -> Rat) : Prop :=
+  ConvergesTo_Rat(fun k : Nat => a[k] - b[k], 0)
+
+axiom cauchy_equiv_trans :
+  for all a : Nat -> Rat, for all b : Nat -> Rat, for all c : Nat -> Rat,
+    CauchyEquiv(a, b) implies CauchyEquiv(b, c) implies CauchyEquiv(a, c)
+
+theorem test_cauchy_trans :
+    for all a : Nat -> Rat, for all b : Nat -> Rat, for all c : Nat -> Rat,
+        CauchyEquiv(a, b) implies CauchyEquiv(b, c) implies CauchyEquiv(a, c)
+proof
+  take a : Nat -> Rat
+  take b : Nat -> Rat
+  take c : Nat -> Rat
+  suppose h1 : CauchyEquiv(a, b)
+  suppose h2 : CauchyEquiv(b, c)
+  have hab_bc_impl : CauchyEquiv(a, b) implies CauchyEquiv(b, c) implies CauchyEquiv(a, c)
+      by cauchy_equiv_trans at a at b at c
+  have hbc_impl : CauchyEquiv(b, c) implies CauchyEquiv(a, c) by hab_bc_impl and h1
+  then CauchyEquiv(a, c) by hbc_impl and h2
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Real_CS: add_zero identity at representative level.
+TEST(CheckerTest, RealCSAddZeroRep) {
+    auto diag = run_checker("real_cs_add_zero_rep", R"(
+definition ConvergesTo_Rat (a : Nat -> Rat) (L : Rat) : Prop :=
+  for all eps : Rat, eps > 0 implies
+    there exists N : Nat, for all n : Nat, n >= N implies
+      a[n] - L < eps and a[n] - L > (0 - eps)
+
+definition CauchyEquiv (a : Nat -> Rat) (b : Nat -> Rat) : Prop :=
+  ConvergesTo_Rat(fun k : Nat => a[k] - b[k], 0)
+
+axiom real_cs_add_zero_rep :
+    for all a : Nat -> Rat,
+        CauchyEquiv(fun k : Nat => a[k] + 0, a)
+
+theorem test_add_zero :
+    for all a : Nat -> Rat,
+        CauchyEquiv(fun k : Nat => a[k] + 0, a)
+proof
+  take a : Nat -> Rat
+  then CauchyEquiv(fun k : Nat => a[k] + 0, a) by real_cs_add_zero_rep at a
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Real_CS: one_ne_zero propagates into the quotient.
+TEST(CheckerTest, RealCSOneNeZero) {
+    auto diag = run_checker("real_cs_one_ne_zero", R"(
+abstract definition real_cs_zero : Prop
+abstract definition real_cs_one  : Prop
+axiom Real_CS_one_ne_zero : not (real_cs_one = real_cs_zero)
+
+theorem cs_zero_ne_one :
+    not (real_cs_zero = real_cs_one)
+proof
+  suppose h : real_cs_zero = real_cs_one
+  have hflip : real_cs_one = real_cs_zero by symm h
+  have bot : false by Real_CS_one_ne_zero and hflip
+  then not (real_cs_zero = real_cs_one) by bot
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
