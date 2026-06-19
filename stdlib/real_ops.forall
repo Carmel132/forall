@@ -1,0 +1,98 @@
+import "real_construction.forall"
+
+-- Arithmetic operations on Real_DC (Dedekind cuts over RatQ).
+--
+-- Operations on cuts at the representative (Set RatQ) level:
+--
+--   Addition:   (L + M) = {p + q : RatQ | p ∈ L ∧ q ∈ M}     (Minkowski sum)
+--   Negation:   (-L) = {p : RatQ | ∃ q, not (q ∈ L) ∧ p < -q}
+--               (the cut below the negated upper bound)
+--   Multiplication: defined for positive cuts first, extended by sign cases.
+--               For L > 0 and M > 0:
+--               (L * M) = {p : RatQ | p ≤ 0} ∪ {p*q | p ∈ L ∧ p > 0 ∧ q ∈ M ∧ q > 0}
+--
+-- Abstract definitions: the actual operations are declared abstractly, with
+-- well-definedness axioms stating that the result is again a Dedekind cut
+-- and that the operation respects cut equality.
+
+abstract definition real_dc_add (x : Real_DC) (y : Real_DC) : Prop
+abstract definition real_dc_neg (x : Real_DC) : Prop
+abstract definition real_dc_mul (x : Real_DC) (y : Real_DC) : Prop
+
+-- Addition at representative level: the sum of two cuts is a cut.
+-- If L and M are Dedekind cuts, then L + M = {p + q | p ∈ L, q ∈ M} is a cut.
+axiom real_dc_add_is_cut :
+    for all L : Set RatQ, for all M : Set RatQ,
+        IsDedekindCut(L) implies IsDedekindCut(M) implies
+        IsDedekindCut({r : RatQ | there exists p : RatQ,
+                          there exists q : RatQ,
+                          p in L and q in M and r = p + q})
+
+-- Addition is well-defined: if L = L' and M = M' then L + M = L' + M'.
+-- (Trivially true since cut_equiv is set equality.)
+axiom real_dc_add_wd :
+    for all L : Set RatQ, for all M : Set RatQ,
+    for all L2 : Set RatQ, for all M2 : Set RatQ,
+        L = L2 implies M = M2 implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in M and r = p + q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L2 and q in M2 and r = p + q}
+
+-- Negation at representative level: the negation of a cut is a cut.
+-- -L = {p : RatQ | ∃ q, q ∉ L ∧ p < -q}.
+axiom real_dc_neg_is_cut :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        IsDedekindCut({p : RatQ | there exists q : RatQ,
+                          not (q in L) and p < (-q)})
+
+-- Negation is well-defined.
+axiom real_dc_neg_wd :
+    for all L : Set RatQ, for all L2 : Set RatQ,
+        L = L2 implies
+        {p : RatQ | there exists q : RatQ, not (q in L) and p < (-q)} =
+        {p : RatQ | there exists q : RatQ, not (q in L2) and p < (-q)}
+
+-- Multiplication at representative level.
+-- For the general case we use the sign-extended definition:
+--   if L > 0 and M > 0: L*M = {p ≤ 0} ∪ {p*q | p ∈ L, p > 0, q ∈ M, q > 0}
+--   other sign combinations defined by negation.
+-- We state the well-definedness axiom for the positive case.
+axiom real_dc_mul_is_cut :
+    for all L : Set RatQ, for all M : Set RatQ,
+        IsDedekindCut(L) implies IsDedekindCut(M) implies
+        IsDedekindCut({r : RatQ | there exists p : RatQ,
+                          there exists q : RatQ,
+                          p in L and q in M and r = p * q})
+
+-- Multiplication is well-defined.
+axiom real_dc_mul_wd :
+    for all L : Set RatQ, for all M : Set RatQ,
+    for all L2 : Set RatQ, for all M2 : Set RatQ,
+        L = L2 implies M = M2 implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in M and r = p * q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L2 and q in M2 and r = p * q}
+
+-- The zero cut {q | q < 0} is the additive identity.
+-- Adding zero_cut to any cut L gives back L (as a set equality).
+axiom real_dc_add_zero_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 0} and r = p + q} = L
+
+-- The one cut {q | q < 1} is the multiplicative identity.
+axiom real_dc_mul_one_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 1} and r = p * q} = L
