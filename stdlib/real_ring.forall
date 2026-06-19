@@ -1,0 +1,123 @@
+import "real_ops.forall"
+
+-- Ring and field laws for Real_DC at the representative level.
+-- Each theorem states a law about the Minkowski-sum/product set operations
+-- on Dedekind cuts, using set-comprehension equality as the "≡" relation.
+
+-- Addition is commutative at the representative level.
+-- {p + q | p ∈ L, q ∈ M} = {p + q | p ∈ M, q ∈ L}
+axiom real_dc_add_comm_rep :
+    for all L : Set RatQ, for all M : Set RatQ,
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in M and r = p + q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in M and q in L and r = p + q}
+
+-- Addition is associative at the representative level.
+-- {(p + q) + s | ...} = {p + (q + s) | ...}
+axiom real_dc_add_assoc_rep :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in {s : RatQ | there exists a : RatQ,
+                     there exists b : RatQ, a in L and b in M and s = a + b}
+            and q in N and r = p + q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | there exists a : RatQ,
+                                there exists b : RatQ, a in M and b in N and s = a + b}
+            and r = p + q}
+
+-- Multiplication is commutative at the representative level.
+axiom real_dc_mul_comm_rep :
+    for all L : Set RatQ, for all M : Set RatQ,
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in M and r = p * q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in M and q in L and r = p * q}
+
+-- Multiplication is associative at the representative level.
+axiom real_dc_mul_assoc_rep :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in {s : RatQ | there exists a : RatQ,
+                     there exists b : RatQ, a in L and b in M and s = a * b}
+            and q in N and r = p * q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | there exists a : RatQ,
+                                there exists b : RatQ, a in M and b in N and s = a * b}
+            and r = p * q}
+
+-- Distributivity at the representative level.
+axiom real_dc_distrib_left_rep :
+    for all L : Set RatQ, for all M : Set RatQ, for all N : Set RatQ,
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L
+            and q in {s : RatQ | there exists a : RatQ,
+                         there exists b : RatQ, a in M and b in N and s = a + b}
+            and r = p * q} =
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in {s : RatQ | there exists a : RatQ,
+                     there exists b : RatQ, a in L and b in M and s = a * b}
+            and q in {s : RatQ | there exists a : RatQ,
+                         there exists b : RatQ, a in L and b in N and s = a * b}
+            and r = p + q}
+
+-- Additive inverse law at representative level:
+-- {p + q | p ∈ L, q ∈ -L} = zero_cut = {s | s < 0}
+axiom real_dc_add_neg_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L
+            and q in {s : RatQ | there exists t : RatQ, not (t in L) and s < (-t)}
+            and r = p + q} =
+        {s : RatQ | s < 0}
+
+-- The zero cut {s | s < 0} is the neutral element for addition.
+-- (Restates real_dc_add_zero_rep for the explicit cut form.)
+theorem real_dc_add_zero_is_neutral_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 0} and r = p + q} = L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have impl : IsDedekindCut(L) implies
+      {r : RatQ | there exists p : RatQ,
+          there exists q : RatQ,
+          p in L and q in {s : RatQ | s < 0} and r = p + q} = L by real_dc_add_zero_rep at L
+  then {r : RatQ | there exists p : RatQ,
+      there exists q : RatQ,
+      p in L and q in {s : RatQ | s < 0} and r = p + q} = L by impl and h
+end
+
+-- The one cut {s | s < 1} is the neutral element for multiplication.
+theorem real_dc_mul_one_is_neutral_rep :
+    for all L : Set RatQ,
+        IsDedekindCut(L) implies
+        {r : RatQ | there exists p : RatQ,
+            there exists q : RatQ,
+            p in L and q in {s : RatQ | s < 1} and r = p * q} = L
+proof
+  take L : Set RatQ
+  suppose h : IsDedekindCut(L)
+  have impl : IsDedekindCut(L) implies
+      {r : RatQ | there exists p : RatQ,
+          there exists q : RatQ,
+          p in L and q in {s : RatQ | s < 1} and r = p * q} = L by real_dc_mul_one_rep at L
+  then {r : RatQ | there exists p : RatQ,
+      there exists q : RatQ,
+      p in L and q in {s : RatQ | s < 1} and r = p * q} = L by impl and h
+end
