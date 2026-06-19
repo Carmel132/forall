@@ -143,3 +143,8 @@ add_test(NAME e2e_rat_ring
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/rat_ring.forall"
 )
+
+add_test(NAME e2e_dedekind
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/dedekind.forall"
+)
