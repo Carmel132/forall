@@ -1,0 +1,180 @@
+import "int_ring.forall"
+open Nat
+
+-- Ordered ring structure for IntQ at representative level.
+--
+-- The order on IntQ is: [a,b] < [c,d]  iff  a + d < b + c
+-- (equivalently, a - b < c - d as integers).
+
+-- Transitivity.
+theorem intq_lt_trans_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all e : Nat, for all f : Nat,
+        a + d < b + c implies c + f < d + e implies a + f < b + e
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  suppose h1 : a + d < b + c
+  suppose h2 : c + f < d + e
+  then a + f < b + e by omega
+end
+
+-- Addition preserves order.
+theorem intq_lt_add_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+    for all e : Nat, for all f : Nat,
+        a + d < b + c implies (a + e) + (d + f) < (b + f) + (c + e)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  take e : Nat
+  take f : Nat
+  suppose h : a + d < b + c
+  then (a + e) + (d + f) < (b + f) + (c + e) by omega
+end
+
+-- Zero < One.
+theorem intq_zero_lt_one_rep : 0 < 1
+proof
+  then 0 < 1 by omega
+end
+
+-- Totality of the IntQ order.
+theorem intq_lt_total_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        a + d < b + c or a + d = b + c or b + c < a + d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  have tri : for all p : Nat, (a + d) < p or (a + d) = p or p < (a + d)
+             by lt_trichotomy at (a + d)
+  then (a + d) < (b + c) or (a + d) = (b + c) or (b + c) < (a + d)
+       by tri at (b + c)
+end
+
+-- Helper: monotone multiplication with fresh bound-variable names.
+-- mul_le_mul has bound vars "a","b","c","d"; using locals p,q,r,s avoids
+-- variable capture when chaining at-witnesses.
+theorem mul_le_mul_pqrs :
+    for all p : Nat, for all q : Nat, for all r : Nat, for all s : Nat,
+        p <= r implies q <= s implies p * q <= r * s
+proof
+  take p : Nat
+  take q : Nat
+  take r : Nat
+  take s : Nat
+  suppose h1 : p <= r
+  suppose h2 : q <= s
+  -- mul_le_mul : ∀ a b c d, a ≤ b → c ≤ d → a*c ≤ b*d
+  -- "at p" strips ∀ a; remaining bound vars are b, c, d.
+  have step1 : for all b : Nat, for all c : Nat, for all d : Nat,
+               p <= b implies c <= d implies p * c <= b * d
+               by mul_le_mul at p
+  -- "at r" strips ∀ b (= r); remaining bound vars are c, d.
+  have step2 : for all c : Nat, for all d : Nat,
+               p <= r implies c <= d implies p * c <= r * d
+               by step1 at r
+  -- "at q" strips ∀ c (= q); remaining bound var is d.
+  have step3 : for all d : Nat,
+               p <= r implies q <= d implies p * q <= r * d
+               by step2 at q
+  -- "at s" strips ∀ d (= s); fully applied.
+  have step4 : p <= r implies q <= s implies p * q <= r * s
+               by step3 at s
+  have step5 : q <= s implies p * q <= r * s by step4 and h1
+  then p * q <= r * s by step5 and h2
+end
+
+-- Helper: p < q → p+1 ≤ q, stated with fresh bound-variable names.
+-- lt_iff_add_one_le has bound vars "a","b"; using locals p,q avoids capture.
+theorem lt_add_one_le_pq :
+    for all p : Nat, for all q : Nat, p < q implies p + 1 <= q
+proof
+  take p : Nat
+  take q : Nat
+  suppose h : p < q
+  -- lt_iff_add_one_le : ∀ a b, a < b → a+1 ≤ b
+  -- "at p" strips ∀ a; remaining bound var is "b".
+  -- "at q" strips ∀ b (= q). No shadow fires since "b" ≠ any local.
+  have impl : p < q implies p + 1 <= q by lt_iff_add_one_le at p at q
+  then p + 1 <= q by impl and h
+end
+
+-- Product of positives is positive.
+-- Proof strategy (FM certificate):
+--   adp1: a*d + a ≤ a*c   (from a*(d+1) ≤ a*c, expanded by ring)
+--   bdp1: b*d + b ≤ b*c   (from b*(d+1) ≤ b*c, expanded by ring)
+--   ha_ge: b+1 ≤ a        (from b < a)
+--   nlinarith closes: a*d + b*c < a*c + b*d.
+theorem intq_lt_mul_pos_rep :
+    for all a : Nat, for all b : Nat, for all c : Nat, for all d : Nat,
+        b < a implies d < c implies a * d + b * c < a * c + b * d
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  take d : Nat
+  suppose h1 : b < a
+  suppose h2 : d < c
+  -- b+1 ≤ a  from  b < a
+  have ha_impl : b < a implies b + 1 <= a by lt_add_one_le_pq at b at a
+  have ha_ge : b + 1 <= a by ha_impl and h1
+  -- d+1 ≤ c  from  d < c
+  have hc_impl : d < c implies d + 1 <= c by lt_add_one_le_pq at d at c
+  have hc_ge : d + 1 <= c by hc_impl and h2
+  -- a ≤ a  (reflexivity)
+  have refl_a : a <= a by le_refl at a
+  -- b ≤ b  (reflexivity)
+  have refl_b : b <= b by le_refl at b
+  -- a*(d+1) ≤ a*c  via mul_le_mul_pqrs with p=a, q=d+1, r=a, s=c.
+  -- mul_le_mul_pqrs : ∀ p q r s, p ≤ r → q ≤ s → p*q ≤ r*s
+  -- "at a" strips ∀ p; remaining bound vars are q, r, s.
+  have mac1 : for all q : Nat, for all r : Nat, for all s : Nat,
+              a <= r implies q <= s implies a * q <= r * s
+              by mul_le_mul_pqrs at a
+  -- "at (d+1)" strips ∀ q; remaining bound vars are r, s.
+  have mac2 : for all r : Nat, for all s : Nat,
+              a <= r implies (d + 1) <= s implies a * (d + 1) <= r * s
+              by mac1 at (d + 1)
+  -- "at a" strips ∀ r; remaining bound var is s.
+  have mac3 : for all s : Nat,
+              a <= a implies (d + 1) <= s implies a * (d + 1) <= a * s
+              by mac2 at a
+  -- "at c" strips ∀ s; fully applied.
+  have mac4 : a <= a implies (d + 1) <= c implies a * (d + 1) <= a * c
+              by mac3 at c
+  have mac5 : (d + 1) <= c implies a * (d + 1) <= a * c by mac4 and refl_a
+  have adp1_raw : a * (d + 1) <= a * c by mac5 and hc_ge
+  -- Expand a*(d+1) = a*d + a
+  have exp1 : a * (d + 1) = a * d + a by ring
+  have exp1_sym : a * d + a = a * (d + 1) by symm exp1
+  have adp1 : a * d + a <= a * c by eq_subst exp1_sym and adp1_raw
+  -- b*(d+1) ≤ b*c  via mul_le_mul_pqrs with p=b, q=d+1, r=b, s=c.
+  have mbc1 : for all q : Nat, for all r : Nat, for all s : Nat,
+              b <= r implies q <= s implies b * q <= r * s
+              by mul_le_mul_pqrs at b
+  have mbc2 : for all r : Nat, for all s : Nat,
+              b <= r implies (d + 1) <= s implies b * (d + 1) <= r * s
+              by mbc1 at (d + 1)
+  have mbc3 : for all s : Nat,
+              b <= b implies (d + 1) <= s implies b * (d + 1) <= b * s
+              by mbc2 at b
+  have mbc4 : b <= b implies (d + 1) <= c implies b * (d + 1) <= b * c
+              by mbc3 at c
+  have mbc5 : (d + 1) <= c implies b * (d + 1) <= b * c by mbc4 and refl_b
+  have bdp1_raw : b * (d + 1) <= b * c by mbc5 and hc_ge
+  -- Expand b*(d+1) = b*d + b
+  have exp2 : b * (d + 1) = b * d + b by ring
+  have exp2_sym : b * d + b = b * (d + 1) by symm exp2
+  have bdp1 : b * d + b <= b * c by eq_subst exp2_sym and bdp1_raw
+  -- Close with nlinarith using adp1, bdp1, ha_ge.
+  then a * d + b * c < a * c + b * d by nlinarith
+end
