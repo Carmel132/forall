@@ -1774,7 +1774,36 @@ bool check_step(const ast::Step& step,
                     // apply predicate unfolding to the concluding step prop
                     // so it can be compared against the (already unfolded) goal.
                     const ast::Prop ts_prop_eff = apply_tdefs(ts.prop);
-                    if (!(ts_prop_eff == prop)) {
+
+                    // Accept if the then-step concludes the full goal directly.
+                    const bool full_match = (ts_prop_eff == prop);
+
+                    // When take steps were used inside the inline block and the
+                    // then-step did NOT conclude the full goal, try matching against
+                    // the body after stripping one ∀ layer per taken var.
+                    // Example: goal = ∀ x, P(x); take x; then P(x) by ... → accepted.
+                    const auto& tvars = sub_env.taken_vars();
+                    bool body_match = false;
+                    if (!full_match && !tvars.empty()) {
+                        const ast::Prop* body = &prop;
+                        bool strip_ok = true;
+                        for (const auto& [tvar, _] : tvars) {
+                            const auto* fa = std::get_if<ast::PropForall>(&body->node);
+                            if (!fa) { strip_ok = false; break; }
+                            body = fa->body.get();
+                            (void)tvar;
+                        }
+                        body_match = strip_ok && (ts_prop_eff == *body);
+                        if (!body_match) {
+                            const ast::Prop& expected = strip_ok ? *body : prop;
+                            diag.emit({diag::Severity::Error, sub_last_then->loc,
+                                       "inline proof concludes '"
+                                       + forall::pretty::to_string(ts_prop_eff)
+                                       + "' but goal body is '"
+                                       + forall::pretty::to_string(expected) + "'"});
+                            return false;
+                        }
+                    } else if (!full_match) {
                         diag.emit({diag::Severity::Error, sub_last_then->loc,
                                    "inline proof concludes '" + forall::pretty::to_string(ts_prop_eff)
                                    + "' but goal is '"
