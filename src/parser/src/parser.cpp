@@ -1003,14 +1003,24 @@ std::vector<std::string> Parser::parseJustification() {
             return name;
         };
 
+        // Helper: emit the right ref string for the current identifier token,
+        // handling the "it" sentinel before falling through to parse_one_ref.
+        auto parse_one_ref_or_sentinel = [&]() {
+            if (check(lexer::TokenKind::Identifier) && peek().lexeme == "it") {
+                advance();
+                refs.push_back("__it__");
+            } else if (check(lexer::TokenKind::Identifier)) {
+                refs.push_back(parse_one_ref());
+            }
+        };
+
         skip_nl6_qualifier();
         if (!check(lexer::TokenKind::Identifier)) return refs;
-        refs.push_back(parse_one_ref());
+        parse_one_ref_or_sentinel();
         while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
             advance();
             skip_nl6_qualifier();
-            if (check(lexer::TokenKind::Identifier))
-                refs.push_back(parse_one_ref());
+            parse_one_ref_or_sentinel();
         }
     }
     return refs;
