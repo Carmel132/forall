@@ -3115,6 +3115,52 @@ end
     EXPECT_TRUE(has_error(diag, "auto-discharge"));
 }
 
+// ── NL3-ext: iterated auto-discharge at end/qed ──────────────────────────────
+
+TEST(CheckerTest, NL3ext_TwoLayerImplSilentClose) {
+    // Two suppose steps; proof ends at "end" with no explicit "then A -> B -> C".
+    // Auto-discharge should iterate: B->C first, then A->(B->C).
+    auto diag = run_checker("nl3ext_two_layer", R"(
+axiom ax : Q
+theorem t : P -> Q -> Q
+proof
+  suppose hp : P
+  suppose hq : Q
+  have h_q2 : Q by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL3ext_ThreeLayerImplSilentClose) {
+    // Three suppose steps; auto-discharge iterates three times.
+    auto diag = run_checker("nl3ext_three_layer", R"(
+axiom ax : R
+theorem t : P -> Q -> R -> R
+proof
+  suppose hp : P
+  suppose hq : Q
+  suppose hr : R
+  have h_r2 : R by ax
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL3ext_MissingMiddleLayerError) {
+    // Three-layer goal but only the innermost can be discharged.
+    // The middle Assumption is missing so the second pass fails.
+    auto diag = run_checker("nl3ext_missing_middle", R"(
+axiom ax : R
+theorem t : P -> Q -> R
+proof
+  suppose hr : R
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "auto-discharge"));
+}
+
 // ── calc block tests ─────────────────────────────────────────────────────
 
 // pure equality chain — passes and result available for later use
