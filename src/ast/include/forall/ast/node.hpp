@@ -396,7 +396,9 @@ struct InductionStep {
 };
 
 struct ShowStep {
-    Prop prop;  // asserted goal; checker verifies prop == decl.statement
+    Prop                              prop;      // asserted goal
+    std::optional<std::string>        name;      // optional label for inline sub-proof
+    std::unique_ptr<ProofBlock>       sub_proof; // optional inline sub-proof block
 };
 
 struct ExactStep {
