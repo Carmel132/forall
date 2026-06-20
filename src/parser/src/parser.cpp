@@ -2050,7 +2050,7 @@ ast::Step Parser::parseStep() {
             const auto loc = peek().loc;
             advance(); advance(); advance(); advance(); // consume "we need to show"
             auto prop = parseProp();
-            return {loc, ast::ShowStep{std::move(prop)}};
+            return {loc, ast::ShowStep{std::move(prop), std::nullopt, nullptr}};
         }
         // "we know X"
         if (pos_ + 1 < tokens_.size()
@@ -2075,7 +2075,7 @@ ast::Step Parser::parseStep() {
             const auto loc = peek().loc;
             advance(); advance(); advance(); // consume "we prove that"
             auto prop = parseProp();
-            return {loc, ast::ShowStep{std::move(prop)}};
+            return {loc, ast::ShowStep{std::move(prop), std::nullopt, nullptr}};
         }
     }
 
@@ -2198,12 +2198,25 @@ ast::Step Parser::parseStep() {
         return {loc, ast::ApplyStep{std::move(name)}};
     }
 
-    // show P — goal annotation step
+    // show [name :] P [proof ... end] — goal annotation or named inline sub-proof
     if (check(K::KwShow)) {
         const auto loc = peek().loc;
         advance(); // consume "show"
+        // Detect optional "name : P" (identifier followed by colon).
+        std::optional<std::string> show_name;
+        if (check(K::Identifier) && pos_ + 1 < tokens_.size()
+                && tokens_[pos_ + 1].kind == K::Colon) {
+            show_name = advance().lexeme; // consume name
+            advance();                   // consume ':'
+        }
         auto prop = parseProp();
-        return {loc, ast::ShowStep{std::move(prop)}};
+        std::unique_ptr<ast::ProofBlock> sub;
+        if (check(K::KwProof)) {
+            // parseProofBlock() consumes "proof" itself.
+            auto block = parseProofBlock();
+            sub = std::make_unique<ast::ProofBlock>(std::move(block));
+        }
+        return {loc, ast::ShowStep{std::move(prop), std::move(show_name), std::move(sub)}};
     }
 
     // exact h — close goal directly via a named hypothesis
@@ -2280,7 +2293,7 @@ ast::Step Parser::parseStep() {
         const auto loc = peek().loc;
         advance(); advance(); advance(); advance(); // consume "it suffices to show"
         auto prop = parseProp();
-        return {loc, ast::ShowStep{std::move(prop)}};
+        return {loc, ast::ShowStep{std::move(prop), std::nullopt, nullptr}};
     }
 
     // "it follows that P [by refs]"
