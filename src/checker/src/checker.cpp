@@ -3350,63 +3350,126 @@ void check_proof(const ast::Decl& decl,
     // a broken proof are more noise than signal.
     if (!had_step_errors) {
         if (last_kind == LastKind::None) {
-            // auto-close at end/qed when goal is A → B or ¬A and the required
-            // pieces (Assumption of the antecedent + Derived of the consequent) are
-            // already in scope.  This lets the user omit the explicit "then A → B".
-            if (const auto* im = std::get_if<ast::PropImpl>(&current_goal->node)) {
-                // Find Assumption of A
-                const HypEntry* assump = nullptr;
-                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
-                    if (e.judgment.prop() == *im->lhs) assump = &e;
-                });
-                const HypEntry* conseq = assump ? env.find_derived(*im->rhs) : nullptr;
-                if (assump && conseq) {
-                    // Synthesize ImplIntro
-                    auto r = kernel.apply(kernel::Rule::ImplIntro,
-                                          std::span<const kernel::Judgment>{&conseq->judgment, 1},
-                                          *current_goal);
-                    if (!r) {
-                        diag.emit({diag::Severity::Error, decl.loc,
-                                   "proof of '" + decl.name
-                                   + "': auto-close ImplIntro failed: " + r.error().message});
-                    }
-                    // auto-close succeeded — no error
-                } else {
-                    diag.emit({diag::Severity::Error, decl.loc,
-                               "proof of '" + decl.name
-                               + "' has no concluding step "
-                               "(auto-discharge of '\xe2\x86\x92' failed: "
-                               "missing assumption or consequent)"});
-                }
-            } else if (const auto* neg = std::get_if<ast::PropNot>(&current_goal->node)) {
-                // Find Assumption of A and Derived of ⊥
-                const HypEntry* assump = nullptr;
-                env.for_each_assumption([&](const std::string&, const HypEntry& e) {
-                    if (e.judgment.prop() == *neg->inner) assump = &e;
-                });
-                ast::Prop false_prop{decl.loc, ast::PropFalse{}};
-                const HypEntry* bot = assump ? env.find_derived(false_prop) : nullptr;
-                if (assump && bot) {
-                    // Synthesize NotIntro
-                    auto r = kernel.apply(kernel::Rule::NotIntro,
-                                          std::span<const kernel::Judgment>{&bot->judgment, 1},
-                                          *current_goal);
-                    if (!r) {
-                        diag.emit({diag::Severity::Error, decl.loc,
-                                   "proof of '" + decl.name
-                                   + "': auto-close NotIntro failed: " + r.error().message});
-                    }
-                    // auto-close succeeded — no error
-                } else {
-                    diag.emit({diag::Severity::Error, decl.loc,
-                               "proof of '" + decl.name
-                               + "' has no concluding step "
-                               "(auto-discharge of '\xc2\xac' failed: "
-                               "missing assumption or proof of false)"});
-                }
-            } else {
+            // auto-close at end/qed: iterate ImplIntro/NotIntro until the goal is
+            // fully discharged.  Each iteration strips one layer (A → B or ¬A),
+            // finds the matching Assumption + Derived in scope, fires the rule, and
+            // inserts the result under a fresh name so the next iteration can find it
+            // via find_derived.  Discharge order: innermost assumption first
+            // (last suppose = first to close), matching mathematical convention.
+            // Auto-discharge at end/qed: iteratively apply ImplIntro/NotIntro,
+            // working from the innermost layer of the goal outward.
+            //
+            // For goal A→B→C (right-assoc = A→(B→C)):
+            //   layer[0] = A→(B→C)   (outermost)
+            //   layer[1] = B→C       (one level in)
+            //
+            // Pass 1 (layer[1] = B→C): find Assume[B], Derived[C] → produce B→C,
+            //         insert as fresh Derived so pass 2 can find it.
+            // Pass 2 (layer[0] = A→(B→C)): find Assume[A], Derived[B→C] → produce A→(B→C).
+            //
+            // ¬A is a single layer (no peeling needed).
+
+            // Build the layer stack by peeling nested implications.
+            // goal_layers[0] = outermost (the full goal), last = innermost.
+            const bool goal_is_dischargeable =
+                std::get_if<ast::PropImpl>(&unfolded_statement.node) != nullptr ||
+                std::get_if<ast::PropNot> (&unfolded_statement.node) != nullptr;
+
+            if (!goal_is_dischargeable) {
                 diag.emit({diag::Severity::Error, decl.loc,
                            "proof of '" + decl.name + "' has no concluding 'then' step"});
+            } else {
+                std::vector<ast::Prop> goal_layers;
+                {
+                    ast::Prop g = unfolded_statement;
+                    while (std::get_if<ast::PropImpl>(&g.node)) {
+                        goal_layers.push_back(g);
+                        const auto* im = std::get_if<ast::PropImpl>(&g.node);
+                        g = *im->rhs;
+                    }
+                    // If the outermost (or RHS) is ¬A push it too.
+                    if (std::get_if<ast::PropNot>(&g.node))
+                        goal_layers.push_back(g);
+                    // If goal_layers is empty (outermost was ¬A not impl), seed it.
+                    if (goal_layers.empty())
+                        goal_layers.push_back(unfolded_statement);
+                }
+                // goal_layers[0]=outermost; we process in reverse (innermost first).
+
+                bool all_ok = true;
+                ast::Prop last_synthesised = unfolded_statement;
+
+                for (auto rit = goal_layers.rbegin(); rit != goal_layers.rend(); ++rit) {
+                    const ast::Prop& layer = *rit;
+                    bool fired = false;
+
+                    if (const auto* im = std::get_if<ast::PropImpl>(&layer.node)) {
+                        const HypEntry* assump = nullptr;
+                        env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                            if (e.judgment.prop() == *im->lhs) assump = &e;
+                        });
+                        const HypEntry* conseq = assump ? env.find_derived(*im->rhs) : nullptr;
+                        if (assump && conseq) {
+                            auto r = kernel.apply(
+                                kernel::Rule::ImplIntro,
+                                std::span<const kernel::Judgment>{&conseq->judgment, 1},
+                                layer);
+                            if (r) {
+                                const std::string aname = fresh_name();
+                                env.insert_or_assign(aname, HypEntry{*r, EntryKind::Derived});
+                                last_synthesised = r->prop();
+                                fired = true;
+                            } else {
+                                diag.emit({diag::Severity::Error, decl.loc,
+                                           "proof of '" + decl.name
+                                           + "': auto-close ImplIntro failed: "
+                                           + r.error().message});
+                                all_ok = false;
+                                break;
+                            }
+                        }
+                    } else if (const auto* neg = std::get_if<ast::PropNot>(&layer.node)) {
+                        const HypEntry* assump = nullptr;
+                        env.for_each_assumption([&](const std::string&, const HypEntry& e) {
+                            if (e.judgment.prop() == *neg->inner) assump = &e;
+                        });
+                        ast::Prop false_prop{decl.loc, ast::PropFalse{}};
+                        const HypEntry* bot = assump ? env.find_derived(false_prop) : nullptr;
+                        if (assump && bot) {
+                            auto r = kernel.apply(
+                                kernel::Rule::NotIntro,
+                                std::span<const kernel::Judgment>{&bot->judgment, 1},
+                                layer);
+                            if (r) {
+                                const std::string aname = fresh_name();
+                                env.insert_or_assign(aname, HypEntry{*r, EntryKind::Derived});
+                                last_synthesised = r->prop();
+                                fired = true;
+                            } else {
+                                diag.emit({diag::Severity::Error, decl.loc,
+                                           "proof of '" + decl.name
+                                           + "': auto-close NotIntro failed: "
+                                           + r.error().message});
+                                all_ok = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!fired) {
+                        all_ok = false;
+                        break;
+                    }
+                }
+
+                if (!all_ok || !(last_synthesised == unfolded_statement)) {
+                    diag.emit({diag::Severity::Error, decl.loc,
+                               "proof of '" + decl.name
+                               + "' has no concluding step "
+                               "(auto-discharge failed: "
+                               "missing assumption or consequent)"});
+                }
+                // else: all layers discharged — proof is valid
             }
         } else if (last_kind == LastKind::Then) {
             const auto& ts = std::get<ast::ThenStep>(last_concluding->node);
