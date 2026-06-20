@@ -191,6 +191,33 @@ resolve_refs(const std::vector<std::string>& refs,
     std::vector<const HypEntry*> out;
     out.reserve(refs.size());
     for (const auto& name : refs) {
+        // "by it" → resolve to the most recently derived anonymous `have _` result.
+        // Anonymous steps are stored under names of the form "__anon_N__" where N
+        // is a monotonically increasing counter, so "most recent" = highest N.
+        if (name == "__it__") {
+            unsigned best_n = 0;
+            const HypEntry* best = nullptr;
+            env.for_each([&](const std::string& ename, const HypEntry& e) {
+                if (e.kind != EntryKind::Derived) return;
+                if (ename.size() < 9) return; // too short to be "__anon_N__"
+                if (ename.substr(0, 7) != "__anon_") return;
+                if (ename.back() != '_' || ename[ename.size()-2] != '_') return;
+                // extract the numeric suffix between "__anon_" and "__"
+                const auto inner = ename.substr(7, ename.size() - 9);
+                if (inner.empty() || !std::all_of(inner.begin(), inner.end(),
+                        [](char c){ return c >= '0' && c <= '9'; })) return;
+                const unsigned n = static_cast<unsigned>(std::stoul(inner));
+                if (n > best_n) { best_n = n; best = &e; }
+            });
+            if (!best) {
+                diag.emit({diag::Severity::Error, loc,
+                           "'by it': no anonymous result in scope "
+                           "(use 'have _ : P by ...' to create one)"});
+                return std::nullopt;
+            }
+            out.push_back(best);
+            continue;
+        }
         // "by hypothesis" / "by assumption" → resolve to the active assumption
         if (name == "__hypothesis__" || name == "__assumption__") {
             std::vector<const HypEntry*> assumptions;
