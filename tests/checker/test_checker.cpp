@@ -5999,3 +5999,61 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "goal is not an existential"));
 }
+
+// ── BI12: expression-body function definitions ─────────────────────────────────
+
+TEST(CheckerTest, ExprBodyDef_Unfolds_InGoal) {
+    // definition double(n : Nat) := n + n
+    // theorem double_comm : double(3) = 3 + 3
+    // The checker unfolds double(3) to 3+3, so the prop becomes 3+3 = 3+3.
+    auto diag = run_checker("expr_body_def_unfolds_goal", R"(
+definition double(n : Nat) := n + n
+
+theorem result : double(3) = 3 + 3
+proof
+  then double(3) = 3 + 3 by refl
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, ExprBodyDef_Unfolds_InHyp) {
+    // Hypothesis axiom referencing a term-func def: the axiom is stored unfolded
+    // so later proofs can cite it by the expanded form.
+    auto diag = run_checker("expr_body_def_unfolds_hyp", R"(
+definition succ(n : Nat) := n + 1
+
+axiom h_succ3 : succ(3) = 4
+
+theorem result : 3 + 1 = 4
+proof
+  then 3 + 1 = 4 by h_succ3
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, ExprBodyDef_ZeroParam) {
+    // Zero-parameter expression-body definition (constant).
+    auto diag = run_checker("expr_body_def_zeroparam", R"(
+definition answer := 42
+
+theorem result : answer = 42
+proof
+  then answer = 42 by refl
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
