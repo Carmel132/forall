@@ -50,6 +50,7 @@ private:
     [[nodiscard]] ast::Step       parseCalcStep();
     [[nodiscard]] ast::Step       parseSplitStep();
     [[nodiscard]] ast::Step       parseWlogStep();
+    [[nodiscard]] ast::Step       parseSufficesStep();
 
     // direction-marker helpers for biconditional proof blocks.
     [[nodiscard]] bool isDirectionMarker() const noexcept;

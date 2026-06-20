@@ -2167,14 +2167,23 @@ ast::Step Parser::parseStep() {
         return {loc, ast::PushNegStep{std::move(hyp)}};
     }
 
-    // suffices h : P — reduce goal to proving P, auto-searching for P → goal.
-    // "suffices" is context-sensitive (not a reserved keyword).
-    // Syntax: suffices <name> : <prop>
-    // Semantics: look for <name> : P → current_goal already in scope and apply it.
-    // This is essentially `apply <name>` where the user has already proved P → goal.
-    if (check(K::Identifier) && peek().lexeme == "suffices"
+    // suffices to show P [by refs] — goal reduction step (NL22).
+    // "suffices to" where next token is "to" (identifier) dispatches to SufficesStep.
+    if (check(K::KwSuffices)
             && pos_ + 1 < tokens_.size()
-            && tokens_[pos_ + 1].kind == K::Identifier) {
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme == "to") {
+        return parseSufficesStep();
+    }
+
+    // suffices h : P — reduce goal to proving P, auto-searching for P → goal.
+    // Syntax: suffices <name> : <prop>  (name is an identifier, not "to")
+    // Desugars to ApplyStep: the checker verifies h : P → current_goal.
+    if ((check(K::Identifier) && peek().lexeme == "suffices"
+             || check(K::KwSuffices))
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == K::Identifier
+            && tokens_[pos_ + 1].lexeme != "to") {
         const auto loc = peek().loc;
         advance(); // consume "suffices"
         std::string name;
@@ -2258,8 +2267,9 @@ ast::Step Parser::parseStep() {
     // "it suffices to show P"
     if (check(K::Identifier) && peek().lexeme == "it"
             && pos_ + 1 < tokens_.size()
-            && tokens_[pos_ + 1].kind == K::Identifier
-            && tokens_[pos_ + 1].lexeme == "suffices"
+            && (tokens_[pos_ + 1].kind == K::KwSuffices
+                || (tokens_[pos_ + 1].kind == K::Identifier
+                    && tokens_[pos_ + 1].lexeme == "suffices"))
             && pos_ + 2 < tokens_.size()
             && tokens_[pos_ + 2].kind == K::Identifier
             && tokens_[pos_ + 2].lexeme == "to"
@@ -2332,6 +2342,28 @@ ast::Step Parser::parseWlogStep() {
     expect(lexer::TokenKind::Colon, "expected ':' after 'wlog' name");
     auto prop = parseProp();
     return {loc, ast::WlogStep{std::move(name), std::move(prop)}};
+}
+
+// suffices to show <prop> [by refs]
+// Optionally also accepts "suffices <prop> by refs" (dropping "to show").
+ast::Step Parser::parseSufficesStep() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    advance(); // consume "suffices"
+    // Consume optional "to show" or "to prove"
+    if (peek().lexeme == "to") {
+        advance(); // consume "to"
+        // consume "show" or "prove" (either identifier or KwShow keyword)
+        if (peek().lexeme == "show" || peek().lexeme == "prove" || check(K::KwShow))
+            advance();
+    }
+    auto prop = parseProp();
+    std::vector<std::string> justification;
+    if (check(K::KwBy) || check(K::KwFrom)) {
+        advance(); // consume "by"/"from"
+        justification = parseJustification();
+    }
+    return {loc, ast::SufficesStep{std::move(prop), std::move(justification)}};
 }
 
 // Helper: returns true if the current position starts a direction marker "(→)" or "(<-)".
