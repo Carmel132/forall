@@ -3192,6 +3192,46 @@ end
     EXPECT_TRUE(has_error(diag, "anonymous result"));
 }
 
+// ── NL28: `end cases` terminator — mid-proof cases ───────────────────────────
+
+TEST(CheckerTest, NL28_EndCasesMidProof) {
+    // `cases h : disjunct ... end cases` closes the block; `then` after uses h.
+    auto diag = run_checker("nl28_end_cases_mid_proof", R"(
+axiom ax_pq : P or Q
+axiom ax_pr : P -> R
+axiom ax_qr : Q -> R
+theorem t : R
+proof
+  cases h : ax_pq
+    case left  : P => then R by ax_pr and left
+    case right : Q => then R by ax_qr and right
+  end cases
+  then R by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL28_EndCasesResultUsedInHave) {
+    // The cases result h : R is in scope after end cases; used in a have.
+    auto diag = run_checker("nl28_end_cases_have", R"(
+axiom ax_pq  : P or Q
+axiom ax_pr  : P -> R
+axiom ax_qr  : Q -> R
+axiom ax_rs  : R -> S
+theorem t : S
+proof
+  cases h : ax_pq
+    case left  : P => then R by ax_pr and left
+    case right : Q => then R by ax_qr and right
+  end cases
+  have hs : S by ax_rs and h
+  then S by hs
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 // ── calc block tests ─────────────────────────────────────────────────────
 
 // pure equality chain — passes and result available for later use
