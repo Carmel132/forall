@@ -1560,9 +1560,12 @@ ast::Step Parser::parseContradictionStep() {
 // cases <name> : <ref>
 //   case <arm_name> : <prop> => { step }
 //   case <arm_name> : <prop> => { step }
+// end cases
 //
-// Each arm's step list runs until the next 'case' or 'end'/'qed'.
-// This means 'cases' must be the last step before the proof terminator.
+// Each arm's step list runs until the next 'case', 'end', or 'done'.
+// The optional "end cases" terminator (KwEnd + KwCases) explicitly closes the
+// cases block so that subsequent steps belong to the outer proof rather than
+// the last arm.  Without it, cases must be the last step before end/qed.
 ast::Step Parser::parseCasesStep() {
     const auto loc = peek().loc;
     advance(); // consume "cases"
@@ -1622,6 +1625,15 @@ ast::Step Parser::parseCasesStep() {
             advance(); // consume optional per-arm "done" terminator
 
         arms.push_back(ast::CaseArm{std::move(arm_name), std::move(arm_prop), std::move(arm_steps)});
+    }
+
+    // Optional "end cases" terminator: consume both tokens so the outer proof
+    // loop can continue parsing steps after the cases block.
+    if (check(lexer::TokenKind::KwEnd)
+            && pos_ + 1 < tokens_.size()
+            && tokens_[pos_ + 1].kind == lexer::TokenKind::KwCases) {
+        advance(); // consume "end"
+        advance(); // consume "cases"
     }
 
     return {loc, ast::CasesStep{std::move(name), std::move(disjunct_ref), std::move(arms)}};
