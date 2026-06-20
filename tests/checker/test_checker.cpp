@@ -5930,3 +5930,42 @@ end
 )");
     EXPECT_TRUE(diag.hasErrors());
 }
+
+// ── show h : P proof ... end — named inline subgoal ─────────────────────────
+
+TEST(CheckerTest, ShowNamedSubgoal_Succeeds) {
+    auto diag = run_checker("show_named_subgoal", R"(
+axiom h_p : P
+axiom h_pq : P -> Q
+
+theorem result : Q
+proof
+  show h : P
+  proof
+    then P by h_p
+  end
+  then Q by h_pq and h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, ShowNamedSubgoal_WrongConclusion_Error) {
+    auto diag = run_checker("show_named_subgoal_wrong", R"(
+axiom h_q : Q
+
+theorem result : P
+proof
+  show h : P
+  proof
+    then Q by h_q
+  end
+  then P by h
+end
+)");
+    EXPECT_TRUE(has_error(diag, "inline proof concludes"));
+}
