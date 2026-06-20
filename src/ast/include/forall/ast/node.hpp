@@ -451,10 +451,18 @@ struct PushNegStep {
     std::optional<std::string> hyp;  // nullopt → apply to goal; string → apply to named hyp
 };
 
+// suffices to show <prop> [because <prop> implies <prop>] [by refs]
+// Reduces the current goal Q to P by asserting P → Q (either by refs or trivially),
+// then rewrites the outstanding goal to P for all subsequent steps.
+struct SufficesStep {
+    Prop                     prop;          // the reduced goal P
+    std::vector<std::string> justification; // refs proving P → Q; empty if trivial
+};
+
 using StepNode = std::variant<
     LetStep, TakeStep, SupposeStep, HaveStep, ThenStep, ContradictionStep,
     CasesStep, ObtainStep, InductionStep, ShowStep, ExactStep, RewriteStep, ApplyStep,
-    CalcStep, SplitStep, WlogStep, PushNegStep
+    CalcStep, SplitStep, WlogStep, PushNegStep, SufficesStep
 >;
 
 struct Step {
