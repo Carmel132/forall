@@ -3828,7 +3828,22 @@ static Poly normalize_expr(const ast::Expr& e) {
             return poly_var("__call_" + forall::pretty::to_string(tmp));
         }
 
-        return {}; // indices, lambdas, conditionals, aggregates, sets
+        // For ExprIndex{ExprLambda{j,_,body}, idx}: apply the index as an argument.
+        // (fun j => e)[k]  →  normalize_expr(e[j:=k])
+        // This is deliberately NOT put in beta_reduce (which would change the
+        // effective prop seen by the conclusion check); it only fires during
+        // polynomial normalization so `by ring`/`by norm_num` can see through it.
+        if constexpr (std::is_same_v<T, ast::ExprIndex>) {
+            const auto* lam = std::get_if<ast::ExprLambda>(&n.array->node);
+            if (lam) {
+                ast::Expr idx_norm{{}, n.index->node}; // copy of index expr
+                ast::Expr body_subst = ast::subst(*lam->body, lam->var, idx_norm);
+                return normalize_expr(body_subst);
+            }
+            return {}; // stuck index — not a lambda-application
+        }
+
+        return {}; // lambdas, conditionals, aggregates, sets
     }, e.node);
 }
 

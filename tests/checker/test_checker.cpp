@@ -2095,6 +2095,43 @@ end
     EXPECT_FALSE(diag.hasErrors());
 }
 
+TEST(CheckerTest, Ring_IndexedLambda_SelfEqual) {
+    // (fun j => a[j] + b[j])[k] = (fun j => a[j] + b[j])[k] by ring
+    // Both sides are the same indexed-lambda; ring should see them as equal
+    // after beta-reducing both to a[k] + b[k].
+    auto diag = run_checker("ring_indexed_lambda_self", R"(
+theorem t : (fun j => a[j] + b[j])[k] = (fun j => a[j] + b[j])[k]
+proof
+  then (fun j => a[j] + b[j])[k] = (fun j => a[j] + b[j])[k] by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_IndexedLambda_CommutedEqual) {
+    // (fun j => a[j] + b[j])[k] = (fun j => b[j] + a[j])[k] by ring
+    // Beta-reduces to a[k]+b[k] = b[k]+a[k], which ring proves by commutativity.
+    auto diag = run_checker("ring_indexed_lambda_comm", R"(
+theorem t : (fun j => a[j] + b[j])[k] = (fun j => b[j] + a[j])[k]
+proof
+  then (fun j => a[j] + b[j])[k] = (fun j => b[j] + a[j])[k] by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, Ring_IndexedLambda_DirectVsBeta) {
+    // (fun j => a[j] + b[j])[k] = a[k] + b[k] by ring
+    // LHS beta-reduces to a[k]+b[k]; ring proves equality.
+    auto diag = run_checker("ring_indexed_lambda_direct", R"(
+theorem t : (fun j => a[j] + b[j])[k] = a[k] + b[k]
+proof
+  then (fun j => a[j] + b[j])[k] = a[k] + b[k] by ring
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
 // ── auto-discharge (then P → Q with no justification) ───────────────────
 
 TEST(CheckerTest, AutoDischarge_ImplIntro_Basic) {
