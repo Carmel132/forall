@@ -1501,6 +1501,15 @@ ast::Step Parser::parseHaveStep() {
                                    std::move(sub)}};
     }
 
+    // "have h : P calc lhs rel rhs by refs ..." — embedded calc justification
+    if (check(lexer::TokenKind::KwCalc)) {
+        auto calc_step = parseCalcStep();
+        auto sub = std::make_unique<ast::ProofBlock>();
+        sub->steps.push_back(std::move(calc_step));
+        return {loc, ast::HaveStep{std::move(name), std::move(prop), {}, {},
+                                   std::move(sub)}};
+    }
+
     // Accept "from" as a natural alias for "by": "have h : P from premise"
     if (check(lexer::TokenKind::KwFrom))
         advance();
