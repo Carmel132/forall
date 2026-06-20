@@ -5875,3 +5875,58 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "embedded calc concludes"));
 }
+
+// ── suffices to show ──────────────────────────────────────────────────────────
+
+// "suffices to show P" without justification: accepts axiomatically; remaining
+// steps must prove P; overall conclusion is Q via __suffices_impl__ : P → Q.
+TEST(CheckerTest, SufficesToShow_NoJustification_Succeeds) {
+    auto diag = run_checker("suffices_to_show_no_just", R"(
+axiom h_p : P
+
+theorem result : Q
+proof
+  suffices to show P
+  then P by h_p
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// "suffices to show P by h_impl" where h_impl : P → Q — proved via cited ref.
+TEST(CheckerTest, SufficesToShow_WithJustification_Succeeds) {
+    auto diag = run_checker("suffices_to_show_with_just", R"(
+axiom h_p : P
+axiom h_impl : P -> Q
+
+theorem result : Q
+proof
+  suffices to show P by h_impl
+  then P by h_p
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// "suffices to show P by bad_ref" where bad_ref does not prove P → Q.
+TEST(CheckerTest, SufficesToShow_BadJustification_Error) {
+    auto diag = run_checker("suffices_to_show_bad_just", R"(
+axiom h_p : P
+axiom unrelated : A
+
+theorem result : Q
+proof
+  suffices to show P by unrelated
+  then P by h_p
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+}
