@@ -2560,6 +2560,18 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
         params.push_back({std::move(pname), std::move(ptype)});
     }
 
+    // "definition f (x : T) := expr" — expression-body function (no return type annotation).
+    std::optional<ast::ExprPtr> def_body_expr;
+    if (check(K::ColonEquals)) {
+        advance(); // consume ':='
+        def_body_expr = std::make_shared<ast::Expr>(parseExpr());
+        auto decl = std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
+                                                ast::Prop{loc, ast::PropFalse{}}, std::nullopt);
+        decl->params        = std::move(params);
+        decl->def_body_expr = std::move(def_body_expr);
+        return decl;
+    }
+
     expect(K::Colon, "expected ':' after definition name");
     auto prop = parseProp();
 
@@ -2572,7 +2584,7 @@ std::optional<ast::DeclPtr> Parser::parseDefinition() {
 
     auto decl = std::make_unique<ast::Decl>(ast::DeclKind::Definition, std::move(name), loc,
                                             std::move(prop), std::nullopt);
-    decl->params  = std::move(params);
+    decl->params   = std::move(params);
     decl->def_body = std::move(def_body);
     return decl;
 }
