@@ -5641,3 +5641,59 @@ end
         return msg;
     }();
 }
+
+// ── Mixed at/and chains (ForallElim + ImplElim in one by clause) ──────────────
+
+// (a) Full collapse: two witnesses strip two ∀, then two "and" refs apply ImplElim twice.
+TEST(CheckerTest, MixedAtAndChain_FullCollapse) {
+    auto diag = run_checker("mixed_at_and_full", R"(
+axiom big_theorem : for all x : Nat, for all y : Nat, P(x) -> Q(y) -> R(x, y)
+axiom h_px : P(a)
+axiom h_qy : Q(b)
+
+theorem result : R(a, b)
+proof
+  then R(a, b) by big_theorem at a at b and h_px and h_qy
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// (a) Same with "have" step.
+TEST(CheckerTest, MixedAtAndChain_HaveStep) {
+    auto diag = run_checker("mixed_at_and_have", R"(
+axiom big_theorem : for all x : Nat, for all y : Nat, P(x) -> Q(y) -> R(x, y)
+axiom h_px : P(a)
+axiom h_qy : Q(b)
+
+theorem result : R(a, b)
+proof
+  have h : R(a, b) by big_theorem at a at b and h_px and h_qy
+  then R(a, b) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// (c) Too many "and" refs after the witness chain — error reported.
+TEST(CheckerTest, MixedAtAndChain_TooManyRefs) {
+    auto diag = run_checker("mixed_at_and_too_many", R"(
+axiom small_theorem : for all x : Nat, P(x) -> Q(x)
+axiom h_pa : P(a)
+axiom h_extra : R(a)
+
+theorem result : Q(a)
+proof
+  then Q(a) by small_theorem at a and h_pa and h_extra
+end
+)");
+    EXPECT_TRUE(has_error(diag, "too many 'and' refs after 'at' chain"));
+}
