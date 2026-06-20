@@ -5818,3 +5818,60 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "'by exact h_p': hypothesis has type"));
 }
+
+// ── embedded calc in have step ────────────────────────────────────────────────
+
+// Success: single-link equality chain.
+TEST(CheckerTest, EmbeddedCalc_SingleLink_Succeeds) {
+    auto diag = run_checker("embedded_calc_single", R"(
+axiom h_eq : a + b = b + a
+
+theorem result : a + b = b + a
+proof
+  have h : a + b = b + a
+    calc a + b = b + a by h_eq
+  then a + b = b + a by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Success: multi-link chain — result stored and usable.
+TEST(CheckerTest, EmbeddedCalc_MultiLink_Succeeds) {
+    auto diag = run_checker("embedded_calc_multi", R"(
+axiom h_ab : a < b
+axiom h_bc : b < c
+
+theorem result : a < c
+proof
+  have h : a < c
+    calc a < b by h_ab
+         _ < c by h_bc
+  then a < c by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Error: calc conclusion does not match declared have-step prop.
+TEST(CheckerTest, EmbeddedCalc_ConclusionMismatch_Error) {
+    auto diag = run_checker("embedded_calc_mismatch", R"(
+axiom h_ab : a = b
+
+theorem result : a = c
+proof
+  have h : a = c
+    calc a = b by h_ab
+  then a = c by h
+end
+)");
+    EXPECT_TRUE(has_error(diag, "embedded calc concludes"));
+}
