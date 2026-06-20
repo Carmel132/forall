@@ -486,25 +486,41 @@ ast::Prop Parser::parseQuantifier() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after quantifier"});
 
-    // bounded binder — "∀ i < n, P(i)" desugars to "∀ i : Nat, i < n → P(i)".
+    // Bounded binder — desugars to an implication/conjunction guard.
     // Only valid for a single variable; checked before the multi-var loop.
+    //   ∀ i < n,    P(i)  →  ∀ i : Nat, i < n → P(i)
+    //   ∃ n >= N,   P(n)  →  ∃ n : Nat, n >= N ∧ P(n)
+    //   ∀ x ∈ S,   P(x)  →  ∀ x,       x ∈ S → P(x)
+    //   ∃ x ∈ S,   P(x)  →  ∃ x,       x ∈ S ∧ P(x)
     if (vars.size() == 1) {
-        if (auto rel = as_rel_op(peek().kind); rel.has_value()) {
-            advance(); // consume relational operator
+        const bool is_in_binder = check(lexer::TokenKind::KwIn)
+                                || check(lexer::TokenKind::MemberOf);
+        if (auto rel = as_rel_op(peek().kind); rel.has_value() || is_in_binder) {
+            ast::RelOp binder_rel;
+            if (is_in_binder) {
+                binder_rel = ast::RelOp::In;
+            } else {
+                binder_rel = *rel;
+            }
+            advance(); // consume relational operator or 'in'
             auto bound = parseExpr();
             expect(lexer::TokenKind::Comma, "expected ',' after bounded binder");
             auto body = parseProp();
-            // Desugar: wrap body as "var rel bound → body"
             const std::string& var = vars[0];
-            auto var_expr = ast::make_expr({loc, ast::ExprVar{var}});
+            auto var_expr  = ast::make_expr({loc, ast::ExprVar{var}});
             auto bound_expr = ast::make_expr(std::move(bound));
-            auto guard = ast::make_prop({loc, ast::PropRel{var_expr, bound_expr, *rel}});
-            auto impl_body = ast::make_prop(
-                {loc, ast::PropImpl{std::move(guard), ast::make_prop(std::move(body))}});
-            ast::TypeNode nat_type = ast::type_nat();
+            auto guard = ast::make_prop({loc, ast::PropRel{var_expr, bound_expr, binder_rel}});
+            // ∀: guard → body;  ∃: guard ∧ body
+            auto guarded_body = is_forall
+                ? ast::make_prop({loc, ast::PropImpl{std::move(guard), ast::make_prop(std::move(body))}})
+                : ast::make_prop({loc, ast::PropAnd {std::move(guard), ast::make_prop(std::move(body))}});
+            // Type annotation: Nat for order-comparison binders; nullopt for ∈ (element type unknown at parse time).
+            std::optional<ast::TypeNode> binder_type = is_in_binder
+                ? std::nullopt
+                : std::optional<ast::TypeNode>{ast::type_nat()};
             ast::Prop p{loc, is_forall
-                ? ast::PropNode{ast::PropForall{var, std::move(nat_type), std::move(impl_body)}}
-                : ast::PropNode{ast::PropExists{var, std::move(nat_type), std::move(impl_body)}}};
+                ? ast::PropNode{ast::PropForall{var, std::move(binder_type), std::move(guarded_body)}}
+                : ast::PropNode{ast::PropExists{var, std::move(binder_type), std::move(guarded_body)}}};
             mark_end(p); return p;
         }
     }
