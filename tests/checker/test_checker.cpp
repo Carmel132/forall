@@ -3161,6 +3161,37 @@ end
     EXPECT_TRUE(has_error(diag, "auto-discharge"));
 }
 
+// ── NL27: `it` pseudo-name back-reference ────────────────────────────────────
+
+TEST(CheckerTest, NL27_ItRefSucceeds) {
+    // `have _ : P by ax_p` makes the most recent anon P.
+    // `then Q by ax_impl and it` uses ImplElim: ax_impl : P->Q, it : P -> Q.
+    auto diag = run_checker("nl27_it_success", R"(
+axiom ax_impl : P -> Q
+axiom ax_p    : P
+theorem t : Q
+proof
+  have _ : P by ax_p
+  then Q by ax_impl and it
+end
+)");
+    EXPECT_FALSE(diag.hasErrors());
+}
+
+TEST(CheckerTest, NL27_ItRefNoAnonymousError) {
+    // `by it` with no prior anonymous step should emit a clear error.
+    auto diag = run_checker("nl27_it_no_anon", R"(
+axiom ax : P
+theorem t : P
+proof
+  have h : P by ax
+  then P by it
+end
+)");
+    EXPECT_TRUE(diag.hasErrors());
+    EXPECT_TRUE(has_error(diag, "anonymous result"));
+}
+
 // ── calc block tests ─────────────────────────────────────────────────────
 
 // pure equality chain — passes and result available for later use
