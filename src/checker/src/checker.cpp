@@ -49,6 +49,16 @@ struct PredDefEntry {
 };
 using PredDefTable = std::map<std::string, PredDefEntry>;
 
+// Expression-level function definition table.
+// Maps function name → { ordered param names, body expression }.
+// Populated from `definition f(x : T) := expr` declarations.
+// Used by unfold_term_funcs() to reduce ExprCall{f, [args]} nodes.
+struct TermFuncEntry {
+    std::vector<std::string> params;
+    ast::ExprPtr             body;
+};
+using TermFuncTable = std::map<std::string, TermFuncEntry>;
+
 // Maps type_name → set of class names it has been declared to implement.
 // Forward-declared here so CheckContext can reference it; full definition
 // and class_axioms table live in the typeclass section further below.
@@ -581,10 +591,99 @@ struct CheckContext {
     const ast::StructEnv*                        struct_env{nullptr}; // for sub-proof injection
     const PredDefTable*                          pred_defs{nullptr};  // predicate definition bodies
     const ast::InductiveEnv*                     inductive_env{nullptr}; // for structural induction
+    const TermFuncTable*                         term_func_defs{nullptr}; // expression-body function defs
 };
 
 // ── unfold_preds ──────────────────────────────────────────────────────────────
 //
+// Recursively expand ExprCall nodes whose name appears in term_func_defs.
+// Reduces f(a, b) → subst(body, params, args).  Recurses into all ExprNode
+// and PropNode variants.  No-op when the function is not in the table.
+static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs);
+static ast::Prop unfold_term_funcs_prop(const ast::Prop& p, const TermFuncTable& defs);
+
+static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs) {
+    return std::visit([&](const auto& n) -> ast::Expr {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::ExprVar>) {
+            // Zero-param constant definitions: parsed as ExprVar, not ExprCall.
+            auto it = defs.find(n.name);
+            if (it != defs.end() && it->second.params.empty())
+                return unfold_term_funcs(*it->second.body, defs);
+            return e;
+        } else if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            auto it = defs.find(n.name);
+            if (it != defs.end()) {
+                const auto& entry = it->second;
+                if (entry.params.size() == n.args.size()) {
+                    ast::Expr result = *entry.body;
+                    for (std::size_t i = 0; i < entry.params.size(); ++i)
+                        result = ast::subst(result, entry.params[i],
+                                            unfold_term_funcs(*n.args[i], defs));
+                    result = ast::beta_reduce(result);
+                    return unfold_term_funcs(result, defs); // recurse
+                }
+            }
+            // Recurse into args even if name not in table.
+            std::vector<ast::ExprPtr> new_args;
+            new_args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                new_args.push_back(ast::make_expr(unfold_term_funcs(*a, defs)));
+            return ast::Expr{e.loc, ast::ExprCall{n.name, std::move(new_args)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprBinary>) {
+            return ast::Expr{e.loc, ast::ExprBinary{n.op,
+                ast::make_expr(unfold_term_funcs(*n.lhs, defs)),
+                ast::make_expr(unfold_term_funcs(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprUnary>) {
+            return ast::Expr{e.loc, ast::ExprUnary{n.op,
+                ast::make_expr(unfold_term_funcs(*n.operand, defs))}};
+        } else {
+            return e; // literals and vars unchanged
+        }
+    }, e.node);
+}
+
+static ast::Prop unfold_term_funcs_prop(const ast::Prop& p, const TermFuncTable& defs) {
+    return std::visit([&](const auto& n) -> ast::Prop {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ast::PropRel>) {
+            return ast::Prop{p.loc, ast::PropRel{
+                ast::make_expr(unfold_term_funcs(*n.lhs, defs)),
+                ast::make_expr(unfold_term_funcs(*n.rhs, defs)),
+                n.op}};
+        } else if constexpr (std::is_same_v<T, ast::PropPred>) {
+            std::vector<ast::ExprPtr> new_args;
+            new_args.reserve(n.args.size());
+            for (const auto& a : n.args)
+                new_args.push_back(ast::make_expr(unfold_term_funcs(*a, defs)));
+            return ast::Prop{p.loc, ast::PropPred{n.name, std::move(new_args)}};
+        } else if constexpr (std::is_same_v<T, ast::PropNot>) {
+            return ast::Prop{p.loc, ast::PropNot{
+                ast::make_prop(unfold_term_funcs_prop(*n.inner, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropAnd>) {
+            return ast::Prop{p.loc, ast::PropAnd{
+                ast::make_prop(unfold_term_funcs_prop(*n.lhs, defs)),
+                ast::make_prop(unfold_term_funcs_prop(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropOr>) {
+            return ast::Prop{p.loc, ast::PropOr{
+                ast::make_prop(unfold_term_funcs_prop(*n.lhs, defs)),
+                ast::make_prop(unfold_term_funcs_prop(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropImpl>) {
+            return ast::Prop{p.loc, ast::PropImpl{
+                ast::make_prop(unfold_term_funcs_prop(*n.lhs, defs)),
+                ast::make_prop(unfold_term_funcs_prop(*n.rhs, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropForall>) {
+            return ast::Prop{p.loc, ast::PropForall{n.var, n.type,
+                ast::make_prop(unfold_term_funcs_prop(*n.body, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::PropExists>) {
+            return ast::Prop{p.loc, ast::PropExists{n.var, n.type,
+                ast::make_prop(unfold_term_funcs_prop(*n.body, defs))}};
+        } else {
+            return p; // Atomic, PropFalse, PropTrue unchanged
+        }
+    }, p.node);
+}
+
 // Recursively expand PropPred nodes whose name appears in pred_defs by
 // substituting the definition's body with the call's arguments.  Recurses into
 // all PropNode and ExprNode variants.  No-op when pred_defs is null.
@@ -1668,6 +1767,8 @@ bool check_step(const ast::Step& step,
                 p = ast::subst(p, name, *expr);
         }
         p = ast::beta_reduce(p);
+        if (ctx.term_func_defs && !ctx.term_func_defs->empty())
+            p = unfold_term_funcs_prop(p, *ctx.term_func_defs);
         if (ctx.pred_defs && !ctx.pred_defs->empty())
             p = unfold_preds(p, *ctx.pred_defs);
         return p;
@@ -1678,7 +1779,10 @@ bool check_step(const ast::Step& step,
             for (const auto& [name, expr] : *ctx.term_defs)
                 e = ast::subst(e, name, *expr);
         }
-        return ast::beta_reduce(e);
+        e = ast::beta_reduce(e);
+        if (ctx.term_func_defs && !ctx.term_func_defs->empty())
+            e = unfold_term_funcs(e, *ctx.term_func_defs);
+        return e;
     };
 
     return std::visit([&](const auto& s) -> bool {
@@ -3260,7 +3364,8 @@ void check_proof(const ast::Decl& decl,
                  const ast::StructEnv* struct_env = nullptr,
                  const PredDefTable* pred_defs = nullptr,
                  const ast::TypeAliasTable* aliases = nullptr,
-                 const ast::InductiveEnv* inductive_env = nullptr)
+                 const ast::InductiveEnv* inductive_env = nullptr,
+                 const TermFuncTable* term_func_defs = nullptr)
 {
     if (!decl.proof) {
         diag.emit({diag::Severity::Error, decl.loc,
@@ -3322,9 +3427,11 @@ void check_proof(const ast::Decl& decl,
     // proofs to work in terms of the definition body rather than the predicate name.
     // The original decl.statement is preserved for error messages; we work against
     // the unfolded version internally.
-    ast::Prop unfolded_statement = (pred_defs && !pred_defs->empty())
-                                   ? unfold_preds(decl.statement, *pred_defs)
-                                   : decl.statement;
+    ast::Prop unfolded_statement = decl.statement;
+    if (term_func_defs && !term_func_defs->empty())
+        unfolded_statement = unfold_term_funcs_prop(unfolded_statement, *term_func_defs);
+    if (pred_defs && !pred_defs->empty())
+        unfolded_statement = unfold_preds(unfolded_statement, *pred_defs);
 
     // Current proof goal — starts as the unfolded statement, may be transformed
     // by RewriteStep or ApplyStep. Allocations live in this vector so pointers remain valid.
@@ -3353,11 +3460,13 @@ void check_proof(const ast::Decl& decl,
     // Apply all current term definitions to a proposition by substitution,
     // then beta-reduce so that e.g. (fun k => a[phi(k)])[n] normalises to
     // a[phi(n)] before kernel comparison.
-    // also unfold predicate definitions.
+    // also unfold predicate and term function definitions.
     auto apply_term_defs = [&](ast::Prop p) -> ast::Prop {
         for (const auto& [name, expr] : term_defs)
             p = ast::subst(p, name, *expr);
         p = ast::beta_reduce(p);
+        if (term_func_defs && !term_func_defs->empty())
+            p = unfold_term_funcs_prop(p, *term_func_defs);
         if (pred_defs && !pred_defs->empty())
             p = unfold_preds(p, *pred_defs);
         return p;
@@ -3672,7 +3781,7 @@ void check_proof(const ast::Decl& decl,
             continue;
         }
 
-        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env, pred_defs, inductive_env};
+        const CheckContext ctx{type_env, instances, module_env, local_sigs, current_goal, &term_defs, struct_env, pred_defs, inductive_env, term_func_defs};
         const auto snap = diag.diagnostics().size();
         check_step(step, env, kernel, diag, ctx);
         const auto& all = diag.diagnostics();
@@ -5523,7 +5632,8 @@ ModuleResult check_module(const std::filesystem::path& path,
     ast::FuncSigTable sig_table; // built from definition declarations with params
     InstanceTable instance_table; // populated from instance declarations
     ast::StructEnv struct_env;    // populated from structure declarations
-    PredDefTable pred_def_table;  // predicate definitions with bodies
+    PredDefTable pred_def_table;      // predicate definitions with bodies
+    TermFuncTable term_func_table;    // expression-body function definitions
     ast::TypeAliasTable alias_table; // populated from type alias declarations
     ast::InductiveEnv inductive_env; // populated from inductive declarations
     const auto current_dir = path.parent_path();
@@ -5532,11 +5642,13 @@ ModuleResult check_module(const std::filesystem::path& path,
         switch (decl->kind) {
 
         case ast::DeclKind::Axiom: {
-            // unfold predicate definitions in the axiom statement so that
-            // hypotheses stored in module_env carry the expanded form.
-            const ast::Prop eff_stmt = pred_def_table.empty()
-                                       ? decl->statement
-                                       : unfold_preds(decl->statement, pred_def_table);
+            // unfold term function and predicate definitions so that hypotheses
+            // stored in module_env carry the fully expanded form.
+            ast::Prop eff_stmt = decl->statement;
+            if (!term_func_table.empty())
+                eff_stmt = unfold_term_funcs_prop(eff_stmt, term_func_table);
+            if (!pred_def_table.empty())
+                eff_stmt = unfold_preds(eff_stmt, pred_def_table);
             check_prop_types_deep(eff_stmt, {}, sig_table, diag);
             auto r = kernel.introduce_axiom(eff_stmt);
             if (!r)
@@ -5552,7 +5664,7 @@ ModuleResult check_module(const std::filesystem::path& path,
         case ast::DeclKind::Lemma: {
             check_prop_types_deep(decl->statement, {}, sig_table, diag);
             const auto snapshot = diag.diagnostics().size();
-            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table, &inductive_env);
+            check_proof(*decl, module_env, kernel, diag, sig_table, instance_table, &struct_env, &pred_def_table, &alias_table, &inductive_env, &term_func_table);
             const auto& all = diag.diagnostics();
             bool no_new_errors = true;
             for (auto i = snapshot; i < all.size(); ++i) {
@@ -5562,10 +5674,12 @@ ModuleResult check_module(const std::filesystem::path& path,
                 }
             }
             if (no_new_errors) {
-                // also unfold predicates in the theorem statement stored in env.
-                const ast::Prop eff = pred_def_table.empty()
-                                      ? decl->statement
-                                      : unfold_preds(decl->statement, pred_def_table);
+                // Unfold term functions and predicates in the proved statement.
+                ast::Prop eff = decl->statement;
+                if (!term_func_table.empty())
+                    eff = unfold_term_funcs_prop(eff, term_func_table);
+                if (!pred_def_table.empty())
+                    eff = unfold_preds(eff, pred_def_table);
                 if (auto r = kernel.introduce_axiom(eff))
                     module_env.insert_or_assign(decl->name,
                                                 HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
@@ -5688,13 +5802,21 @@ ModuleResult check_module(const std::filesystem::path& path,
                 if (const auto* tf = std::get_if<ast::TypeFun>(&ret.node))
                     sig_table[decl->name] = *tf;
             }
-            // if a body is present, register in pred_def_table.
+            // if a propositional body is present, register in pred_def_table.
             if (decl->def_body && !decl->is_abstract) {
                 PredDefEntry entry;
                 for (const auto& p : decl->params)
                     entry.params.push_back(p.name);
                 entry.body = *decl->def_body;
                 pred_def_table[decl->name] = std::move(entry);
+            }
+            // if an expression body is present, register in term_func_table.
+            if (decl->def_body_expr && !decl->is_abstract) {
+                TermFuncEntry entry;
+                for (const auto& p : decl->params)
+                    entry.params.push_back(p.name);
+                entry.body = *decl->def_body_expr;
+                term_func_table[decl->name] = std::move(entry);
             }
             break;
         }
