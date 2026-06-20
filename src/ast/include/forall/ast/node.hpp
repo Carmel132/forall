@@ -315,7 +315,8 @@ struct LetStep {
 // records x as "taken", and allows ForallIntro for any ∀ x, P proven afterward.
 struct TakeStep {
     std::string                var;
-    std::optional<TypeNode> type; // optional type annotation
+    std::optional<TypeNode>    type;       // optional type annotation
+    std::optional<ExprPtr>     definition; // "take n := expr" witness value
 };
 
 struct SupposeStep {
