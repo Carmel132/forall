@@ -1,46 +1,42 @@
 -- Real Analysis: Convergence and Boundedness of Sequences
 --
--- Atomic propositions name properties of a fixed sequence (a_n):
+-- Atomic propositions name properties of a fixed sequence (a_n).
+-- The epsilon-delta definitions for these properties live in
+-- stdlib/analysis/sequence.forall (ConvergesTo, IsCauchy); here we use
+-- abbreviated atomic names for sequences whose quantifier structure
+-- is not being reasoned about directly.
 --
---   Convergent  --  (a_n) has a finite limit L: ∀ε>0 ∃N ∀n≥N |a_n − L| < ε
---   Cauchy      --  (a_n) is Cauchy: ∀ε>0 ∃N ∀m,n≥N |a_m − a_n| < ε
---   Bounded     --  (a_n) is bounded: ∃M>0 ∀n |a_n| ≤ M
+--   Convergent  --  (a_n) has a finite limit
+--   Cauchy      --  (a_n) is Cauchy
+--   Bounded     --  (a_n) is bounded
 --   Monotone    --  (a_n) is non-decreasing or non-increasing
 --
--- Epsilon-delta arguments are treated as axioms; this file verifies only the
--- propositional (logical) structure connecting those results.
---
--- Known checker limitations (next items on the roadmap):
---   1. Proved lemmas are not added to the module environment, so each theorem
---      must re-derive intermediate steps from axioms.
---   2. The final step's proposition is not checked against the declared
---      conclusion; the proofs below close every implication explicitly with
---      ImplIntro so they are correct independent of that check.
+-- These axioms are the standard results of real analysis.  Full epsilon-delta
+-- proofs of each are in stdlib/analysis/ and examples/subsequence_limit.forall.
+-- This file focuses on the propositional structure connecting them.
 
--- ── Axioms ─────────────────────────────────────────────────────────────────────
---
--- cauchy_criterion: every convergent sequence satisfies the Cauchy condition
---   Proof sketch: for ε>0 choose N so |a_n−L|<ε/2 for n≥N; the triangle
---   inequality gives |a_m−a_n| ≤ |a_m−L|+|a_n−L| < ε.
+-- ── Domain axioms ─────────────────────────────────────────────────────────────
+
+-- Every convergent sequence satisfies the Cauchy condition.
+-- Proof: for eps > 0 choose N so |a_n - L| < eps/2 for n >= N;
+-- the triangle inequality gives |a_m - a_n| < eps.
 axiom cauchy_criterion : Convergent -> Cauchy
 
--- cauchy_bounded: every Cauchy sequence is bounded
---   Proof sketch: take ε=1, find N, then |a_n|≤|a_N|+1 for n≥N; the finitely
---   many initial terms are also bounded; take the maximum.
+-- Every Cauchy sequence is bounded.
+-- Proof: take eps = 1, find N; then |a_n| <= |a_N| + 1 for n >= N,
+-- and the finitely many earlier terms are bounded by their maximum.
 axiom cauchy_bounded : Cauchy -> Bounded
 
--- monotone_convergence: the Monotone Convergence Theorem
---   A bounded monotone sequence converges (completeness of ℝ).
+-- The Monotone Convergence Theorem: a bounded monotone sequence converges.
+-- This is equivalent to the completeness of the reals.
 axiom monotone_convergence : Bounded and Monotone -> Convergent
 
--- completeness: every Cauchy sequence in ℝ converges
---   This is the completeness of ℝ; it fails in ℚ (e.g. 3, 3.1, 3.14, …).
+-- Completeness: every Cauchy sequence in R converges.
+-- This fails in Q (e.g. rational approximations to sqrt(2)).
 axiom completeness : Cauchy -> Convergent
 
 -- ── Theorem 1: Convergent sequences are bounded ────────────────────────────────
---
--- Classic two-step chain: Convergent → Cauchy → Bounded.
--- The final step closes the implication with ImplIntro, discharging h_conv.
+
 theorem convergent_bounded : Convergent -> Bounded
 proof
   suppose h_conv : Convergent
@@ -51,10 +47,8 @@ end
 
 -- ── Theorem 2: Unbounded sequences diverge ─────────────────────────────────────
 --
--- Contrapositive of Theorem 1.  Suppose a_n is not bounded; assume for
--- contradiction that it converges.  By the axioms it would then be bounded,
--- contradicting h_unb.  NotIntro discharges h_conv to give ¬Convergent;
--- ImplIntro then discharges h_unb to close the outer implication.
+-- Contrapositive of Theorem 1: if (a_n) is not bounded, it cannot converge.
+
 theorem unbounded_diverges : not Bounded -> not Convergent
 proof
   suppose h_unb  : not Bounded
@@ -68,9 +62,9 @@ end
 
 -- ── Theorem 3: Bounded monotone sequences are Cauchy ──────────────────────────
 --
--- Monotone Convergence gives convergence; Cauchy Criterion then gives the
--- Cauchy property.  This is the metric-space characterisation of completeness:
--- in a complete metric space, convergence and the Cauchy property coincide.
+-- Monotone Convergence gives convergence; the Cauchy criterion then gives
+-- the Cauchy property.
+
 theorem monotone_bounded_is_cauchy : Bounded and Monotone -> Cauchy
 proof
   suppose h_bm  : Bounded and Monotone
@@ -79,11 +73,11 @@ proof
   then Bounded and Monotone -> Cauchy by h_bm and h_cauchy
 end
 
--- ── Theorem 4: In ℝ, Cauchy ↔ Convergent ─────────────────────────────────────
+-- ── Theorem 4: In R, Cauchy iff Convergent ────────────────────────────────────
 --
--- Both directions: Cauchy→Convergent is completeness; Convergent→Cauchy is
--- the Cauchy criterion.  The conjunction of the two implications is the
--- biconditional; the final step uses AndIntro to combine them.
+-- Both directions: Cauchy -> Convergent is completeness;
+-- Convergent -> Cauchy is the Cauchy criterion.
+
 theorem cauchy_iff_convergent : (Cauchy -> Convergent) and (Convergent -> Cauchy)
 proof
   suppose h_c : Cauchy
@@ -95,11 +89,8 @@ proof
   then (Cauchy -> Convergent) and (Convergent -> Cauchy) by fwd and bwd
 end
 
--- ── Theorem 5: Monotone + unbounded ⟹ divergent ──────────────────────────────
---
--- A monotone sequence either converges (if bounded, by Monotone Convergence)
--- or diverges to ±∞ (if unbounded).  This captures the divergence case.
--- Three nested ImplIntro applications close the three outer implications.
+-- ── Theorem 5: Monotone + unbounded implies divergent ────────────────────────
+
 theorem monotone_unbounded_diverges : Monotone -> not Bounded -> not Convergent
 proof
   suppose h_mono : Monotone
