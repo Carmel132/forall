@@ -550,6 +550,10 @@ struct Decl {
     // When present, the checker registers P as a predicate definition that
     // can be unfolded: P(t) → subst(body, param_names, args).
     std::optional<PropPtr>    def_body;
+    // expression body for `definition f(x : T) := expr` forms.
+    // When present, the checker registers f as a term function that can be
+    // unfolded: f(t) → subst(expr, param_names, args).
+    std::optional<ExprPtr>    def_body_expr;
     // for DeclKind::TypeAlias: the right-hand side type expression.
     std::optional<TypeNode>   type_alias_body;
     // for DeclKind::Inductive: the constructor list.
