@@ -2346,16 +2346,62 @@ TEST(ParserTest, BoundedBinder_ForallGt) {
 }
 
 TEST(ParserTest, BoundedBinder_ExistsLeq) {
-    // "there exists i <= n, P(i)"
+    // "there exists i <= n, P(i)" desugars to "there exists i : Nat, i <= n and P(i)"
     auto r = parse_str("axiom a : there exists i <= n, P(i)");
     ASSERT_FALSE(r.diag.hasErrors());
     const auto* ex = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
     ASSERT_NE(ex, nullptr); EXPECT_EQ(ex->var, "i");
-    const auto* impl = std::get_if<ast::PropImpl>(&ex->body->node);
+    // ∃ uses conjunction (∧) for the guard, not implication
+    const auto* conj = std::get_if<ast::PropAnd>(&ex->body->node);
+    ASSERT_NE(conj, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&conj->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::LtEq);
+}
+
+// ── Bounded quantifiers with 'in' / ∈ (NL23) ─────────────────────────────────
+
+TEST(ParserTest, NL23_ForallIn_AsciiKeyword) {
+    // "for all x in S, P(x)" desugars to "for all x, x in S implies P(x)"
+    auto r = parse_str("axiom a : for all x in S, P(x)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr); EXPECT_EQ(fa->var, "x");
+    EXPECT_FALSE(fa->type.has_value()); // type nullopt for ∈ binder
+    const auto* impl = std::get_if<ast::PropImpl>(&fa->body->node);
     ASSERT_NE(impl, nullptr);
     const auto* guard = std::get_if<ast::PropRel>(&impl->lhs->node);
     ASSERT_NE(guard, nullptr);
-    EXPECT_EQ(guard->op, ast::RelOp::LtEq);
+    EXPECT_EQ(guard->op, ast::RelOp::In);
+}
+
+TEST(ParserTest, NL23_ExistsIn_AsciiKeyword) {
+    // "there exists x in S, P(x)" desugars to "there exists x, x in S and P(x)"
+    auto r = parse_str("axiom a : there exists x in S, P(x)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* ex = std::get_if<ast::PropExists>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(ex, nullptr); EXPECT_EQ(ex->var, "x");
+    EXPECT_FALSE(ex->type.has_value());
+    const auto* conj = std::get_if<ast::PropAnd>(&ex->body->node);
+    ASSERT_NE(conj, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&conj->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::In);
+}
+
+TEST(ParserTest, NL23_ForallGt_UsesImplNat) {
+    // "for all ε > 0, P(ε)" desugars to "for all ε : Nat, ε > 0 → P(ε)"
+    auto r = parse_str("axiom a : for all eps > 0, P(eps)");
+    ASSERT_FALSE(r.diag.hasErrors());
+    const auto* fa = std::get_if<ast::PropForall>(&r.mod.decls[0]->statement.node);
+    ASSERT_NE(fa, nullptr); EXPECT_EQ(fa->var, "eps");
+    ASSERT_TRUE(fa->type.has_value());
+    EXPECT_TRUE(std::holds_alternative<ast::TypeNat>(fa->type->node));
+    const auto* impl = std::get_if<ast::PropImpl>(&fa->body->node);
+    ASSERT_NE(impl, nullptr);
+    const auto* guard = std::get_if<ast::PropRel>(&impl->lhs->node);
+    ASSERT_NE(guard, nullptr);
+    EXPECT_EQ(guard->op, ast::RelOp::Gt);
 }
 
 TEST(ParserTest, TupleType_Pair_InForallBinder) {
