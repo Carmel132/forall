@@ -1691,6 +1691,9 @@ bool check_step(const ast::Step& step,
 
         // take x [: T] — introduce a fresh term variable for ∀-intro
         else if constexpr (std::is_same_v<T, ast::TakeStep>) {
+            // "take n := expr" is handled in check_proof (goal rewriting).
+            // Here we only handle the standard "take x [: T]" ForallIntro form.
+            if (s.definition) return true; // dispatched to check_proof handler
             // Freshness: x must not appear free in any undischarged assumption.
             // If it does, the subsequent ForallIntro would be unsound (x is not
             // truly arbitrary — it was fixed by a hypothesis).
@@ -3337,6 +3340,12 @@ void check_proof(const ast::Decl& decl,
     // to recover Q.
     std::optional<ast::Prop> suffices_orig_goal;
 
+    // If a "take n := expr" step rewrites the goal from ∃ n, P(n) to P(expr),
+    // the original existential goal is saved here so the conclusion validator
+    // can apply ExistsIntro(proof_of_P_expr, witness=expr) to conclude ∃ n, P(n).
+    std::optional<ast::Prop>    exists_orig_goal;
+    std::optional<ast::ExprPtr> exists_witness;
+
     // term-level local definitions from "let x = expr".
     // Applied as substitution into propositions before each step is checked.
     std::map<std::string, ast::ExprPtr> term_defs;
@@ -3523,6 +3532,39 @@ void check_proof(const ast::Decl& decl,
             goal_history.push_back(*impl->lhs);
             current_goal = &goal_history.back();
             continue; // goal transformation only
+        }
+
+        // TakeStep with definition — "take n := expr" (witness-first ExistsIntro).
+        // Requires the current goal to be ∃ n, P(n).  Substitutes expr for n in
+        // the body, rewrites the goal to P(expr), and records n → expr as a term
+        // definition.  The final 'then P(expr)' step then applies ExistsIntro.
+        if (const auto* ts = std::get_if<ast::TakeStep>(&step.node)) {
+            if (ts->definition) {
+                if (!current_goal) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'take " + ts->var + " :=' used outside a proof context"});
+                    had_step_errors = true;
+                    continue;
+                }
+                const auto* exists = std::get_if<ast::PropExists>(&current_goal->node);
+                if (!exists) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'take " + ts->var + " :=': goal is not an existential — got '"
+                               + forall::pretty::to_string(*current_goal) + "'"});
+                    had_step_errors = true;
+                    continue;
+                }
+                // Record n → expr as a term definition.
+                term_defs[ts->var] = *ts->definition;
+                // Save the original existential goal for ExistsIntro at conclusion.
+                exists_orig_goal = *current_goal;
+                exists_witness   = *ts->definition;
+                // Rewrite goal to P(expr) by substituting the bound variable.
+                ast::Prop new_goal = ast::subst(*exists->body, exists->var, **ts->definition);
+                goal_history.push_back(std::move(new_goal));
+                current_goal = &goal_history.back();
+                continue;
+            }
         }
 
         // SufficesStep — "suffices to show P [by refs]"
@@ -3879,6 +3921,29 @@ void check_proof(const ast::Decl& decl,
                                        + forall::pretty::to_string(*suffices_orig_goal)
                                        + "' does not match theorem statement"});
                         }
+                    }
+                }
+            }
+            // If a "take n := expr" step rewrote the goal from ∃ n, P(n) to P(expr),
+            // verify the concluding step proved P(expr), then apply ExistsIntro
+            // to certify the original ∃ n, P(n) goal.
+            if (exists_orig_goal && exists_witness && !is_qed_sentinel) {
+                // Find the judgment for P(expr) among the derived hypotheses.
+                const HypEntry* proof_body = env.find_derived(*current_goal);
+                if (proof_body) {
+                    std::array<kernel::Judgment, 1> prems{proof_body->judgment};
+                    auto r2 = kernel.apply(kernel::Rule::ExistsIntro,
+                                           std::span<const kernel::Judgment>{prems},
+                                           *exists_orig_goal,
+                                           exists_witness->get());
+                    if (!r2) {
+                        diag.emit({diag::Severity::Error, last_concluding->loc,
+                                   "take :=: ExistsIntro failed: " + r2.error().message});
+                    } else if (!(*exists_orig_goal == unfolded_statement)) {
+                        diag.emit({diag::Severity::Error, last_concluding->loc,
+                                   "take :=: existential goal '"
+                                   + forall::pretty::to_string(*exists_orig_goal)
+                                   + "' does not match theorem statement"});
                     }
                 }
             }
