@@ -3282,6 +3282,11 @@ void check_proof(const ast::Decl& decl,
     // validator can chain ImplElim(h, proof_of_A) → B after the subproof of A.
     std::vector<const HypEntry*> apply_stack;
 
+    // If a SufficesStep rewrites the goal to P, the original goal Q is saved here
+    // so the conclusion validator can apply ImplElim(__suffices_impl__, proof_of_P)
+    // to recover Q.
+    std::optional<ast::Prop> suffices_orig_goal;
+
     // term-level local definitions from "let x = expr".
     // Applied as substitution into propositions before each step is checked.
     std::map<std::string, ast::ExprPtr> term_defs;
@@ -3468,6 +3473,73 @@ void check_proof(const ast::Decl& decl,
             goal_history.push_back(*impl->lhs);
             current_goal = &goal_history.back();
             continue; // goal transformation only
+        }
+
+        // SufficesStep — "suffices to show P [by refs]"
+        // Asserts that the outstanding goal Q reduces to P.
+        // If refs are supplied, they must already prove P → Q.
+        // The outstanding goal is then rewritten to P; remaining proof steps must
+        // prove P, after which the overall goal Q follows by ImplElim.
+        if (const auto* sf = std::get_if<ast::SufficesStep>(&step.node)) {
+            if (!current_goal) {
+                diag.emit({diag::Severity::Error, step.loc,
+                           "'suffices' used outside a proof context"});
+                had_step_errors = true;
+                continue;
+            }
+            // Build the expected implication P → Q.
+            ast::Prop impl_goal{step.loc,
+                ast::PropImpl{ast::make_prop(sf->prop), ast::make_prop(*current_goal)}};
+            if (!sf->justification.empty()) {
+                // Verify cited refs already prove P → Q.
+                std::vector<const HypEntry*> prem_entries;
+                bool refs_ok = true;
+                for (const auto& ref : sf->justification) {
+                    const HypEntry* he = env.find(ref);
+                    if (!he) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "suffices: unknown hypothesis '" + ref + "'"});
+                        had_step_errors = true;
+                        refs_ok = false;
+                        break;
+                    }
+                    prem_entries.push_back(he);
+                }
+                if (!refs_ok) continue;
+                // The refs must prove P → Q; check via infer_rule.
+                auto app = infer_rule(impl_goal, prem_entries, diag, step.loc);
+                if (!app) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "suffices: cited references do not prove '"
+                               + forall::pretty::to_string(impl_goal) + "'"});
+                    had_step_errors = true;
+                    continue;
+                }
+                auto r = kernel.apply(app->rule,
+                                      std::span<const kernel::Judgment>{app->premises},
+                                      impl_goal);
+                if (!r) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "suffices: kernel rejected proof of '"
+                               + forall::pretty::to_string(impl_goal) + "': "
+                               + r.error().message});
+                    had_step_errors = true;
+                    continue;
+                }
+                env.insert_or_assign("__suffices_impl__",
+                                     HypEntry{std::move(*r), EntryKind::Derived});
+            } else {
+                // No refs: axiomatically record P → Q; remaining steps must prove P.
+                auto r = kernel.introduce_axiom(impl_goal);
+                if (r)
+                    env.insert_or_assign("__suffices_impl__",
+                                         HypEntry{std::move(*r), EntryKind::Derived});
+            }
+            // Rewrite outstanding goal from Q to P.
+            suffices_orig_goal = *current_goal;
+            goal_history.push_back(sf->prop);
+            current_goal = &goal_history.back();
+            continue;
         }
 
         // PushNegStep — push negations inward on goal or hypothesis.
@@ -3728,6 +3800,36 @@ void check_proof(const ast::Decl& decl,
                                "proof concludes with `" + forall::pretty::to_string(ts_prop)
                                + "`, expected `" + forall::pretty::to_string(*current_goal) + "`",
                                end_col});
+                }
+            }
+            // If a SufficesStep rewrote the goal, verify P → Q is in scope and that
+            // the overall conclusion matches decl.statement.
+            if (suffices_orig_goal && !is_qed_sentinel) {
+                // The concluding 'then' step proved P (current_goal); via
+                // __suffices_impl__ : P → Q we can recover Q.
+                // No explicit kernel call needed: the conclusion validator just ensures
+                // we reach decl.statement via the implication.
+                const HypEntry* si = env.find("__suffices_impl__");
+                if (si) {
+                    // Build a fresh judgment for Q via ImplElim(P→Q, P).
+                    const HypEntry* proof_p = env.find_derived(*current_goal);
+                    if (proof_p) {
+                        std::array<kernel::Judgment, 2> prems{si->judgment,
+                                                              proof_p->judgment};
+                        auto r2 = kernel.apply(kernel::Rule::ImplElim,
+                                               std::span<const kernel::Judgment>{prems},
+                                               *suffices_orig_goal);
+                        if (!r2) {
+                            diag.emit({diag::Severity::Error, last_concluding->loc,
+                                       "suffices: could not complete ImplElim for '"
+                                       + forall::pretty::to_string(*suffices_orig_goal) + "'"});
+                        } else if (!(*suffices_orig_goal == unfolded_statement)) {
+                            diag.emit({diag::Severity::Error, last_concluding->loc,
+                                       "suffices: recovered goal '"
+                                       + forall::pretty::to_string(*suffices_orig_goal)
+                                       + "' does not match theorem statement"});
+                        }
+                    }
                 }
             }
             // If apply_stack is non-empty, verify the chain reaches decl.statement.
