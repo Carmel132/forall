@@ -5768,3 +5768,53 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "too many 'and' refs after 'at' chain"));
 }
+
+// ── by exact h — unambiguous single-hypothesis citation ───────────────────────
+
+// Success: goal matches hypothesis exactly.
+TEST(CheckerTest, ByExact_HaveStep_Succeeds) {
+    auto diag = run_checker("by_exact_have", R"(
+axiom h_p : P
+
+theorem result : P
+proof
+  have h : P by exact h_p
+  then P by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Success: then-step closes goal directly with exact.
+TEST(CheckerTest, ByExact_ThenStep_Succeeds) {
+    auto diag = run_checker("by_exact_then", R"(
+axiom h_p : P
+
+theorem result : P
+proof
+  then P by exact h_p
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Error: hypothesis type does not match step goal.
+TEST(CheckerTest, ByExact_TypeMismatch_Error) {
+    auto diag = run_checker("by_exact_mismatch", R"(
+axiom h_p : P
+
+theorem result : Q
+proof
+  then Q by exact h_p
+end
+)");
+    EXPECT_TRUE(has_error(diag, "'by exact h_p': hypothesis has type"));
+}
