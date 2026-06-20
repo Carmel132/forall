@@ -52,6 +52,7 @@ enum class TokenKind {
     KwRewrite,                  // "rewrite" (equality rewriting step)
     // "apply" is context-sensitive — lexed as Identifier, dispatched by parseStep()
     KwWlog,                     // "wlog"        (without loss of generality)
+    KwSuffices,                 // "suffices"    (goal reduction step)
     KwDecide,                   // "decide"      (tactic keyword)
     KwNormNum,                  // "norm_num"    (tactic keyword)
     KwRing,                     // "ring"        (tactic keyword)
