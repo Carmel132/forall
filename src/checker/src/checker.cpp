@@ -1732,6 +1732,54 @@ bool check_step(const ast::Step& step,
 
             // inline sub-proof block — check recursively with prop as goal.
             if (s.sub_proof) {
+                // "have h : P calc ..." — embedded calc justification.
+                // A sub_proof containing exactly one CalcStep is an inline calc block.
+                if (s.sub_proof->steps.size() == 1) {
+                    if (const auto* cs = std::get_if<ast::CalcStep>(
+                            &s.sub_proof->steps[0].node)) {
+                        if (cs->links.empty()) {
+                            diag.emit({diag::Severity::Error, step.loc,
+                                       "embedded calc block has no links"});
+                            return false;
+                        }
+                        // Run calc in a child scope seeded from current env.
+                        ScopeStack calc_env{};
+                        env.for_each([&](const std::string& n, const HypEntry& e) {
+                            calc_env.insert_or_assign(n, e);
+                        });
+                        CheckContext calc_ctx{ctx.type_env, ctx.instances, ctx.module_env,
+                                             ctx.sigs, &prop, ctx.term_defs, ctx.struct_env,
+                                             ctx.pred_defs, ctx.inductive_env};
+                        bool ok = check_calc_step(*cs, s.sub_proof->steps[0].loc,
+                                                  calc_env, kernel, diag, calc_ctx);
+                        if (!ok) return false;
+                        // Verify the calc chain's conclusion matches the declared prop.
+                        // The conclusion is cs->lhs  op_final  cs->links.back().rhs,
+                        // but we let check_calc_step compute it; we just check the
+                        // stored judgment. Scan calc_env for any entry not in outer env.
+                        const HypEntry* result_entry = nullptr;
+                        calc_env.for_each([&](const std::string& n, const HypEntry& e) {
+                            if (env.find(n) == nullptr) result_entry = &e;
+                        });
+                        if (!result_entry) {
+                            diag.emit({diag::Severity::Error, step.loc,
+                                       "embedded calc: internal error — no result stored"});
+                            return false;
+                        }
+                        if (!ast::defn_eq(result_entry->judgment.prop(), prop)) {
+                            diag.emit({diag::Severity::Error, step.loc,
+                                       "embedded calc concludes '"
+                                       + forall::pretty::to_string(result_entry->judgment.prop())
+                                       + "' but goal is '"
+                                       + forall::pretty::to_string(prop) + "'"});
+                            return false;
+                        }
+                        env.insert_or_assign(step_name,
+                            HypEntry{result_entry->judgment, EntryKind::Derived});
+                        return true;
+                    }
+                }
+
                 // Run the sub-block in a child scope seeded from the current scope.
                 // All outer hypotheses are visible; sub-proof-local steps stay local.
                 ScopeStack sub_env{};
