@@ -1,0 +1,162 @@
+-- modern_style.forall
+--
+-- Introductory theorems a freshman might see in their first analysis or
+-- discrete mathematics course, written in the natural-language style.
+--
+-- Features on display throughout:
+--   "since A and B, have h : C"    -- one-line derivation, reads left-to-right
+--   "(->)" / "(<-)"                -- biconditional split, no manual AndIntro
+--   silent close at "end"          -- open assumption discharged automatically
+--   import + open                  -- proved stdlib lemmas, no invented axioms
+
+-- ============================================================
+-- Part I: Sequences -- "intro to real analysis" theorems
+-- ============================================================
+--
+-- We import the subsequence machinery from the stdlib, which itself
+-- builds on the epsilon-delta definition of ConvergesTo in sequence.forall.
+
+import "../stdlib/analysis/subsequence.forall"
+open Analysis
+
+
+-- Fix a sequence, a subsequence, and a candidate limit for the whole file.
+
+definition a : Nat -> Real
+definition b : Nat -> Real
+definition L : Real
+
+
+-- Every subsequence of a convergent sequence converges to the same limit.
+--
+-- This is the first non-trivial theorem in most analysis courses.  The
+-- idea is simple: a subsequence's indices grow at least as fast as the
+-- natural numbers, so its tail eventually falls inside any epsilon-ball.
+--
+-- The full epsilon-delta proof lives in stdlib/analysis/subsequence.forall.
+-- Here we instantiate the universal theorem to our fixed a, b, L.
+
+theorem subsequences_converge :
+    ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+proof
+  suppose h_conv : ConvergesTo(a, L)
+  suppose h_sub  : IsSubsequence(a, b)
+  have sc1 : for all b : Nat -> Real, for all L : Real,
+                 ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by subseq_converges at a
+  have sc2 : for all L : Real,
+                 ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by sc1 at b
+  have sc3 : ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+             by sc2 at L
+  since sc3 and h_conv, have sc4 : IsSubsequence(a, b) -> ConvergesTo(b, L)
+  since sc4 and h_sub,  have h_res : ConvergesTo(b, L)
+  have inner : IsSubsequence(a, b) -> ConvergesTo(b, L) by h_sub and h_res
+  then ConvergesTo(a, L) -> IsSubsequence(a, b) -> ConvergesTo(b, L)
+       by h_conv and inner
+end
+
+
+-- Every sequence is a subsequence of itself (via the identity index phi = id).
+-- This lets us apply the subsequence theorem to the original sequence,
+-- and is the key fact behind the iff criterion: (a_n) -> L iff every subseq does.
+
+theorem seq_is_own_subseq : IsSubsequence(a, a)
+proof
+  have h_id : IsSubsequence(a, a) by identity_is_subseq at a
+  then IsSubsequence(a, a) by h_id
+end
+
+
+-- ============================================================
+-- Part II: Natural numbers
+-- ============================================================
+--
+-- Results a student might see in their first discrete math course,
+-- proved from the Peano axioms via the stdlib.
+
+import "../stdlib/nat_theorems.forall"
+open Nat
+
+
+-- There is no largest natural number.
+--
+-- For any n, the successor succ(n) is strictly larger.
+-- The existential witness is explicit: we take m = succ(n).
+
+theorem no_largest_nat : for all n : Nat, there exists m : Nat, n < m
+proof
+  take n : Nat
+  have h_lt : n < succ(n) by lt_succ_self at n
+  then there exists m : Nat, n < m by h_lt at succ(n)
+end
+
+
+-- For any positive natural number n, we have n <= n * n.
+--
+-- The discrete analogue of "x <= x^2 for x >= 1 in R".
+-- The key lemma is le_mul_of_one_le_right from the stdlib:
+-- if 1 <= k then n <= n * k.  Taking k = n gives the result.
+
+theorem le_self_mul_self : for all n : Nat, 1 <= n -> n <= n * n
+proof
+  take n : Nat
+  suppose h_pos : 1 <= n
+  have lmr1 : for all k : Nat, 1 <= k -> n <= n * k  by le_mul_of_one_le_right at n
+  have lmr2 : 1 <= n -> n <= n * n                   by lmr1 at n
+  then n <= n * n by lmr2 and h_pos
+end
+
+
+-- The square of a positive number is itself positive.
+--
+-- Uses sq_pos from the stdlib (proved by induction using mul_pos).
+-- Combined with pow_two, this gives 0 < n * n for any n > 0.
+
+theorem pos_sq_pos : for all n : Nat, 0 < n -> 0 < n * n
+proof
+  take n : Nat
+  suppose h_pos : 0 < n
+  have mp1  : for all b : Nat, 0 < n -> 0 < b -> 0 < n * b  by mul_pos at n
+  have mp2  : 0 < n -> 0 < n -> 0 < n * n                   by mp1 at n
+  have mp3  : 0 < n -> 0 < n * n                             by mp2 and h_pos
+  then 0 < n * n by mp3 and h_pos
+end
+
+
+-- (a + b)^2 = a^2 + 2*a*b + b^2  for natural numbers a, b.
+--
+-- One of the first identities a student learns to prove.
+-- We cite mul_comm to orient the ring normaliser, then let "by ring" close.
+
+theorem binomial_sq : for all a : Nat, for all b : Nat,
+    (a + b) * (a + b) = a * a + 2 * (a * b) + b * b
+proof
+  take a : Nat
+  take b : Nat
+  have h_comm : a * b = b * a by mul_comm at a at b
+  then (a + b) * (a + b) = a * a + 2 * (a * b) + b * b by ring
+end
+
+
+-- n + n = 2 * n for any natural number n.
+
+theorem double_is_two_mul : for all n : Nat, n + n = 2 * n
+proof
+  take n : Nat
+  then n + n = 2 * n by ring
+end
+
+
+-- Addition is commutative: a + b + c = b + a + c.
+-- Uses the proved stdlib theorem add_comm rather than re-deriving it.
+
+theorem add_comm_shift : for all a : Nat, for all b : Nat, for all c : Nat,
+    a + b + c = b + a + c
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have h : a + b = b + a by add_comm at a at b
+  then a + b + c = b + a + c by ring
+end
