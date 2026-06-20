@@ -1488,6 +1488,16 @@ ast::Step Parser::parseHaveStep() {
         advance();
         witnesses.push_back(ast::make_expr(parseExpr()));
     }
+    // After the "at" witness chain, allow "and <ref>" clauses for ImplElim arguments:
+    // "have h : C by f at a at b and h1 and h2" — f instantiated at a, b, then
+    // applied to h1, h2 via ImplElim.
+    if (!witnesses.empty()) {
+        while (check(lexer::TokenKind::And) || check(lexer::TokenKind::KwWith)) {
+            advance();
+            if (check(lexer::TokenKind::Identifier))
+                refs.push_back(std::string{advance().lexeme});
+        }
+    }
     return {loc, ast::HaveStep{std::move(name), std::move(prop), std::move(refs),
                                std::move(witnesses), nullptr}};
 }
@@ -1540,6 +1550,14 @@ ast::Step Parser::parseThenStep() {
         while (check(K::KwAt)) {
             advance();
             witnesses.push_back(ast::make_expr(parseExpr()));
+        }
+        // After the "at" witness chain, allow "and <ref>" clauses for ImplElim.
+        if (!witnesses.empty()) {
+            while (check(K::And) || check(K::KwWith)) {
+                advance();
+                if (check(K::Identifier))
+                    refs.push_back(std::string{advance().lexeme});
+            }
         }
     }
     return {loc, ast::ThenStep{std::move(prop), std::move(refs), std::move(witnesses)}};
