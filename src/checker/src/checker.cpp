@@ -2118,15 +2118,21 @@ bool check_step(const ast::Step& step,
             // the premise for the next. A single witness also routes through here so
             // ExistsIntro ("then ∃x,P by h at e") is handled via infer_quantifier_rule.
             if (!s.witnesses.empty()) {
-                if (es->size() != 1) {
+                // refs[0] is the base hypothesis for ForallElim; refs[1..] are ImplElim
+                // arguments applied after the witness chain.
+                if (es->empty()) {
                     diag.emit({diag::Severity::Error, step.loc,
-                               "'at' witness requires exactly one hypothesis reference"});
+                               "'at' witness requires at least one hypothesis reference"});
                     return false;
                 }
-                if (s.witnesses.size() == 1) {
-                    // Single witness: delegate to infer_quantifier_rule (ForallElim or ExistsIntro).
+                const std::size_t impl_ref_count = es->size() > 1 ? es->size() - 1 : 0;
+                // Resolve ImplElim argument refs (refs[1..]).
+                std::vector<const HypEntry*> impl_args(es->begin() + 1, es->end());
+
+                if (s.witnesses.size() == 1 && impl_ref_count == 0) {
+                    // Single witness, no trailing refs: delegate to infer_quantifier_rule.
                     const ast::Expr w = apply_tdefs_expr(*s.witnesses[0].get());
-                    auto app2 = infer_quantifier_rule(prop, *es, &w, diag, step.loc);
+                    auto app2 = infer_quantifier_rule(prop, {es->begin(), es->begin() + 1}, &w, diag, step.loc);
                     if (!app2) return false;
                     auto r = kernel.apply(app2->rule, std::span{app2->premises}, prop, &w);
                     if (!r) {
@@ -2137,7 +2143,7 @@ bool check_step(const ast::Step& step,
                     env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                     return true;
                 }
-                // Multiple witnesses: chain ForallElim, each stripping one ∀.
+                // Multi-witness: chain ForallElim, each stripping one ∀.
                 kernel::Judgment cur = es->front()->judgment;
                 for (std::size_t i = 0; i < s.witnesses.size(); ++i) {
                     const ast::Expr witness = apply_tdefs_expr(*s.witnesses[i].get());
@@ -2150,7 +2156,9 @@ bool check_step(const ast::Step& step,
                     }
                     ast::Prop inter_conc =
                         ast::beta_reduce(ast::subst(*fa->body, fa->var, witness));
-                    if (i + 1 == s.witnesses.size() && !ast::defn_eq(inter_conc, prop)) {
+                    // Only check conclusion match on last witness when no ImplElim follows.
+                    if (i + 1 == s.witnesses.size() && impl_ref_count == 0
+                            && !ast::defn_eq(inter_conc, prop)) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "ForallElim: conclusion after all substitutions does not "
                                    "match declared proposition"});
@@ -2161,6 +2169,35 @@ bool check_step(const ast::Step& step,
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "kernel rejected ForallElim at witness " + std::to_string(i)
+                                   + ": " + r.error().message});
+                        return false;
+                    }
+                    cur = std::move(*r);
+                }
+                // Apply ImplElim for each trailing "and" ref.
+                for (std::size_t i = 0; i < impl_args.size(); ++i) {
+                    const auto* im = std::get_if<ast::PropImpl>(&cur.prop().node);
+                    if (!im) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "too many 'and' refs after 'at' chain: theorem fully applied "
+                                   "after " + std::to_string(s.witnesses.size())
+                                   + " witness(es) but " + std::to_string(impl_args.size())
+                                   + " 'and' ref(s) were given"});
+                        return false;
+                    }
+                    std::array<kernel::Judgment, 2> prem{cur, impl_args[i]->judgment};
+                    ast::Prop concl = *im->rhs;
+                    // Last ImplElim must match the declared prop.
+                    if (i + 1 == impl_args.size() && !ast::defn_eq(concl, prop)) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "ImplElim: conclusion after applying all refs does not "
+                                   "match declared proposition"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::ImplElim, std::span{prem}, concl);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected ImplElim at ref " + std::to_string(i)
                                    + ": " + r.error().message});
                         return false;
                     }
@@ -2656,14 +2693,17 @@ bool check_step(const ast::Step& step,
             auto es = resolve_refs(s.justification, env, diag, step.loc);
             if (!es) return false;
             if (!s.witnesses.empty()) {
-                if (es->size() != 1) {
+                if (es->empty()) {
                     diag.emit({diag::Severity::Error, step.loc,
-                               "'at' witness requires exactly one hypothesis reference"});
+                               "'at' witness requires at least one hypothesis reference"});
                     return false;
                 }
-                if (s.witnesses.size() == 1) {
+                const std::size_t impl_ref_count_t = es->size() > 1 ? es->size() - 1 : 0;
+                std::vector<const HypEntry*> impl_args_t(es->begin() + 1, es->end());
+
+                if (s.witnesses.size() == 1 && impl_ref_count_t == 0) {
                     const ast::Expr w = apply_tdefs_expr(*s.witnesses[0].get());
-                    auto app2 = infer_quantifier_rule(prop, *es, &w, diag, step.loc);
+                    auto app2 = infer_quantifier_rule(prop, {es->begin(), es->begin() + 1}, &w, diag, step.loc);
                     if (!app2) return false;
                     auto r = kernel.apply(app2->rule, std::span{app2->premises}, prop, &w);
                     if (!r) {
@@ -2685,7 +2725,8 @@ bool check_step(const ast::Step& step,
                     }
                     ast::Prop inter_conc =
                         ast::beta_reduce(ast::subst(*fa->body, fa->var, witness));
-                    if (i + 1 == s.witnesses.size() && !ast::defn_eq(inter_conc, prop)) {
+                    if (i + 1 == s.witnesses.size() && impl_ref_count_t == 0
+                            && !ast::defn_eq(inter_conc, prop)) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "ForallElim: conclusion after all substitutions does not "
                                    "match declared proposition"});
@@ -2696,6 +2737,34 @@ bool check_step(const ast::Step& step,
                     if (!r) {
                         diag.emit({diag::Severity::Error, step.loc,
                                    "kernel rejected ForallElim at witness " + std::to_string(i)
+                                   + ": " + r.error().message});
+                        return false;
+                    }
+                    cur = std::move(*r);
+                }
+                // Apply ImplElim for each trailing "and" ref.
+                for (std::size_t i = 0; i < impl_args_t.size(); ++i) {
+                    const auto* im = std::get_if<ast::PropImpl>(&cur.prop().node);
+                    if (!im) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "too many 'and' refs after 'at' chain: theorem fully applied "
+                                   "after " + std::to_string(s.witnesses.size())
+                                   + " witness(es) but " + std::to_string(impl_args_t.size())
+                                   + " 'and' ref(s) were given"});
+                        return false;
+                    }
+                    std::array<kernel::Judgment, 2> prem_t{cur, impl_args_t[i]->judgment};
+                    ast::Prop concl_t = *im->rhs;
+                    if (i + 1 == impl_args_t.size() && !ast::defn_eq(concl_t, prop)) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "ImplElim: conclusion after applying all refs does not "
+                                   "match declared proposition"});
+                        return false;
+                    }
+                    auto r = kernel.apply(kernel::Rule::ImplElim, std::span{prem_t}, concl_t);
+                    if (!r) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "kernel rejected ImplElim at ref " + std::to_string(i)
                                    + ": " + r.error().message});
                         return false;
                     }
