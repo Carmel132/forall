@@ -5642,6 +5642,77 @@ end
     }();
 }
 
+// ── ForallIntro inside inline sub-proofs ─────────────────────────────────────
+
+// Inline sub-proof: goal is ∀ k, P(k); then-step concludes P(k) (the body).
+TEST(CheckerTest, InlineForallIntro_BodyConcludesGoal) {
+    auto diag = run_checker("inline_forall_intro_body", R"(
+axiom a_add_b_eq : for all k : Nat, a[k] + b[k] = a[k] + b[k]
+
+theorem pw_eq : for all k : Nat, a[k] + b[k] = a[k] + b[k]
+proof
+  have h : for all k : Nat, a[k] + b[k] = a[k] + b[k]
+  proof
+    take k : Nat
+    then a[k] + b[k] = a[k] + b[k] by a_add_b_eq at k
+  end
+  then for all k : Nat, a[k] + b[k] = a[k] + b[k] by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Inline sub-proof: two nested ∀; then-step concludes the doubly-stripped body.
+TEST(CheckerTest, InlineForallIntro_TwoTakeVars) {
+    auto diag = run_checker("inline_forall_intro_two_take", R"(
+axiom sum_comm : for all m : Nat, for all n : Nat, m + n = n + m
+
+theorem pw_comm : for all m : Nat, for all n : Nat, m + n = n + m
+proof
+  have h : for all m : Nat, for all n : Nat, m + n = n + m
+  proof
+    take m : Nat
+    take n : Nat
+    then m + n = n + m by sum_comm at m at n
+  end
+  then for all m : Nat, for all n : Nat, m + n = n + m by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+// Inline sub-proof: then-step gives the full ∀ prop (old behaviour still works).
+TEST(CheckerTest, InlineForallIntro_FullPropConcludesGoal) {
+    auto diag = run_checker("inline_forall_intro_full", R"(
+axiom base : for all k : Nat, P(k)
+
+theorem result : for all k : Nat, P(k)
+proof
+  have h : for all k : Nat, P(k)
+  proof
+    take k : Nat
+    have hk : P(k) by base at k
+    have fa  : for all k : Nat, P(k) by hk
+    then for all k : Nat, P(k) by fa
+  end
+  then for all k : Nat, P(k) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 // ── Mixed at/and chains (ForallElim + ImplElim in one by clause) ──────────────
 
 // (a) Full collapse: two witnesses strip two ∀, then two "and" refs apply ImplElim twice.
