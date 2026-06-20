@@ -1282,7 +1282,8 @@ ast::Step Parser::parseTakeStep() {
     else
         diag_.emit({diag::Severity::Error, peek().loc, "expected variable name after 'take'"});
 
-    std::optional<ast::TypeNode> type;
+    std::optional<ast::TypeNode>  type;
+    std::optional<ast::ExprPtr>   definition;
     if (check(lexer::TokenKind::Colon)) {
         advance(); // consume ':'
         if (check(lexer::TokenKind::Identifier) || check(lexer::TokenKind::LParen))
@@ -1290,7 +1291,12 @@ ast::Step Parser::parseTakeStep() {
         else
             diag_.emit({diag::Severity::Error, peek().loc, "expected type name after ':'"});
     }
-    return {loc, ast::TakeStep{std::move(var), std::move(type)}};
+    // "take n := expr" — witness-first existential intro form
+    if (check(lexer::TokenKind::ColonEquals)) {
+        advance(); // consume ':='
+        definition = std::make_shared<ast::Expr>(parseExpr());
+    }
+    return {loc, ast::TakeStep{std::move(var), std::move(type), std::move(definition)}};
 }
 
 // obtain <name> from <ref>
