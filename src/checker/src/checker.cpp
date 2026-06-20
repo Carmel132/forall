@@ -1959,6 +1959,27 @@ bool check_step(const ast::Step& step,
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
             }
+            // "by exact h" — verify h.prop == step.prop exactly, then certify.
+            if (s.justification.size() >= 2 && s.justification[0] == "__exact__") {
+                const std::string& ref = s.justification[1];
+                const HypEntry* he = env.find(ref);
+                if (!he) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by exact': unknown hypothesis '" + ref + "'"});
+                    return false;
+                }
+                if (!(apply_tdefs(he->judgment.prop()) == prop)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by exact " + ref + "': hypothesis has type '"
+                               + forall::pretty::to_string(he->judgment.prop())
+                               + "' but goal is '"
+                               + forall::pretty::to_string(prop) + "'"});
+                    return false;
+                }
+                env.insert_or_assign(step_name,
+                    HypEntry{he->judgment, EntryKind::Derived});
+                return true;
+            }
             // "by simp" / "by simp [h1, h2]" — propositional simplification (MT2)
             if (!s.justification.empty() && s.justification[0] == "__simp__") {
                 std::vector<std::string> lemma_set(s.justification.begin() + 1,
@@ -2517,6 +2538,25 @@ bool check_step(const ast::Step& step,
                     return false;
                 }
                 kernel.introduce_axiom(prop);
+                return true;
+            }
+            // "by exact h" — ThenStep variant
+            if (s.justification.size() >= 2 && s.justification[0] == "__exact__") {
+                const std::string& ref = s.justification[1];
+                const HypEntry* he = env.find(ref);
+                if (!he) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by exact': unknown hypothesis '" + ref + "'"});
+                    return false;
+                }
+                if (!(apply_tdefs(he->judgment.prop()) == prop)) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "'by exact " + ref + "': hypothesis has type '"
+                               + forall::pretty::to_string(he->judgment.prop())
+                               + "' but goal is '"
+                               + forall::pretty::to_string(prop) + "'"});
+                    return false;
+                }
                 return true;
             }
             // "by contra" — proof by contradiction
