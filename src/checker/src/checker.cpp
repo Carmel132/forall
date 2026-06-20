@@ -2967,9 +2967,59 @@ bool check_step(const ast::Step& step,
             return false;
         }
 
-        // show P — goal documentation; verifies P matches the theorem statement
+        // show [name :] P [proof ... end] — goal annotation or named inline sub-proof
         else if constexpr (std::is_same_v<T, ast::ShowStep>) {
             const ast::Prop prop = apply_tdefs(s.prop);
+            if (s.sub_proof) {
+                // Named inline sub-proof: "show [name :] P proof ... end"
+                // Run the sub-proof against goal P; store result under s.name.
+                const std::string step_name = s.name.value_or("__show_result__");
+                ScopeStack sub_env{env};
+                sub_env.push();
+                bool sub_had_errors = false;
+                const ast::Step* sub_last_then = nullptr;
+                std::map<std::string, ast::ExprPtr> sub_term_defs;
+                for (const auto& sub_step : s.sub_proof->steps) {
+                    if (const auto* ls = std::get_if<ast::LetStep>(&sub_step.node)) {
+                        if (ls->definition) sub_term_defs[ls->var] = *ls->definition;
+                        continue;
+                    }
+                    CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
+                                        ctx.sigs, &prop, &sub_term_defs, ctx.struct_env,
+                                        ctx.pred_defs, ctx.inductive_env};
+                    const auto before = diag.diagnostics().size();
+                    check_step(sub_step, sub_env, kernel, diag, sub_ctx);
+                    const auto& all2 = diag.diagnostics();
+                    for (auto i = before; i < all2.size(); ++i)
+                        if (all2[i].severity == diag::Severity::Error)
+                            { sub_had_errors = true; break; }
+                    if (std::get_if<ast::ThenStep>(&sub_step.node))
+                        sub_last_then = &sub_step;
+                }
+                if (sub_had_errors) return false;
+                if (!sub_last_then) {
+                    diag.emit({diag::Severity::Error, step.loc,
+                               "inline proof for '" + step_name
+                               + "' has no concluding 'then' step"});
+                    return false;
+                }
+                const auto& ts = std::get<ast::ThenStep>(sub_last_then->node);
+                ast::Prop ts_prop_eff = prop; // apply_tdefs not available here
+                if (!(ts.prop == prop)) {
+                    diag.emit({diag::Severity::Error, sub_last_then->loc,
+                               "inline proof concludes '"
+                               + forall::pretty::to_string(ts.prop)
+                               + "' but goal is '"
+                               + forall::pretty::to_string(prop) + "'"});
+                    return false;
+                }
+                auto r = kernel.introduce_axiom(prop);
+                if (r)
+                    env.insert_or_assign(step_name,
+                        HypEntry{std::move(*r), EntryKind::Derived});
+                return true;
+            }
+            // Plain show P: goal annotation — just verify P matches the current goal.
             if (!ctx.goal) {
                 diag.emit({diag::Severity::Error, step.loc,
                            "'show' step used outside a proof context"});
