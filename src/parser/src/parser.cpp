@@ -950,6 +950,14 @@ std::vector<std::string> Parser::parseJustification() {
         if (check(lexer::TokenKind::Identifier)) refs.push_back(std::string{advance().lexeme});
         return refs;
     }
+    // "exact h" — cite hypothesis h exactly; goal must match h's proposition.
+    if (check(lexer::TokenKind::KwExact)) {
+        advance(); // consume "exact"
+        refs.push_back("__exact__");
+        if (check(lexer::TokenKind::Identifier))
+            refs.push_back(std::string{advance().lexeme});
+        return refs;
+    }
     // "contra" is context-sensitive — only a tactic when it appears as an identifier
     // in a justification context (not as a theorem/hypothesis name).
     if (check(lexer::TokenKind::Identifier) && peek().lexeme == "contra") {
