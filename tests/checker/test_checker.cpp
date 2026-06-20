@@ -5969,3 +5969,33 @@ end
 )");
     EXPECT_TRUE(has_error(diag, "inline proof concludes"));
 }
+
+// ── take n := expr — witness-first existential intro ─────────────────────────
+
+TEST(CheckerTest, TakeAssign_ExistsIntro_Succeeds) {
+    auto diag = run_checker("take_assign_exists", R"(
+axiom h_pn : P(5)
+
+theorem result : there exists n : Nat, P(n)
+proof
+  take n := 5
+  then P(5) by h_pn
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, TakeAssign_NonExistentialGoal_Error) {
+    auto diag = run_checker("take_assign_non_exists", R"(
+theorem result : P
+proof
+  take n := 5
+  then P
+end
+)");
+    EXPECT_TRUE(has_error(diag, "goal is not an existential"));
+}
