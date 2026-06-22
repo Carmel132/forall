@@ -55,3 +55,40 @@ proof
   have h1 : Int_add(neg_succ(m), Int_neg(neg_succ(m))) = Int_subNatNat(succ(m), succ(m)) by decide
   then Int_add(neg_succ(m), Int_neg(neg_succ(m))) = pos(0) by trans h1 and h_zero
 end
+
+-- For all x : Int, Int_add(x, Int_neg(x)) = pos(0).
+-- Proof: case-split on x; each constructor case follows from the helpers above.
+theorem Int_add_self_neg :
+    for all x : Int,
+        Int_add(x, Int_neg(x)) = pos(0)
+proof
+  take x : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hresult from left
+        case m : m, hxm : x = pos(m) =>
+        have h1 : Int_add(pos(m), Int_neg(pos(m))) = pos(0) by Int_add_pos_neg_self at m
+        then Int_add(x, Int_neg(x)) = pos(0) by eq_subst hxm and h1
+      done
+      then Int_add(x, Int_neg(x)) = pos(0) by hresult
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hresult from right
+        case m : m, hxm : x = neg_succ(m) =>
+        have h1 : Int_add(neg_succ(m), Int_neg(neg_succ(m))) = pos(0) by Int_add_neg_succ_neg_self at m
+        then Int_add(x, Int_neg(x)) = pos(0) by eq_subst hxm and h1
+      done
+      then Int_add(x, Int_neg(x)) = pos(0) by hresult
+end
+
+-- For all x : Int, there exists y : Int such that Int_add(x, y) = pos(0).
+-- Witness: y = Int_neg(x); proof from Int_add_self_neg.
+theorem Int_add_neg_thm :
+    for all x : Int,
+        there exists y : Int, Int_add(x, y) = pos(0)
+proof
+  take x : Int
+  have h : Int_add(x, Int_neg(x)) = pos(0) by Int_add_self_neg at x
+  then there exists y : Int, Int_add(x, y) = pos(0) by h at Int_neg(x)
+end
