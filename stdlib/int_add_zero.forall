@@ -1,0 +1,97 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+
+-- Additive identity laws for Int_add, proved by case analysis on constructors.
+--
+-- Int_add_zero_thm : Int_add(x, pos(0)) = x
+-- Int_zero_add_thm : Int_add(pos(0), x) = x
+
+-- Helper: Int_add(pos(m), pos(0)) = pos(m)
+theorem Int_add_zero_pos :
+    for all m : Nat,
+        Int_add(pos(m), pos(0)) = pos(m)
+proof
+  take m : Nat
+  have h : m + 0 = m by add_zero at m
+  then Int_add(pos(m), pos(0)) = pos(m) by congr h
+end
+
+-- Helper: Int_add(neg_succ(m), pos(0)) = neg_succ(m)
+-- Reduces to Int_subNatNat(0, succ(m)) which normalises to neg_succ(m).
+theorem Int_add_zero_neg :
+    for all m : Nat,
+        Int_add(neg_succ(m), pos(0)) = neg_succ(m)
+proof
+  take m : Nat
+  then Int_add(neg_succ(m), pos(0)) = neg_succ(m) by decide
+end
+
+-- General theorem: Int_add(x, pos(0)) = x  for all x : Int
+theorem Int_add_zero_thm :
+    for all x : Int,
+        Int_add(x, pos(0)) = x
+proof
+  take x : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hresult from left
+        case m : m, hxm : x = pos(m) =>
+        have h1 : Int_add(pos(m), pos(0)) = pos(m) by Int_add_zero_pos at m
+        then Int_add(x, pos(0)) = x by eq_subst hxm and h1
+      done
+      then Int_add(x, pos(0)) = x by hresult
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hresult from right
+        case m : m, hxm : x = neg_succ(m) =>
+        have h1 : Int_add(neg_succ(m), pos(0)) = neg_succ(m) by Int_add_zero_neg at m
+        then Int_add(x, pos(0)) = x by eq_subst hxm and h1
+      done
+      then Int_add(x, pos(0)) = x by hresult
+end
+
+-- Helper: Int_add(pos(0), pos(n)) = pos(n)
+theorem Int_zero_add_pos :
+    for all n : Nat,
+        Int_add(pos(0), pos(n)) = pos(n)
+proof
+  take n : Nat
+  have h : 0 + n = n by zero_add at n
+  then Int_add(pos(0), pos(n)) = pos(n) by congr h
+end
+
+-- Helper: Int_add(pos(0), neg_succ(n)) = neg_succ(n)
+-- Reduces to Int_subNatNat(0, succ(n)) which normalises to neg_succ(n).
+theorem Int_zero_add_neg :
+    for all n : Nat,
+        Int_add(pos(0), neg_succ(n)) = neg_succ(n)
+proof
+  take n : Nat
+  then Int_add(pos(0), neg_succ(n)) = neg_succ(n) by decide
+end
+
+-- General theorem: Int_add(pos(0), x) = x  for all x : Int
+theorem Int_zero_add_thm :
+    for all x : Int,
+        Int_add(pos(0), x) = x
+proof
+  take x : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hresult from left
+        case n : n, hxn : x = pos(n) =>
+        have h1 : Int_add(pos(0), pos(n)) = pos(n) by Int_zero_add_pos at n
+        then Int_add(pos(0), x) = x by eq_subst hxn and h1
+      done
+      then Int_add(pos(0), x) = x by hresult
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hresult from right
+        case n : n, hxn : x = neg_succ(n) =>
+        have h1 : Int_add(pos(0), neg_succ(n)) = neg_succ(n) by Int_zero_add_neg at n
+        then Int_add(pos(0), x) = x by eq_subst hxn and h1
+      done
+      then Int_add(pos(0), x) = x by hresult
+end

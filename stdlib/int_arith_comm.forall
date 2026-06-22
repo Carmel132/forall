@@ -34,15 +34,6 @@ proof
   then Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m)) by decide
 end
 
-theorem Int_add_comm_neg_pos :
-    for all m : Nat, for all n : Nat,
-        Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m))
-proof
-  take m : Nat
-  take n : Nat
-  then Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m)) by decide
-end
-
 theorem Int_add_comm_neg_neg :
     for all m : Nat, for all n : Nat,
         Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m))
