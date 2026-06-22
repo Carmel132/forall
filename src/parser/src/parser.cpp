@@ -48,6 +48,38 @@ void Parser::consumeArticle() {
 //            | "(" expr ")"                            (grouping)
 //            | "(" expr "," expr {"," expr} ")"        (tuple)
 
+ast::Expr Parser::parseExprMatch() {
+    using K = lexer::TokenKind;
+    const auto loc = peek().loc;
+    expect(K::KwMatch, "expected 'match'");
+    auto scrutinee = ast::make_expr(parseExpr());
+    expect(K::KwWith, "expected 'with' after match scrutinee");
+    std::vector<ast::MatchArm> arms;
+    // Parse `| ctor [binder ...] => body` arms until we run out of `|`
+    while (check(K::Pipe)) {
+        advance(); // consume '|'
+        if (!check(K::Identifier)) {
+            diag_.emit({diag::Severity::Error, peek().loc,
+                        "expected constructor name in match arm"});
+            break;
+        }
+        std::string ctor = peek().lexeme;
+        advance();
+        // Collect zero or more binder identifiers (not a keyword or punctuation)
+        std::vector<std::string> binders;
+        while (check(K::Identifier)) {
+            binders.push_back(peek().lexeme);
+            advance();
+        }
+        expect(K::FatArrow, "expected '=>' in match arm");
+        auto body = ast::make_expr(parseExpr());
+        arms.push_back(ast::MatchArm{std::move(ctor), std::move(binders), std::move(body)});
+    }
+    ast::Expr result{loc, ast::ExprMatch{std::move(scrutinee), std::move(arms)}};
+    mark_end(result);
+    return result;
+}
+
 ast::Expr Parser::parseExpr() {
     using K = lexer::TokenKind;
     if (check(K::KwFun) || check(K::Lambda))
@@ -56,6 +88,8 @@ ast::Expr Parser::parseExpr() {
         return parseCondExpr();
     if (check(K::KwSum) || check(K::Sigma) || check(K::KwProd) || check(K::Pi))
         return parseAggregate();
+    if (check(K::KwMatch))
+        return parseExprMatch();
     const auto loc = peek().loc;
     auto lhs = parseExprMul();
     while (check(lexer::TokenKind::Plus)       || check(lexer::TokenKind::Minus)

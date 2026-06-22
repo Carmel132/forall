@@ -77,6 +77,7 @@ private:
     //                | "{" expr {"," expr} "}"                     (set literal)
     //                | "{" id [":" type] "|" prop "}"              (set comprehension)
     [[nodiscard]] ast::Expr parseExpr();
+    [[nodiscard]] ast::Expr parseExprMatch();
     [[nodiscard]] ast::Expr parseLambda();
     [[nodiscard]] ast::Expr parseCondExpr();
     [[nodiscard]] ast::Expr parseAggregate();
