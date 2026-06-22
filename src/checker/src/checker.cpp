@@ -958,18 +958,15 @@ static std::optional<ast::Expr> try_reduce_match(
     for (const auto& arm : m.arms) {
         if (arm.ctor != ctor_name) continue;
         if (arm.binders.size() != ctor_args.size()) continue;
-        // Alpha-rename binders to fresh names before substituting to prevent
-        // capture when a binder name collides with a name introduced by ctor_args.
-        ast::Expr body = *arm.body;
+        // Use multi_subst_expr for capture-avoiding substitution of binders → ctor_args.
+        // This avoids generating fresh names (which would make repeated normalization
+        // produce structurally non-equal Prop values), while still preventing capture
+        // when a binder name appears free in the ctor_arg expressions.
         std::vector<std::pair<std::string, ast::Expr>> subs;
         subs.reserve(arm.binders.size());
-        for (std::size_t i = 0; i < arm.binders.size(); ++i) {
-            const std::string fresh = fresh_name();
-            body = ast::subst(body, arm.binders[i],
-                              ast::Expr{{}, ast::ExprVar{fresh}});
-            subs.emplace_back(fresh, *ctor_args[i]);
-        }
-        body = subs.empty() ? body : multi_subst_expr(body, subs);
+        for (std::size_t i = 0; i < arm.binders.size(); ++i)
+            subs.emplace_back(arm.binders[i], *ctor_args[i]);
+        ast::Expr body = subs.empty() ? *arm.body : multi_subst_expr(*arm.body, subs);
         return unfold_term_funcs(ast::beta_reduce(body), defs);
     }
     return std::nullopt;
@@ -1726,11 +1723,15 @@ bool check_obtain_step(const ast::ObtainStep& s,
     }
 
     const auto& Q_raw = std::get<ast::ThenStep>(arm_last_then->node).prop;
-    // Normalise Q: apply predicate unfolding so the stored result matches the
-    // unfolded goal that the outer proof validator compares against.
-    const ast::Prop Q = (ctx.pred_defs && !ctx.pred_defs->empty())
-                        ? unfold_preds(ast::beta_reduce(Q_raw), *ctx.pred_defs)
-                        : ast::beta_reduce(Q_raw);
+    // Normalise Q to match the apply_tdefs-expanded form that outer proof steps see:
+    // beta-reduce, then unfold term functions (for match reduction), then pred defs.
+    // MatchArm::operator== uses alpha-equivalence, so the fresh names introduced by
+    // unfold_term_funcs_prop do not prevent equality comparison.
+    ast::Prop Q = ast::beta_reduce(Q_raw);
+    if (ctx.term_func_defs && !ctx.term_func_defs->empty())
+        Q = unfold_term_funcs_prop(Q, *ctx.term_func_defs);
+    if (ctx.pred_defs && !ctx.pred_defs->empty())
+        Q = unfold_preds(Q, *ctx.pred_defs);
 
     // 5. ∃-elim side condition: s.var must not appear free in Q
     if (ast::free_vars(Q).count(s.var)) {
@@ -2712,9 +2713,25 @@ bool check_step(const ast::Step& step,
                 const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
                 auto r = kernel.apply(kernel::Rule::EqSubst, std::span{prem}, prop);
                 if (!r) {
-                    diag.emit({diag::Severity::Error, step.loc,
-                               "'by eq_subst' failed: " + r.error().message});
-                    return false;
+                    // Fallback: the kernel's subst_expr may not reduce match expressions
+                    // after substitution. Substitute in the raw (pre-apply_tdefs) prop so
+                    // we only normalize once, matching how prem[1] was stored.
+                    const auto* eq = std::get_if<ast::PropRel>(&prem[0].prop().node);
+                    bool fallback_ok = false;
+                    if (eq && eq->op == ast::RelOp::Eq) {
+                        ast::Prop subst_check = ast::subst_expr(s.prop, *eq->lhs, *eq->rhs);
+                        subst_check = apply_tdefs(subst_check);
+                        if (subst_check == prem[1].prop())
+                            fallback_ok = true;
+                    }
+                    if (!fallback_ok) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "'by eq_subst' failed: " + r.error().message});
+                        return false;
+                    }
+                    auto cert = kernel.introduce_axiom(prop);
+                    env.insert_or_assign(step_name, HypEntry{std::move(*cert), EntryKind::Derived});
+                    return true;
                 }
                 env.insert_or_assign(step_name, HypEntry{std::move(*r), EntryKind::Derived});
                 return true;
@@ -2765,12 +2782,13 @@ bool check_step(const ast::Step& step,
                     ast::Prop inter_conc =
                         ast::beta_reduce(ast::subst(*fa->body, fa->var, witness));
                     // Only check conclusion match on last witness when no ImplElim follows.
-                    if (i + 1 == s.witnesses.size() && impl_ref_count == 0
-                            && !ast::defn_eq(inter_conc, prop)) {
-                        diag.emit({diag::Severity::Error, step.loc,
-                                   "ForallElim: conclusion after all substitutions does not "
-                                   "match declared proposition"});
-                        return false;
+                    if (i + 1 == s.witnesses.size() && impl_ref_count == 0) {
+                        if (!ast::defn_eq(inter_conc, prop)) {
+                            diag.emit({diag::Severity::Error, step.loc,
+                                       "ForallElim: conclusion after all substitutions does not "
+                                       "match declared proposition"});
+                            return false;
+                        }
                     }
                     auto r = kernel.apply(kernel::Rule::ForallElim,
                                          std::span{&cur, 1}, inter_conc, &witness);
@@ -3311,9 +3329,20 @@ bool check_step(const ast::Step& step,
                 const kernel::Judgment prem[2] = {(*es2)[0]->judgment, (*es2)[1]->judgment};
                 auto r = kernel.apply(kernel::Rule::EqSubst, std::span{prem}, prop);
                 if (!r) {
-                    diag.emit({diag::Severity::Error, step.loc,
-                               "'by eq_subst' failed: " + r.error().message});
-                    return false;
+                    // Fallback: checker-level substitution with full unfolding for match exprs.
+                    const auto* eq = std::get_if<ast::PropRel>(&prem[0].prop().node);
+                    bool fallback_ok = false;
+                    if (eq && eq->op == ast::RelOp::Eq) {
+                        ast::Prop subst_check = ast::subst_expr(s.prop, *eq->lhs, *eq->rhs);
+                        subst_check = apply_tdefs(subst_check);
+                        if (subst_check == prem[1].prop())
+                            fallback_ok = true;
+                    }
+                    if (!fallback_ok) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "'by eq_subst' failed: " + r.error().message});
+                        return false;
+                    }
                 }
                 return true;
             }
