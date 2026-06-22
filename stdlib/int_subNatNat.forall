@@ -1,0 +1,57 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+
+-- Properties of Int_subNatNat needed to prove additive inverse and other
+-- ring laws for the signed-magnitude Int type.
+
+-- Int_subNatNat(m, m) = pos(0) for all m : Nat.
+-- Proof: induction on m.
+--   Base (m=0): Int_subNatNat(0, 0) = pos(0) by decide.
+--   Step: Int_subNatNat(succ(m), succ(m)) = Int_subNatNat(m, m) by decide (both normalize
+--         to the same match expression); then apply the IH via trans.
+theorem Int_subNatNat_self_zero :
+    for all m : Nat,
+        Int_subNatNat(m, m) = pos(0)
+proof
+  induction result on m : Int_subNatNat(m, m) = pos(0)
+    base:
+      then Int_subNatNat(0, 0) = pos(0) by decide
+    inductive:
+      have h1 : Int_subNatNat(succ(m), succ(m)) = Int_subNatNat(m, m) by decide
+      then Int_subNatNat(succ(m), succ(m)) = pos(0) by trans h1 and ih
+end
+
+-- Int_add(pos(m), Int_neg(pos(m))) = pos(0) for all m : Nat.
+-- Cases: m=0: pos(0)+pos(0)=pos(0) by decide.
+--        m=succ(j): pos(succ(j))+neg_succ(j) = Int_subNatNat(succ(j),succ(j)) = pos(0).
+theorem Int_add_pos_neg_self :
+    for all m : Nat,
+        Int_add(pos(m), Int_neg(pos(m))) = pos(0)
+proof
+  induction result on m : Int_add(pos(m), Int_neg(pos(m))) = pos(0)
+    base:
+      then Int_add(pos(0), Int_neg(pos(0))) = pos(0) by decide
+    inductive:
+      -- Int_neg(pos(succ(m))) = neg_succ(m) by decide.
+      -- Int_add(pos(succ(m)), neg_succ(m)) = Int_subNatNat(succ(m), succ(m)) by decide.
+      -- Int_subNatNat(succ(m), succ(m)) = Int_subNatNat(m, m) by decide.
+      -- Int_subNatNat(m, m) = pos(0) by Int_subNatNat_self_zero at m.
+      have h_zero : Int_subNatNat(m, m) = pos(0) by Int_subNatNat_self_zero at m
+      have h1 : Int_add(pos(succ(m)), Int_neg(pos(succ(m)))) = Int_subNatNat(m, m) by decide
+      then Int_add(pos(succ(m)), Int_neg(pos(succ(m)))) = pos(0) by trans h1 and h_zero
+end
+
+-- Int_add(neg_succ(m), Int_neg(neg_succ(m))) = pos(0) for all m : Nat.
+-- Int_neg(neg_succ(m)) = pos(succ(m)).
+-- Int_add(neg_succ(m), pos(succ(m))) = Int_subNatNat(succ(m), succ(m)).
+-- Int_subNatNat(succ(m), succ(m)) = pos(0) by Int_subNatNat_self_zero.
+theorem Int_add_neg_succ_neg_self :
+    for all m : Nat,
+        Int_add(neg_succ(m), Int_neg(neg_succ(m))) = pos(0)
+proof
+  take m : Nat
+  have h_zero : Int_subNatNat(succ(m), succ(m)) = pos(0)
+                by Int_subNatNat_self_zero at succ(m)
+  have h1 : Int_add(neg_succ(m), Int_neg(neg_succ(m))) = Int_subNatNat(succ(m), succ(m)) by decide
+  then Int_add(neg_succ(m), Int_neg(neg_succ(m))) = pos(0) by trans h1 and h_zero
+end
