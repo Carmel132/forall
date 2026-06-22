@@ -219,3 +219,24 @@ TEST(FormatterTest, UnicodeMode_Default) {
     EXPECT_NE(result.find("\xe2\x86\x92"), std::string::npos); // has →
     EXPECT_EQ(result.find("->"), std::string::npos); // no ->
 }
+
+TEST(FormatterTest, ExprBody_MatchExpression) {
+    // expression-body definitions with match are formatted as `definition f params := match ...`
+    auto src = "definition factorial (n : Nat) := match n with | zero => 1 | succ k => succ(k) * factorial(k)";
+    auto result = fmt_decl(src);
+    EXPECT_NE(result.find("definition factorial"), std::string::npos);
+    EXPECT_NE(result.find(":="), std::string::npos);
+    EXPECT_NE(result.find("match"), std::string::npos);
+    EXPECT_NE(result.find("zero"), std::string::npos);
+    EXPECT_NE(result.find("succ"), std::string::npos);
+}
+
+TEST(FormatterTest, ExprBody_SimpleExpression) {
+    // expression-body definition without match
+    auto result = fmt_decl("definition double (n : Nat) := n + n");
+    EXPECT_NE(result.find("definition double"), std::string::npos);
+    EXPECT_NE(result.find(":="), std::string::npos);
+    EXPECT_NE(result.find("n + n"), std::string::npos);
+    // must NOT emit the dummy ": false" statement
+    EXPECT_EQ(result.find("false"), std::string::npos);
+}
