@@ -6209,3 +6209,58 @@ end
         return msg;
     }();
 }
+
+// ── Match expression / recursive definition tests ─────────────────────────────
+
+TEST(CheckerTest, MatchExpr_FactorialBase) {
+    auto diag = run_checker("match_factorial_base", R"(
+definition factorial (n : Nat) := match n with | zero => 1 | succ k => succ(k) * factorial(k)
+
+theorem factorial_base : factorial(0) = 1
+proof
+  then factorial(0) = 1 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, MatchExpr_FactorialThree) {
+    auto diag = run_checker("match_factorial_3", R"(
+definition factorial (n : Nat) := match n with | zero => 1 | succ k => succ(k) * factorial(k)
+
+theorem factorial3 : factorial(3) = 6
+proof
+  then factorial(3) = 6 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, MatchExpr_DoubleFunction) {
+    auto diag = run_checker("match_double", R"(
+definition double (n : Nat) := match n with | zero => 0 | succ k => succ(succ(double(k)))
+
+theorem double_zero : double(0) = 0
+proof
+  then double(0) = 0 by decide
+end
+
+theorem double_one : double(1) = 2
+proof
+  then double(1) = 2 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
