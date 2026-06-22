@@ -106,7 +106,18 @@ bool Expr::operator==(const Expr& other) const {
 }
 
 bool MatchArm::operator==(const MatchArm& o) const {
-    return ctor == o.ctor && binders == o.binders && *body == *o.body;
+    if (ctor != o.ctor || binders.size() != o.binders.size()) return false;
+    if (binders == o.binders) return *body == *o.body;
+    // Alpha-equivalence: canonicalise both sides' binders to "__αi__" then compare.
+    // These names are not user-accessible (double-underscore prefix/suffix) so they
+    // cannot clash with any variable introduced in normal user proofs.
+    Expr lhs = *body, rhs = *o.body;
+    for (std::size_t i = 0; i < binders.size(); ++i) {
+        const std::string canon = "__α" + std::to_string(i) + "__";
+        lhs = subst(lhs, binders[i],   Expr{{}, ExprVar{canon}});
+        rhs = subst(rhs, o.binders[i], Expr{{}, ExprVar{canon}});
+    }
+    return lhs == rhs;
 }
 
 // ── Prop::operator== ──────────────────────────────────────────────────────────
