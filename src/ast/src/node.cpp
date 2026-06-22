@@ -255,9 +255,53 @@ std::set<std::string> free_vars(const Expr& expr) {
 }
 
 // ── subst implementation ───────────────────────────────────────────────────────
+//
+// Both functions implement capture-avoiding substitution: when a binder
+// introduces a name that is free in the replacement expression `r`, that binder
+// is alpha-renamed to a fresh name (prefixed with `__ca`) before recursing.
 
 static Prop subst_prop(const Prop& prop, const std::string& var, const Expr& r);
 static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r);
+
+// Compute free variable names in an expression (shallow — used only for
+// capture-avoidance in subst_prop/subst_expr; does not need to be complete for
+// bound variables in ExprMatch arms since those use binder names that are
+// never re-bound at the Prop level).
+static std::set<std::string> free_vars_expr_shallow(const Expr& e) {
+    std::set<std::string> out;
+    std::visit([&](const auto& n) {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, ExprVar>)
+            out.insert(n.name);
+        else if constexpr (std::is_same_v<T, ExprBinary>) {
+            auto l = free_vars_expr_shallow(*n.lhs);
+            auto r2 = free_vars_expr_shallow(*n.rhs);
+            out.insert(l.begin(), l.end());
+            out.insert(r2.begin(), r2.end());
+        } else if constexpr (std::is_same_v<T, ExprUnary> || std::is_same_v<T, ExprAbs>) {
+            auto s = free_vars_expr_shallow(*n.operand);
+            out.insert(s.begin(), s.end());
+        } else if constexpr (std::is_same_v<T, ExprCall>) {
+            for (const auto& a : n.args) {
+                auto s = free_vars_expr_shallow(*a);
+                out.insert(s.begin(), s.end());
+            }
+        }
+        // Other node types (literals, tuples, etc.) contribute no variables or
+        // are complex enough that the shallow check is conservative.
+    }, e.node);
+    return out;
+}
+
+// Generate a deterministic fresh name for capture-avoiding substitution.
+// The name encodes both the binder being renamed and the variable being
+// substituted, so two independent calls on the same inputs produce the same
+// result — this is required so that the checker and the kernel (which both
+// call ast::subst) agree on the renamed binder without a shared counter.
+// The double-underscore prefix ensures the name cannot appear in user source.
+static std::string fresh_ca_name(const std::string& binder, const std::string& subst_var) {
+    return "__ca_" + binder + "_for_" + subst_var;
+}
 
 static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r) {
     return std::visit([&](const auto& e) -> Expr {
@@ -383,10 +427,28 @@ static Prop subst_prop(const Prop& prop, const std::string& var, const Expr& r) 
                                       make_prop(subst_prop(*p.rhs, var, r))}};
         } else if constexpr (std::is_same_v<T, PropForall>) {
             if (p.var == var) return prop; // binder shadows var
+            // Capture-avoiding: if the binder name is free in r, rename it.
+            const auto fv = free_vars_expr_shallow(r);
+            if (fv.count(p.var)) {
+                const std::string fresh = fresh_ca_name(p.var, var);
+                Prop renamed_body = subst_prop(*p.body, p.var,
+                    Expr{loc, ExprVar{fresh}});
+                return Prop{loc, PropForall{fresh, p.type,
+                    make_prop(subst_prop(renamed_body, var, r))}};
+            }
             return Prop{loc, PropForall{p.var, p.type,
                 make_prop(subst_prop(*p.body, var, r))}};
         } else if constexpr (std::is_same_v<T, PropExists>) {
             if (p.var == var) return prop; // binder shadows var
+            // Capture-avoiding: if the binder name is free in r, rename it.
+            const auto fv = free_vars_expr_shallow(r);
+            if (fv.count(p.var)) {
+                const std::string fresh = fresh_ca_name(p.var, var);
+                Prop renamed_body = subst_prop(*p.body, p.var,
+                    Expr{loc, ExprVar{fresh}});
+                return Prop{loc, PropExists{fresh, p.type,
+                    make_prop(subst_prop(renamed_body, var, r))}};
+            }
             return Prop{loc, PropExists{p.var, p.type,
                 make_prop(subst_prop(*p.body, var, r))}};
         } else if constexpr (std::is_same_v<T, PropRel>) {
