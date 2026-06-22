@@ -345,6 +345,12 @@ std::string format_decl(const ast::Decl& decl, const FormatterOptions& opts) {
             return r;
         }
         {
+            if (decl.def_body_expr) {
+                // Expression-body definition: "definition f (params) := expr"
+                return "definition " + decl.name
+                       + format_params(decl.params)
+                       + " := " + to_string(**decl.def_body_expr);
+            }
             std::string r = "definition " + decl.name
                             + format_params(decl.params)
                             + " : " + to_string(decl.statement);
