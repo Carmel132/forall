@@ -1,0 +1,96 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+
+-- Lemmas supporting the proof of Int_add_assoc.
+--
+-- Central lemma: Int_subNatNat(m + n, k) = Int_add(pos(m), Int_subNatNat(n, k))
+-- Proved by induction on n; body is (for all k, ...) so the IH covers all k.
+--
+-- Base (n=0, ∀ k):
+--   Case k=0:    both sides → pos(m+0), so by decide.
+--   Case k=succ(j): use congr(add_zero) to reduce LHS; RHS by decide; chain via trans.
+--
+-- Inductive (n→succ(n), ∀ k):
+--   Case k=0:    by decide (both sides → pos(m+succ(n))); close with eq_subst left and goal_0.
+--   Case k=succ(j): eq_subst h_ms and h_ss_q gives LHS reduction; IH at j; chain.
+--                   close with eq_subst hkj and goal_j.
+
+theorem Int_subNatNat_add_left :
+    for all m : Nat, for all n : Nat, for all k : Nat,
+        Int_subNatNat(m + n, k) = Int_add(pos(m), Int_subNatNat(n, k))
+proof
+  take m : Nat
+  induction result on n :
+      for all k : Nat, Int_subNatNat(m + n, k) = Int_add(pos(m), Int_subNatNat(n, k))
+    base:
+      -- Prove: ∀ k, Int_subNatNat(m+0, k) = Int_add(pos(m), Int_subNatNat(0, k))
+      have base_result : for all k : Nat,
+              Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k))
+        proof
+          take k : Nat
+          have hk : (k = 0) or (there exists m : Nat, k = succ(m)) by nat_zero_or_succ at k
+          cases cases_k : hk
+            case left : k = 0 =>
+              -- Both sides → pos(m + 0) after apply_tdefs.
+              have goal_0 : Int_subNatNat(m + 0, 0) = Int_add(pos(m), Int_subNatNat(0, 0))
+                            by decide
+              then Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k))
+                   by eq_subst left and goal_0
+            case right : (there exists m : Nat, k = succ(m)) =>
+              obtain hresult from right
+                case j : j, hkj : k = succ(j) =>
+                -- LHS reduction via add_zero: Int_subNatNat(m+0, succ(j)) = Int_subNatNat(m, succ(j))
+                have h_az : m + 0 = m by add_zero at m
+                have lhs_eq : Int_subNatNat(m + 0, succ(j)) = Int_subNatNat(m, succ(j)) by congr h_az
+                -- RHS: Int_subNatNat(m, succ(j)) = Int_add(pos(m), Int_subNatNat(0, succ(j))) by decide
+                have rhs_eq : Int_subNatNat(m, succ(j)) = Int_add(pos(m), Int_subNatNat(0, succ(j))) by decide
+                have goal_j : Int_subNatNat(m + 0, succ(j)) = Int_add(pos(m), Int_subNatNat(0, succ(j)))
+                              by trans lhs_eq and rhs_eq
+                then Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k))
+                     by eq_subst hkj and goal_j
+              done
+              then Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k)) by hresult
+          end cases
+          then Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k)) by cases_k
+        end
+      then for all k : Nat, Int_subNatNat(m + 0, k) = Int_add(pos(m), Int_subNatNat(0, k))
+           by base_result
+    inductive:
+      -- ih : for all k, Int_subNatNat(m + n, k) = Int_add(pos(m), Int_subNatNat(n, k))
+      have ind_result : for all k : Nat,
+              Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k))
+        proof
+          take k : Nat
+          have hk : (k = 0) or (there exists m : Nat, k = succ(m)) by nat_zero_or_succ at k
+          cases cases_k : hk
+            case left : k = 0 =>
+              have goal_0 : Int_subNatNat(m + succ(n), 0) = Int_add(pos(m), Int_subNatNat(succ(n), 0))
+                            by decide
+              then Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k))
+                   by eq_subst left and goal_0
+            case right : (there exists m : Nat, k = succ(m)) =>
+              obtain hresult from right
+                case j : j, hkj : k = succ(j) =>
+                have h_ms : m + succ(n) = succ(m + n) by add_succ at m at n
+                have h_ss_q : Int_subNatNat(succ(m + n), succ(j)) = Int_subNatNat(m + n, j) by decide
+                have lhs_step : Int_subNatNat(m + succ(n), succ(j)) = Int_subNatNat(m + n, j)
+                                by eq_subst h_ms and h_ss_q
+                have h_rhs_q : Int_add(pos(m), Int_subNatNat(succ(n), succ(j))) = Int_add(pos(m), Int_subNatNat(n, j))
+                               by decide
+                have ih_j : Int_subNatNat(m + n, j) = Int_add(pos(m), Int_subNatNat(n, j)) by ih at j
+                have h_rhs_q_sym : Int_add(pos(m), Int_subNatNat(n, j)) = Int_add(pos(m), Int_subNatNat(succ(n), succ(j)))
+                                   by symm h_rhs_q
+                have hc1 : Int_subNatNat(m + succ(n), succ(j)) = Int_add(pos(m), Int_subNatNat(n, j))
+                           by trans lhs_step and ih_j
+                have goal_j : Int_subNatNat(m + succ(n), succ(j)) = Int_add(pos(m), Int_subNatNat(succ(n), succ(j)))
+                              by trans hc1 and h_rhs_q_sym
+                then Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k))
+                     by eq_subst hkj and goal_j
+              done
+              then Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k)) by hresult
+          end cases
+          then Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k)) by cases_k
+        end
+      then for all k : Nat, Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k))
+           by ind_result
+end
