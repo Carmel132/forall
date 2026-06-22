@@ -629,6 +629,169 @@ struct CheckContext {
     const TermFuncTable*                         term_func_defs{nullptr}; // expression-body function defs
 };
 
+// Simultaneous multi-variable substitution: apply all (name → expr) pairs in
+// one pass over the expression so that later substitutions cannot capture
+// variables introduced by earlier ones (avoids the sequential-subst capture bug).
+static ast::Expr multi_subst_expr(const ast::Expr& e,
+                                   const std::vector<std::pair<std::string, ast::Expr>>& subs);
+static ast::Prop multi_subst_prop(const ast::Prop& p,
+                                   const std::vector<std::pair<std::string, ast::Expr>>& subs);
+
+static ast::Expr multi_subst_expr(const ast::Expr& e,
+                                   const std::vector<std::pair<std::string, ast::Expr>>& subs) {
+    return std::visit([&](const auto& n) -> ast::Expr {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = e.loc;
+        if constexpr (std::is_same_v<T, ast::ExprLit>)
+            return e;
+        else if constexpr (std::is_same_v<T, ast::ExprVar>) {
+            for (const auto& [k, v] : subs)
+                if (k == n.name) return v;
+            return e;
+        } else if constexpr (std::is_same_v<T, ast::ExprBinary>)
+            return ast::Expr{loc, ast::ExprBinary{n.op,
+                ast::make_expr(multi_subst_expr(*n.lhs, subs)),
+                ast::make_expr(multi_subst_expr(*n.rhs, subs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprUnary>)
+            return ast::Expr{loc, ast::ExprUnary{n.op,
+                ast::make_expr(multi_subst_expr(*n.operand, subs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprAbs>)
+            return ast::Expr{loc, ast::ExprAbs{
+                ast::make_expr(multi_subst_expr(*n.operand, subs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            std::vector<ast::ExprPtr> args;
+            for (const auto& a : n.args)
+                args.push_back(ast::make_expr(multi_subst_expr(*a, subs)));
+            return ast::Expr{loc, ast::ExprCall{n.name, std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIndex>)
+            return ast::Expr{loc, ast::ExprIndex{
+                ast::make_expr(multi_subst_expr(*n.array, subs)),
+                ast::make_expr(multi_subst_expr(*n.index, subs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprTuple>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements)
+                elems.push_back(ast::make_expr(multi_subst_expr(*el, subs)));
+            return ast::Expr{loc, ast::ExprTuple{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprSetLit>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements)
+                elems.push_back(ast::make_expr(multi_subst_expr(*el, subs)));
+            return ast::Expr{loc, ast::ExprSetLit{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprSetCompr>) {
+            // Filter out bindings shadowed by the set comprehension binder.
+            std::vector<std::pair<std::string, ast::Expr>> inner;
+            for (const auto& [k, v] : subs)
+                if (k != n.var) inner.emplace_back(k, v);
+            return ast::Expr{loc, ast::ExprSetCompr{n.var, n.type,
+                ast::make_prop(multi_subst_prop(*n.pred, inner))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprLambda>) {
+            std::vector<std::pair<std::string, ast::Expr>> inner;
+            for (const auto& [k, v] : subs)
+                if (k != n.var) inner.emplace_back(k, v);
+            return ast::Expr{loc, ast::ExprLambda{n.var, n.type,
+                ast::make_expr(multi_subst_expr(*n.body, inner))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIf>)
+            return ast::Expr{loc, ast::ExprIf{
+                ast::make_prop(multi_subst_prop(*n.cond, subs)),
+                ast::make_expr(multi_subst_expr(*n.then_, subs)),
+                ast::make_expr(multi_subst_expr(*n.else_, subs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprAgg>) {
+            std::vector<std::pair<std::string, ast::Expr>> inner;
+            for (const auto& [k, v] : subs)
+                if (k != n.var) inner.emplace_back(k, v);
+            std::optional<ast::ExprPtr> new_bound;
+            if (n.bound) new_bound = ast::make_expr(multi_subst_expr(**n.bound, subs));
+            return ast::Expr{loc, ast::ExprAgg{n.op, n.var, n.type, n.rel,
+                std::move(new_bound), ast::make_expr(multi_subst_expr(*n.body, inner))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprMatch>) {
+            auto new_scr = ast::make_expr(multi_subst_expr(*n.scrutinee, subs));
+            std::vector<ast::MatchArm> new_arms;
+            for (const auto& arm : n.arms) {
+                // Build the inner substitution and arm body with capture-avoiding rename:
+                // if a binder b appears free in any substitution VALUE (not key), rename b
+                // to a fresh name in the arm body so the substitution cannot capture it.
+                ast::Expr body = *arm.body;
+                std::vector<std::string> new_binders = arm.binders;
+                // Collect free variables across all substitution values (only those still active).
+                std::set<std::string> val_free;
+                for (const auto& [k, v] : subs) {
+                    bool shadowed = false;
+                    for (const auto& b : arm.binders) if (b == k) { shadowed = true; break; }
+                    if (!shadowed) {
+                        const auto fv = ast::free_vars(v);
+                        val_free.insert(fv.begin(), fv.end());
+                    }
+                }
+                for (std::size_t i = 0; i < new_binders.size(); ++i) {
+                    if (val_free.count(new_binders[i])) {
+                        // Binder clashes with a value's free variable — rename it.
+                        const std::string fr = fresh_name();
+                        body = ast::subst(body, new_binders[i],
+                                          ast::Expr{{}, ast::ExprVar{fr}});
+                        new_binders[i] = fr;
+                    }
+                }
+                // Binders (possibly renamed) shadow substitution inside arm body.
+                std::vector<std::pair<std::string, ast::Expr>> inner;
+                for (const auto& [k, v] : subs) {
+                    bool shadowed = false;
+                    for (const auto& b : new_binders) if (b == k) { shadowed = true; break; }
+                    if (!shadowed) inner.emplace_back(k, v);
+                }
+                new_arms.push_back({arm.ctor, std::move(new_binders),
+                    ast::make_expr(multi_subst_expr(body, inner))});
+            }
+            return ast::Expr{loc, ast::ExprMatch{std::move(new_scr), std::move(new_arms)}};
+        } else
+            return e;
+    }, e.node);
+}
+
+static ast::Prop multi_subst_prop(const ast::Prop& p,
+                                   const std::vector<std::pair<std::string, ast::Expr>>& subs) {
+    return std::visit([&](const auto& n) -> ast::Prop {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = p.loc;
+        if constexpr (std::is_same_v<T, ast::Atomic> || std::is_same_v<T, ast::PropFalse>
+                   || std::is_same_v<T, ast::PropTrue>)
+            return p;
+        else if constexpr (std::is_same_v<T, ast::PropNot>)
+            return ast::Prop{loc, ast::PropNot{ast::make_prop(multi_subst_prop(*n.inner, subs))}};
+        else if constexpr (std::is_same_v<T, ast::PropAnd>)
+            return ast::Prop{loc, ast::PropAnd{ast::make_prop(multi_subst_prop(*n.lhs, subs)),
+                                               ast::make_prop(multi_subst_prop(*n.rhs, subs))}};
+        else if constexpr (std::is_same_v<T, ast::PropOr>)
+            return ast::Prop{loc, ast::PropOr{ast::make_prop(multi_subst_prop(*n.lhs, subs)),
+                                              ast::make_prop(multi_subst_prop(*n.rhs, subs))}};
+        else if constexpr (std::is_same_v<T, ast::PropImpl>)
+            return ast::Prop{loc, ast::PropImpl{ast::make_prop(multi_subst_prop(*n.lhs, subs)),
+                                                ast::make_prop(multi_subst_prop(*n.rhs, subs))}};
+        else if constexpr (std::is_same_v<T, ast::PropForall>) {
+            std::vector<std::pair<std::string, ast::Expr>> inner;
+            for (const auto& [k, v] : subs)
+                if (k != n.var) inner.emplace_back(k, v);
+            return ast::Prop{loc, ast::PropForall{n.var, n.type,
+                ast::make_prop(multi_subst_prop(*n.body, inner))}};
+        } else if constexpr (std::is_same_v<T, ast::PropExists>) {
+            std::vector<std::pair<std::string, ast::Expr>> inner;
+            for (const auto& [k, v] : subs)
+                if (k != n.var) inner.emplace_back(k, v);
+            return ast::Prop{loc, ast::PropExists{n.var, n.type,
+                ast::make_prop(multi_subst_prop(*n.body, inner))}};
+        } else if constexpr (std::is_same_v<T, ast::PropRel>)
+            return ast::Prop{loc, ast::PropRel{
+                ast::make_expr(multi_subst_expr(*n.lhs, subs)),
+                ast::make_expr(multi_subst_expr(*n.rhs, subs)), n.op}};
+        else if constexpr (std::is_same_v<T, ast::PropPred>) {
+            std::vector<ast::ExprPtr> new_args;
+            for (const auto& a : n.args)
+                new_args.push_back(ast::make_expr(multi_subst_expr(*a, subs)));
+            return ast::Prop{loc, ast::PropPred{n.name, std::move(new_args)}};
+        } else
+            return p;
+    }, p.node);
+}
+
 // ── unfold_preds ──────────────────────────────────────────────────────────────
 //
 // Recursively expand ExprCall nodes whose name appears in term_func_defs.
@@ -636,6 +799,126 @@ struct CheckContext {
 // and PropNode variants.  No-op when the function is not in the table.
 static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs);
 static ast::Prop unfold_term_funcs_prop(const ast::Prop& p, const TermFuncTable& defs);
+
+// Alpha-rename all match arm binders (and lambda/quantifier binders) to fresh
+// names throughout an expression.  This prevents capture when the expression is
+// later used as a substitution body.
+static ast::Expr alpha_rename(const ast::Expr& e);
+static ast::Prop alpha_rename_prop(const ast::Prop& p);
+
+static ast::Expr alpha_rename(const ast::Expr& e) {
+    return std::visit([&](const auto& n) -> ast::Expr {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = e.loc;
+        if constexpr (std::is_same_v<T, ast::ExprLit> || std::is_same_v<T, ast::ExprVar>)
+            return e;
+        else if constexpr (std::is_same_v<T, ast::ExprBinary>)
+            return ast::Expr{loc, ast::ExprBinary{n.op,
+                ast::make_expr(alpha_rename(*n.lhs)),
+                ast::make_expr(alpha_rename(*n.rhs))}};
+        else if constexpr (std::is_same_v<T, ast::ExprUnary>)
+            return ast::Expr{loc, ast::ExprUnary{n.op,
+                ast::make_expr(alpha_rename(*n.operand))}};
+        else if constexpr (std::is_same_v<T, ast::ExprAbs>)
+            return ast::Expr{loc, ast::ExprAbs{ast::make_expr(alpha_rename(*n.operand))}};
+        else if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            std::vector<ast::ExprPtr> args;
+            for (const auto& a : n.args) args.push_back(ast::make_expr(alpha_rename(*a)));
+            return ast::Expr{loc, ast::ExprCall{n.name, std::move(args)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIndex>)
+            return ast::Expr{loc, ast::ExprIndex{
+                ast::make_expr(alpha_rename(*n.array)),
+                ast::make_expr(alpha_rename(*n.index))}};
+        else if constexpr (std::is_same_v<T, ast::ExprTuple>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements) elems.push_back(ast::make_expr(alpha_rename(*el)));
+            return ast::Expr{loc, ast::ExprTuple{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprSetLit>) {
+            std::vector<ast::ExprPtr> elems;
+            for (const auto& el : n.elements) elems.push_back(ast::make_expr(alpha_rename(*el)));
+            return ast::Expr{loc, ast::ExprSetLit{std::move(elems)}};
+        } else if constexpr (std::is_same_v<T, ast::ExprLambda>) {
+            const std::string fr = fresh_name();
+            ast::Expr renamed_body = ast::subst(*n.body, n.var, ast::Expr{{}, ast::ExprVar{fr}});
+            return ast::Expr{loc, ast::ExprLambda{fr, n.type,
+                ast::make_expr(alpha_rename(renamed_body))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprSetCompr>) {
+            const std::string fr = fresh_name();
+            ast::Prop renamed = ast::subst(*n.pred, n.var, ast::Expr{{}, ast::ExprVar{fr}});
+            return ast::Expr{loc, ast::ExprSetCompr{fr, n.type,
+                ast::make_prop(alpha_rename_prop(renamed))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprIf>)
+            return ast::Expr{loc, ast::ExprIf{
+                ast::make_prop(alpha_rename_prop(*n.cond)),
+                ast::make_expr(alpha_rename(*n.then_)),
+                ast::make_expr(alpha_rename(*n.else_))}};
+        else if constexpr (std::is_same_v<T, ast::ExprAgg>) {
+            const std::string fr = fresh_name();
+            ast::Expr renamed = ast::subst(*n.body, n.var, ast::Expr{{}, ast::ExprVar{fr}});
+            std::optional<ast::ExprPtr> new_bound;
+            if (n.bound) new_bound = ast::make_expr(alpha_rename(**n.bound));
+            return ast::Expr{loc, ast::ExprAgg{n.op, fr, n.type, n.rel,
+                std::move(new_bound), ast::make_expr(alpha_rename(renamed))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprMatch>) {
+            auto new_scr = ast::make_expr(alpha_rename(*n.scrutinee));
+            std::vector<ast::MatchArm> new_arms;
+            for (const auto& arm : n.arms) {
+                ast::Expr body = *arm.body;
+                std::vector<std::string> new_binders;
+                for (const auto& b : arm.binders) {
+                    const std::string fr = fresh_name();
+                    body = ast::subst(body, b, ast::Expr{{}, ast::ExprVar{fr}});
+                    new_binders.push_back(fr);
+                }
+                new_arms.push_back({arm.ctor, std::move(new_binders),
+                    ast::make_expr(alpha_rename(body))});
+            }
+            return ast::Expr{loc, ast::ExprMatch{std::move(new_scr), std::move(new_arms)}};
+        } else
+            return e;
+    }, e.node);
+}
+
+static ast::Prop alpha_rename_prop(const ast::Prop& p) {
+    return std::visit([&](const auto& n) -> ast::Prop {
+        using T = std::decay_t<decltype(n)>;
+        const auto& loc = p.loc;
+        if constexpr (std::is_same_v<T, ast::Atomic> || std::is_same_v<T, ast::PropFalse>
+                   || std::is_same_v<T, ast::PropTrue>)
+            return p;
+        else if constexpr (std::is_same_v<T, ast::PropNot>)
+            return ast::Prop{loc, ast::PropNot{ast::make_prop(alpha_rename_prop(*n.inner))}};
+        else if constexpr (std::is_same_v<T, ast::PropAnd>)
+            return ast::Prop{loc, ast::PropAnd{ast::make_prop(alpha_rename_prop(*n.lhs)),
+                                               ast::make_prop(alpha_rename_prop(*n.rhs))}};
+        else if constexpr (std::is_same_v<T, ast::PropOr>)
+            return ast::Prop{loc, ast::PropOr{ast::make_prop(alpha_rename_prop(*n.lhs)),
+                                              ast::make_prop(alpha_rename_prop(*n.rhs))}};
+        else if constexpr (std::is_same_v<T, ast::PropImpl>)
+            return ast::Prop{loc, ast::PropImpl{ast::make_prop(alpha_rename_prop(*n.lhs)),
+                                                ast::make_prop(alpha_rename_prop(*n.rhs))}};
+        else if constexpr (std::is_same_v<T, ast::PropForall>) {
+            const std::string fr = fresh_name();
+            ast::Prop renamed = ast::subst(*n.body, n.var, ast::Expr{{}, ast::ExprVar{fr}});
+            return ast::Prop{loc, ast::PropForall{fr, n.type,
+                ast::make_prop(alpha_rename_prop(renamed))}};
+        } else if constexpr (std::is_same_v<T, ast::PropExists>) {
+            const std::string fr = fresh_name();
+            ast::Prop renamed = ast::subst(*n.body, n.var, ast::Expr{{}, ast::ExprVar{fr}});
+            return ast::Prop{loc, ast::PropExists{fr, n.type,
+                ast::make_prop(alpha_rename_prop(renamed))}};
+        } else if constexpr (std::is_same_v<T, ast::PropRel>)
+            return ast::Prop{loc, ast::PropRel{
+                ast::make_expr(alpha_rename(*n.lhs)),
+                ast::make_expr(alpha_rename(*n.rhs)), n.op}};
+        else if constexpr (std::is_same_v<T, ast::PropPred>) {
+            std::vector<ast::ExprPtr> args;
+            for (const auto& a : n.args) args.push_back(ast::make_expr(alpha_rename(*a)));
+            return ast::Prop{loc, ast::PropPred{n.name, std::move(args)}};
+        } else
+            return p;
+    }, p.node);
+}
 
 // Try to reduce `match scrutinee with arms` when the scrutinee is a concrete
 // constructor application.  Returns nullopt if no arm matches.
@@ -675,10 +958,18 @@ static std::optional<ast::Expr> try_reduce_match(
     for (const auto& arm : m.arms) {
         if (arm.ctor != ctor_name) continue;
         if (arm.binders.size() != ctor_args.size()) continue;
-        // Substitute binders with constructor arguments in the arm body.
+        // Alpha-rename binders to fresh names before substituting to prevent
+        // capture when a binder name collides with a name introduced by ctor_args.
         ast::Expr body = *arm.body;
-        for (std::size_t i = 0; i < arm.binders.size(); ++i)
-            body = ast::subst(body, arm.binders[i], *ctor_args[i]);
+        std::vector<std::pair<std::string, ast::Expr>> subs;
+        subs.reserve(arm.binders.size());
+        for (std::size_t i = 0; i < arm.binders.size(); ++i) {
+            const std::string fresh = fresh_name();
+            body = ast::subst(body, arm.binders[i],
+                              ast::Expr{{}, ast::ExprVar{fresh}});
+            subs.emplace_back(fresh, *ctor_args[i]);
+        }
+        body = subs.empty() ? body : multi_subst_expr(body, subs);
         return unfold_term_funcs(ast::beta_reduce(body), defs);
     }
     return std::nullopt;
@@ -708,10 +999,15 @@ static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs
             if (it != defs.end()) {
                 const auto& entry = it->second;
                 if (entry.params.size() == n.args.size()) {
-                    ast::Expr result = *entry.body;
+                    // Build simultaneous capture-avoiding substitution.
+                    // multi_subst_expr handles binder renaming when values contain
+                    // the same names as match arm binders.
+                    std::vector<std::pair<std::string, ast::Expr>> subs;
+                    subs.reserve(entry.params.size());
                     for (std::size_t i = 0; i < entry.params.size(); ++i)
-                        result = ast::subst(result, entry.params[i],
-                                            unfold_term_funcs(*n.args[i], defs));
+                        subs.emplace_back(entry.params[i],
+                                          unfold_term_funcs(*n.args[i], defs));
+                    ast::Expr result = multi_subst_expr(*entry.body, subs);
                     result = ast::beta_reduce(result);
                     return unfold_term_funcs(result, defs); // recurse
                 }
