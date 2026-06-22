@@ -6437,6 +6437,236 @@ end
     }();
 }
 
+// Extended Int preamble: adds add_comm, int_zero_or_neg_or_pos, and the four
+// constructor-pair commutativity lemmas so the general theorem can be tested
+// in isolation (without loading stdlib files from disk).
+static const char* kIntCommPreamble = R"(
+inductive Int :=
+  pos : Nat -> Int
+  neg_succ : Nat -> Int
+
+definition Int_subNatNat (m : Nat) (n : Nat) := match n with
+  | zero => pos(m)
+  | succ k => (match m with | zero => neg_succ(k) | succ j => Int_subNatNat(j, k))
+
+definition Int_add (x : Int) (y : Int) := match x with
+  | pos m => (match y with
+      | pos n => pos(m + n)
+      | neg_succ n => Int_subNatNat(m, succ(n)))
+  | neg_succ m => (match y with
+      | pos n => Int_subNatNat(n, succ(m))
+      | neg_succ n => neg_succ(succ(m + n)))
+
+axiom add_comm : for all m : Nat, for all n : Nat, m + n = n + m
+axiom int_zero_or_neg_or_pos :
+    for all y : Int,
+        (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+)";
+
+TEST(CheckerTest, IntAddComm_NegPos) {
+    std::string src = std::string(kIntCommPreamble) + R"(
+theorem Int_add_comm_neg_pos :
+    for all m : Nat, for all n : Nat,
+        Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m))
+proof
+  take m : Nat
+  take n : Nat
+  then Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m)) by decide
+end
+)";
+    auto diag = run_checker("int_add_comm_neg_pos", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntAddComm_PosAny) {
+    std::string src = std::string(kIntCommPreamble) + R"(
+theorem Int_add_comm_pos_pos :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  have h : m + n = n + m by add_comm at m at n
+  then Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m)) by congr h
+end
+
+theorem Int_add_comm_pos_neg :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  then Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m)) by decide
+end
+
+theorem Int_add_comm_pos_any :
+    for all m : Nat, for all y : Int,
+        Int_add(pos(m), y) = Int_add(y, pos(m))
+proof
+  take m : Nat
+  take y : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hpos from left
+        case n : n, hyn : y = pos(n) =>
+        have h1 : Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m))
+                  by Int_add_comm_pos_pos at m at n
+        then Int_add(pos(m), y) = Int_add(y, pos(m)) by eq_subst hyn and h1
+      done
+      then Int_add(pos(m), y) = Int_add(y, pos(m)) by hpos
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hneg from right
+        case n : n, hyn : y = neg_succ(n) =>
+        have h1 : Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m))
+                  by Int_add_comm_pos_neg at m at n
+        then Int_add(pos(m), y) = Int_add(y, pos(m)) by eq_subst hyn and h1
+      done
+      then Int_add(pos(m), y) = Int_add(y, pos(m)) by hneg
+end
+)";
+    auto diag = run_checker("int_add_comm_pos_any", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntAddComm_General) {
+    std::string src = std::string(kIntCommPreamble) + R"(
+theorem Int_add_comm_pos_pos :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  have h : m + n = n + m by add_comm at m at n
+  then Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m)) by congr h
+end
+
+theorem Int_add_comm_pos_neg :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  then Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m)) by decide
+end
+
+theorem Int_add_comm_neg_pos :
+    for all m : Nat, for all n : Nat,
+        Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m))
+proof
+  take m : Nat
+  take n : Nat
+  then Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m)) by decide
+end
+
+theorem Int_add_comm_neg_neg :
+    for all m : Nat, for all n : Nat,
+        Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m))
+proof
+  take m : Nat
+  take n : Nat
+  have h : m + n = n + m by add_comm at m at n
+  then Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m)) by congr h
+end
+
+theorem Int_add_comm_pos_any :
+    for all m : Nat, for all y : Int,
+        Int_add(pos(m), y) = Int_add(y, pos(m))
+proof
+  take m : Nat
+  take y : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hpos from left
+        case n : n, hyn : y = pos(n) =>
+        have h1 : Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m))
+                  by Int_add_comm_pos_pos at m at n
+        then Int_add(pos(m), y) = Int_add(y, pos(m)) by eq_subst hyn and h1
+      done
+      then Int_add(pos(m), y) = Int_add(y, pos(m)) by hpos
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hneg from right
+        case n : n, hyn : y = neg_succ(n) =>
+        have h1 : Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m))
+                  by Int_add_comm_pos_neg at m at n
+        then Int_add(pos(m), y) = Int_add(y, pos(m)) by eq_subst hyn and h1
+      done
+      then Int_add(pos(m), y) = Int_add(y, pos(m)) by hneg
+end
+
+theorem Int_add_comm_neg_any :
+    for all m : Nat, for all y : Int,
+        Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m))
+proof
+  take m : Nat
+  take y : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hpos from left
+        case n : n, hyn : y = pos(n) =>
+        have h1 : Int_add(neg_succ(m), pos(n)) = Int_add(pos(n), neg_succ(m))
+                  by Int_add_comm_neg_pos at m at n
+        then Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m)) by eq_subst hyn and h1
+      done
+      then Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m)) by hpos
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hneg from right
+        case n : n, hyn : y = neg_succ(n) =>
+        have h1 : Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m))
+                  by Int_add_comm_neg_neg at m at n
+        then Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m)) by eq_subst hyn and h1
+      done
+      then Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m)) by hneg
+end
+
+theorem Int_add_comm :
+    for all x : Int, for all y : Int,
+        Int_add(x, y) = Int_add(y, x)
+proof
+  take x : Int
+  take y : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hresult from left
+        case m : m, hxm : x = pos(m) =>
+        have h1 : Int_add(pos(m), y) = Int_add(y, pos(m))
+                  by Int_add_comm_pos_any at m at y
+        then Int_add(x, y) = Int_add(y, x) by eq_subst hxm and h1
+      done
+      then Int_add(x, y) = Int_add(y, x) by hresult
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hresult from right
+        case m : m, hxm : x = neg_succ(m) =>
+        have h1 : Int_add(neg_succ(m), y) = Int_add(y, neg_succ(m))
+                  by Int_add_comm_neg_any at m at y
+        then Int_add(x, y) = Int_add(y, x) by eq_subst hxm and h1
+      done
+      then Int_add(x, y) = Int_add(y, x) by hresult
+end
+)";
+    auto diag = run_checker("int_add_comm_general", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 TEST(CheckerTest, MatchExpr_DoubleFunction) {
     auto diag = run_checker("match_double", R"(
 definition double (n : Nat) := match n with | zero => 0 | succ k => succ(succ(double(k)))
