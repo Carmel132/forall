@@ -6183,3 +6183,29 @@ end
         return msg;
     }();
 }
+
+// ── BI14: zero constructor bridges ExprLit{0} and ExprVar{"zero"} ────────────
+
+// Auto-generated succ_ne_zero from `inductive Nat := zero : Nat | succ ...`
+// should produce `not (succ(n) = 0)` (using ExprLit{"0"}), not
+// `not (succ(n) = zero)` (using ExprVar{"zero"}).
+TEST(CheckerTest, ZeroBridge_AutoGenDisjointness_UsesLiteral) {
+    auto diag = run_checker("zero_bridge_autogen", R"(
+inductive PeanoN :=
+  zero : PeanoN
+  succ : PeanoN -> PeanoN
+
+-- succ_ne_zero auto-generated as: for all a0 : PeanoN, not (succ(a0) = 0)
+-- This theorem uses the literal 0 on the RHS, which must match exactly.
+theorem succ_ne_lit_zero : not (succ(zero) = 0)
+proof
+  have h : not (succ(zero) = 0) by succ_ne_zero at zero
+  then not (succ(zero) = 0) by h
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
