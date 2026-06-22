@@ -211,10 +211,24 @@ struct ExprField {
     std::string field_name;
 };
 
+// One arm in a match expression: `| ctor [binders] => body`
+struct MatchArm {
+    std::string              ctor;     // constructor name (e.g. "zero", "succ")
+    std::vector<std::string> binders;  // bound variable names (e.g. {"k"} for succ)
+    ExprPtr                  body;     // right-hand side expression
+    bool operator==(const MatchArm& o) const;
+};
+
+// Pattern-match expression: `match scrutinee with | ctor1 [binders] => body1 ...`
+struct ExprMatch {
+    ExprPtr              scrutinee;
+    std::vector<MatchArm> arms;
+};
+
 using ExprNode = std::variant<
     ExprLit, ExprVar, ExprBinary, ExprUnary, ExprAbs, ExprCall,
     ExprIndex, ExprTuple, ExprLambda, ExprIf, ExprAgg,
-    ExprSetLit, ExprSetCompr, ExprApp, ExprField
+    ExprSetLit, ExprSetCompr, ExprApp, ExprField, ExprMatch
 >;
 
 struct Expr {

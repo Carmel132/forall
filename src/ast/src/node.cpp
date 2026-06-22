@@ -94,8 +94,19 @@ bool Expr::operator==(const Expr& other) const {
         }
         else if constexpr (std::is_same_v<T, ExprField>)
             return x.field_name == y.field_name && *x.base == *y.base;
+        else if constexpr (std::is_same_v<T, ExprMatch>) {
+            if (!(*x.scrutinee == *y.scrutinee)) return false;
+            if (x.arms.size() != y.arms.size()) return false;
+            for (std::size_t i = 0; i < x.arms.size(); ++i)
+                if (!(x.arms[i] == y.arms[i])) return false;
+            return true;
+        }
         else return false; // unreachable — all ExprNode alternatives are listed above
     }, node);
+}
+
+bool MatchArm::operator==(const MatchArm& o) const {
+    return ctor == o.ctor && binders == o.binders && *body == *o.body;
 }
 
 // ── Prop::operator== ──────────────────────────────────────────────────────────
@@ -182,6 +193,14 @@ static void collect_fv_expr(const Expr& expr, std::set<std::string>& out) {
             for (const auto& a : e.args) collect_fv_expr(*a, out);
         } else if constexpr (std::is_same_v<T, ExprField>) {
             collect_fv_expr(*e.base, out);
+        } else if constexpr (std::is_same_v<T, ExprMatch>) {
+            collect_fv_expr(*e.scrutinee, out);
+            for (const auto& arm : e.arms) {
+                std::set<std::string> inner;
+                collect_fv_expr(*arm.body, inner);
+                for (const auto& b : arm.binders) inner.erase(b);
+                out.insert(inner.begin(), inner.end());
+            }
         }
     }, expr.node);
 }
@@ -313,6 +332,20 @@ static Expr subst_expr(const Expr& expr, const std::string& var, const Expr& r) 
             return Expr{loc, ExprField{
                 make_expr(subst_expr(*e.base, var, r)),
                 e.field_name}};
+        } else if constexpr (std::is_same_v<T, ExprMatch>) {
+            std::vector<MatchArm> new_arms;
+            for (const auto& arm : e.arms) {
+                // binders in the arm shadow the substituted variable
+                bool shadowed = false;
+                for (const auto& b : arm.binders)
+                    if (b == var) { shadowed = true; break; }
+                ExprPtr new_body = shadowed ? arm.body
+                                            : make_expr(subst_expr(*arm.body, var, r));
+                new_arms.push_back(MatchArm{arm.ctor, arm.binders, std::move(new_body)});
+            }
+            return Expr{loc, ExprMatch{
+                make_expr(subst_expr(*e.scrutinee, var, r)),
+                std::move(new_arms)}};
         }
         return expr; // unreachable — all ExprNode alternatives listed above
     }, expr.node);
@@ -434,6 +467,13 @@ static Expr find_replace_e(const Expr& e, const Expr& find, const Expr& replace)
         }
         else if constexpr (std::is_same_v<T, ExprField>)
             return Expr{loc, ExprField{make_expr(find_replace_e(*n.base, find, replace)), n.field_name}};
+        else if constexpr (std::is_same_v<T, ExprMatch>) {
+            std::vector<MatchArm> new_arms;
+            for (const auto& arm : n.arms)
+                new_arms.push_back(MatchArm{arm.ctor, arm.binders,
+                    make_expr(find_replace_e(*arm.body, find, replace))});
+            return Expr{loc, ExprMatch{make_expr(find_replace_e(*n.scrutinee, find, replace)), std::move(new_arms)}};
+        }
         else
             return e;
     }, e.node);
@@ -625,6 +665,14 @@ static Expr beta_reduce_expr(const Expr& e) {
             return Expr{loc, ExprField{
                 make_expr(beta_reduce_expr(*n.base)),
                 n.field_name}};
+        } else if constexpr (std::is_same_v<T, ExprMatch>) {
+            std::vector<MatchArm> new_arms;
+            for (const auto& arm : n.arms)
+                new_arms.push_back(MatchArm{arm.ctor, arm.binders,
+                    make_expr(beta_reduce_expr(*arm.body))});
+            return Expr{loc, ExprMatch{
+                make_expr(beta_reduce_expr(*n.scrutinee)),
+                std::move(new_arms)}};
         }
         return e; // unreachable
     }, e.node);
@@ -784,6 +832,14 @@ static Expr eta_reduce_expr(const Expr& e) {
             return Expr{loc, ExprField{
                 make_expr(eta_reduce_expr(*n.base)),
                 n.field_name}};
+        } else if constexpr (std::is_same_v<T, ExprMatch>) {
+            std::vector<MatchArm> new_arms;
+            for (const auto& arm : n.arms)
+                new_arms.push_back(MatchArm{arm.ctor, arm.binders,
+                    make_expr(eta_reduce_expr(*arm.body))});
+            return Expr{loc, ExprMatch{
+                make_expr(eta_reduce_expr(*n.scrutinee)),
+                std::move(new_arms)}};
         }
         return e; // unreachable
     }, e.node);
@@ -1070,6 +1126,9 @@ infer_type(const Expr& e, const TypeEnv& env, const FuncSigTable& sigs,
                 return TypeNode{TypeSet{std::make_shared<TypeNode>(*n.type)}};
             return err("cannot infer element type of set comprehension without type annotation");
         }
+
+        if constexpr (std::is_same_v<T, ExprMatch>)
+            return err("type inference for match expressions not yet implemented");
 
         return err("unsupported expression form");
     }, e.node);
