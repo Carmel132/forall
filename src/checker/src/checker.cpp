@@ -668,6 +668,16 @@ static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs
                 return unfold_term_funcs(*it->second.body, defs);
             return e;
         } else if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            // rep(class(a)) → a  (quotient representative extraction)
+            if (n.name == "rep" && n.args.size() == 1) {
+                const auto& inner = unfold_term_funcs(*n.args[0], defs);
+                if (const auto* ic = std::get_if<ast::ExprCall>(&inner.node))
+                    if (ic->name == "class" && ic->args.size() == 1)
+                        return unfold_term_funcs(*ic->args[0], defs);
+                // rep applied to non-class expression — recurse but keep rep
+                return ast::Expr{e.loc, ast::ExprCall{"rep",
+                    {ast::make_expr(inner)}}};
+            }
             auto it = defs.find(n.name);
             if (it != defs.end()) {
                 const auto& entry = it->second;
