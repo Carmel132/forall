@@ -3,8 +3,6 @@
 -- succ(n) is the successor of n.  The inductive declaration below
 -- auto-generates the induction principle (Nat_ind) and the constructor
 -- separation axioms (succ_ne_zero, zero_ne_succ, succ_injective).
--- Explicit axioms override the auto-generated ones where the literal 0
--- must appear instead of the constructor name "zero".
 --
 -- All declarations live in the Nat namespace; import this file and use
 -- "open Nat" or qualified names like "Nat.add_zero".
@@ -13,14 +11,11 @@ namespace Nat
 
 -- Declare Nat as an inductive type.  Auto-generates Nat_ind (induction
 -- principle), succ_ne_zero, zero_ne_succ, succ_injective.
+-- The "zero" constructor emits ExprLit{"0"} in auto-generated axioms,
+-- so succ_ne_zero has the form: for all n : Nat, not (succ(n) = 0).
 inductive Nat :=
   zero : Nat
   succ : Nat -> Nat
-
--- Override auto-generated succ_ne_zero/succ_injective with forms that use
--- the numeric literal 0 on the right-hand side, matching how proofs write 0.
-axiom succ_ne_zero : for all n : Nat, not (succ(n) = 0)
-axiom succ_injective : for all n : Nat, for all m : Nat, succ(n) = succ(m) implies n = m
 
 -- Recursive characterisation of addition.
 axiom add_zero : for all n : Nat, n + 0 = n
