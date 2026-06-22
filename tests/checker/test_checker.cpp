@@ -6280,6 +6280,163 @@ end
     }();
 }
 
+// ── Signed-magnitude Int arithmetic tests ─────────────────────────────────────
+
+static const char* kIntArithPreamble = R"(
+inductive Int :=
+  pos : Nat -> Int
+  neg_succ : Nat -> Int
+
+definition Int_neg (x : Int) := match x with
+  | pos k => (match k with | zero => pos(0) | succ n => neg_succ(n))
+  | neg_succ n => pos(succ(n))
+
+definition Int_subNatNat (m : Nat) (n : Nat) := match n with
+  | zero => pos(m)
+  | succ k => (match m with | zero => neg_succ(k) | succ j => Int_subNatNat(j, k))
+
+definition Int_add (x : Int) (y : Int) := match x with
+  | pos m => (match y with
+      | pos n => pos(m + n)
+      | neg_succ n => Int_subNatNat(m, succ(n)))
+  | neg_succ m => (match y with
+      | pos n => Int_subNatNat(n, succ(m))
+      | neg_succ n => neg_succ(succ(m + n)))
+
+definition Int_mul (x : Int) (y : Int) := match x with
+  | pos m => (match y with
+      | pos n => pos(m * n)
+      | neg_succ n => (match m with
+          | zero => pos(0)
+          | succ j => neg_succ(j * succ(n) + n)))
+  | neg_succ m => (match y with
+      | pos n => (match n with
+          | zero => pos(0)
+          | succ j => neg_succ(m * succ(j) + j))
+      | neg_succ n => pos(succ(m) * succ(n)))
+)";
+
+TEST(CheckerTest, IntArith_NegZero) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem neg_zero : Int_neg(pos(0)) = pos(0)
+proof then Int_neg(pos(0)) = pos(0) by decide end
+)";
+    auto diag = run_checker("int_arith_neg_zero", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_NegPosSucc) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem neg_pos_1 : Int_neg(pos(succ(0))) = neg_succ(0)
+proof then Int_neg(pos(succ(0))) = neg_succ(0) by decide end
+)";
+    auto diag = run_checker("int_arith_neg_pos_succ", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_NegNegSucc) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem neg_neg_1 : Int_neg(neg_succ(0)) = pos(succ(0))
+proof then Int_neg(neg_succ(0)) = pos(succ(0)) by decide end
+)";
+    auto diag = run_checker("int_arith_neg_neg_succ", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_AddPosPos) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem add_2_3 : Int_add(pos(2), pos(3)) = pos(5)
+proof then Int_add(pos(2), pos(3)) = pos(5) by decide end
+)";
+    auto diag = run_checker("int_arith_add_pos_pos", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_AddPosNeg) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem add_5_neg3 : Int_add(pos(5), neg_succ(2)) = pos(2)
+proof then Int_add(pos(5), neg_succ(2)) = pos(2) by decide end
+)";
+    auto diag = run_checker("int_arith_add_pos_neg", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_AddNegNeg) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem add_neg2_neg1 : Int_add(neg_succ(1), neg_succ(0)) = neg_succ(2)
+proof then Int_add(neg_succ(1), neg_succ(0)) = neg_succ(2) by decide end
+)";
+    auto diag = run_checker("int_arith_add_neg_neg", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_MulPosPos) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem mul_3_4 : Int_mul(pos(3), pos(4)) = pos(12)
+proof then Int_mul(pos(3), pos(4)) = pos(12) by decide end
+)";
+    auto diag = run_checker("int_arith_mul_pos_pos", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_MulNegNeg) {
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem mul_neg2_neg3 : Int_mul(neg_succ(1), neg_succ(2)) = pos(6)
+proof then Int_mul(neg_succ(1), neg_succ(2)) = pos(6) by decide end
+)";
+    auto diag = run_checker("int_arith_mul_neg_neg", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, IntArith_InductiveConstructorAxioms) {
+    // auto-generated: pos_ne_neg_succ : ∀ a0 b0, ¬(pos(a0)=neg_succ(b0))
+    std::string src = std::string(kIntArithPreamble) + R"(
+theorem pos_ne_neg : not (pos(0) = neg_succ(0))
+proof
+  have h_disj : not (pos(0) = neg_succ(0)) by pos_ne_neg_succ at 0 at 0
+  then not (pos(0) = neg_succ(0)) by h_disj
+end
+)";
+    auto diag = run_checker("int_arith_constructor_axioms", src);
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 TEST(CheckerTest, MatchExpr_DoubleFunction) {
     auto diag = run_checker("match_double", R"(
 definition double (n : Nat) := match n with | zero => 0 | succ k => succ(succ(double(k)))

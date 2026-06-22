@@ -119,6 +119,11 @@ add_test(NAME e2e_rat_construction
         "${CMAKE_SOURCE_DIR}/stdlib/rat_construction.forall"
 )
 
+add_test(NAME e2e_int_arith
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_arith.forall"
+)
+
 add_test(NAME e2e_int_ops
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_ops.forall"
