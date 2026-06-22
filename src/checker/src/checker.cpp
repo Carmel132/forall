@@ -5999,7 +5999,8 @@ static ast::Prop push_neg(const ast::Prop& p)
 struct ModuleResult {
     HypEnv         env;
     InstanceTable  instances;
-    PredDefTable   pred_defs; // predicate definition bodies from this module
+    PredDefTable   pred_defs;       // predicate definition bodies from this module
+    TermFuncTable  term_func_defs;  // expression-body function definitions from this module
 };
 
 ModuleResult check_module(const std::filesystem::path& path,
@@ -6117,6 +6118,8 @@ ModuleResult check_module(const std::filesystem::path& path,
                         instance_table[tname].insert(cls);
                 for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+                for (const auto& [fname, fentry] : imported.term_func_defs)
+                    term_func_table.insert_or_assign(fname, fentry);
             };
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag, visited, module_cache, stdlib_root);
@@ -6857,7 +6860,8 @@ ModuleResult check_module(const std::filesystem::path& path,
         }
         }
     }
-    ModuleResult result{std::move(module_env), std::move(instance_table), std::move(pred_def_table)};
+    ModuleResult result{std::move(module_env), std::move(instance_table),
+                        std::move(pred_def_table), std::move(term_func_table)};
     module_cache.emplace(std::filesystem::weakly_canonical(path), result);
     return result;
 }
@@ -6895,6 +6899,7 @@ void Checker::check_content(const std::string& source, const std::string& filena
     InstanceTable instance_table;
     ast::StructEnv struct_env;
     PredDefTable pred_def_table;
+    TermFuncTable term_func_table;
     std::set<std::filesystem::path> visited;
     std::map<std::filesystem::path, ModuleResult> module_cache;
     if (!filename.empty())
@@ -6921,6 +6926,8 @@ void Checker::check_content(const std::string& source, const std::string& filena
                     for (const auto& c : cls) instance_table[t].insert(c);
                 for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+                for (const auto& [fname, fentry] : imported.term_func_defs)
+                    term_func_table.insert_or_assign(fname, fentry);
             };
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag_, visited, module_cache, stdlib_root_);
@@ -6996,7 +7003,8 @@ void Checker::check_content(const std::string& source, const std::string& filena
                     }
                 } else if (inner->kind == ast::DeclKind::Theorem || inner->kind == ast::DeclKind::Lemma) {
                     check_prop_types_deep(inner->statement, {}, sig_table, diag_);
-                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
+                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table,
+                                nullptr, nullptr, &term_func_table);
                     if (!diag_.hasErrors()) {
                         if (auto r = kernel.introduce_axiom(inner->statement)) {
                             module_env.insert_or_assign(inner->name, HypEntry{*r, EntryKind::Derived});
@@ -7038,7 +7046,8 @@ void Checker::check_content(const std::string& source, const std::string& filena
                         module_env.insert_or_assign(inner->name, HypEntry{std::move(*r), EntryKind::Derived});
                 } else if (inner->kind == ast::DeclKind::Theorem || inner->kind == ast::DeclKind::Lemma) {
                     check_prop_types_deep(inner->statement, {}, sig_table, diag_);
-                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
+                    check_proof(*inner, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table,
+                                nullptr, nullptr, &term_func_table);
                     if (!diag_.hasErrors())
                         if (auto r = kernel.introduce_axiom(inner->statement))
                             module_env.insert_or_assign(inner->name, HypEntry{std::move(*r), EntryKind::Derived});
@@ -7111,10 +7120,19 @@ void Checker::check_content(const std::string& source, const std::string& filena
                         entry.body = *decl->def_body;
                         pred_def_table[decl->name] = std::move(entry);
                     }
+                    // register expression body if present.
+                    if (decl->def_body_expr && !decl->is_abstract) {
+                        TermFuncEntry entry;
+                        for (const auto& p : decl->params)
+                            entry.params.push_back(p.name);
+                        entry.body = *decl->def_body_expr;
+                        term_func_table[decl->name] = std::move(entry);
+                    }
                 }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table,
+                            nullptr, nullptr, &term_func_table);
                 if (!diag_.hasErrors()) {
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) module_env.insert_or_assign(decl->name,
@@ -7154,6 +7172,7 @@ LspEnv Checker::check_content_lsp(const std::string& source,
     InstanceTable instance_table;
     ast::StructEnv struct_env;
     PredDefTable pred_def_table;
+    TermFuncTable term_func_table;
     std::set<std::filesystem::path> visited;
     std::map<std::filesystem::path, ModuleResult> module_cache;
     if (!filename.empty())
@@ -7188,6 +7207,8 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                     for (const auto& c : cls) instance_table[t].insert(c);
                 for (const auto& [pname, pentry] : imported.pred_defs)
                     pred_def_table.insert_or_assign(pname, pentry);
+                for (const auto& [fname, fentry] : imported.term_func_defs)
+                    term_func_table.insert_or_assign(fname, fentry);
             };
             if (!visited.count(canonical)) {
                 auto imported = check_module(canonical, kernel, diag_, visited, module_cache, stdlib_root_);
@@ -7303,10 +7324,19 @@ LspEnv Checker::check_content_lsp(const std::string& source,
                         entry.body = *decl->def_body;
                         pred_def_table[decl->name] = std::move(entry);
                     }
+                    // register expression body if present.
+                    if (decl->def_body_expr && !decl->is_abstract) {
+                        TermFuncEntry entry;
+                        for (const auto& p : decl->params)
+                            entry.params.push_back(p.name);
+                        entry.body = *decl->def_body_expr;
+                        term_func_table[decl->name] = std::move(entry);
+                    }
                 }
             } else if (decl->kind == ast::DeclKind::Theorem || decl->kind == ast::DeclKind::Lemma) {
                 check_prop_types_deep(decl->statement, {}, sig_table, diag_);
-                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table);
+                check_proof(*decl, module_env, kernel, diag_, sig_table, instance_table, &struct_env, &pred_def_table,
+                            nullptr, nullptr, &term_func_table);
                 if (!diag_.hasErrors()) {
                     auto r = kernel.introduce_axiom(decl->statement);
                     if (r) {
