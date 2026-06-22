@@ -6244,6 +6244,42 @@ end
     }();
 }
 
+// ── Quotient representative lifting tests (rep/class) ─────────────────────────
+
+TEST(CheckerTest, RepClass_BasicReduction) {
+    // rep(class(a)) reduces to a; definition using rep unfolds correctly
+    auto diag = run_checker("rep_class_basic", R"(
+definition inc (x : Nat) := rep(x) + 1
+
+theorem inc_class_three : inc(class(3)) = 4
+proof
+  then inc(class(3)) = 4 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
+TEST(CheckerTest, RepClass_NormNum) {
+    // rep/class reduction also works with norm_num
+    auto diag = run_checker("rep_class_norm_num", R"(
+definition double_rep (x : Nat) := rep(x) + rep(x)
+
+theorem double_two : double_rep(class(2)) = 4
+proof
+  then double_rep(class(2)) = 4 by decide
+end
+)");
+    EXPECT_FALSE(diag.hasErrors()) << [&]{
+        std::string msg;
+        for (auto& d : diag.diagnostics()) msg += d.message + "\n";
+        return msg;
+    }();
+}
+
 TEST(CheckerTest, MatchExpr_DoubleFunction) {
     auto diag = run_checker("match_double", R"(
 definition double (n : Nat) := match n with | zero => 0 | succ k => succ(succ(double(k)))
