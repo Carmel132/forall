@@ -548,7 +548,16 @@ static std::optional<Rational> eval_expr(const ast::Expr& e) {
             }
         }
 
-        return std::nullopt; // variables, calls, sets, etc.
+        if constexpr (std::is_same_v<T, ast::ExprCall>) {
+            // succ(n) = n + 1 (Nat successor constructor)
+            if (n.name == "succ" && n.args.size() == 1) {
+                auto v = eval_expr(*n.args[0]);
+                if (v) return make_rat(v->first / v->second + 1);
+            }
+            return std::nullopt;
+        }
+
+        return std::nullopt; // variables, sets, etc.
     }, e.node);
 }
 
@@ -602,6 +611,53 @@ struct CheckContext {
 static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs);
 static ast::Prop unfold_term_funcs_prop(const ast::Prop& p, const TermFuncTable& defs);
 
+// Try to reduce `match scrutinee with arms` when the scrutinee is a concrete
+// constructor application.  Returns nullopt if no arm matches.
+// For Nat literals n > 0: treated as succ(n-1) so that match reductions work.
+static std::optional<ast::Expr> try_reduce_match(
+        const ast::ExprMatch& m, const TermFuncTable& defs) {
+    // Determine the constructor name and binder arguments from the scrutinee.
+    std::string ctor_name;
+    std::vector<const ast::Expr*> ctor_args;
+    // Storage for the predecessor literal (succ(n-1) expansion).
+    std::optional<ast::Expr> pred_lit_storage;
+    if (const auto* lit = std::get_if<ast::ExprLit>(&m.scrutinee->node)) {
+        // Parse as integer; 0 = "zero", positive = "succ" with predecessor arg.
+        try {
+            long long v = std::stoll(lit->value);
+            if (v == 0) {
+                ctor_name = "zero";
+            } else if (v > 0) {
+                ctor_name = "succ";
+                pred_lit_storage = ast::Expr{{}, ast::ExprLit{std::to_string(v - 1)}};
+                ctor_args.push_back(&*pred_lit_storage);
+            } else {
+                return std::nullopt; // negative literal: no natural number arm
+            }
+        } catch (...) {
+            return std::nullopt; // non-integer literal (e.g. 3.14)
+        }
+    } else if (const auto* cv = std::get_if<ast::ExprVar>(&m.scrutinee->node)) {
+        ctor_name = cv->name; // 0-arg constructor as ExprVar
+    } else if (const auto* cc = std::get_if<ast::ExprCall>(&m.scrutinee->node)) {
+        ctor_name = cc->name;
+        for (const auto& a : cc->args) ctor_args.push_back(a.get());
+    } else {
+        return std::nullopt; // non-concrete scrutinee
+    }
+    // Find the matching arm.
+    for (const auto& arm : m.arms) {
+        if (arm.ctor != ctor_name) continue;
+        if (arm.binders.size() != ctor_args.size()) continue;
+        // Substitute binders with constructor arguments in the arm body.
+        ast::Expr body = *arm.body;
+        for (std::size_t i = 0; i < arm.binders.size(); ++i)
+            body = ast::subst(body, arm.binders[i], *ctor_args[i]);
+        return unfold_term_funcs(ast::beta_reduce(body), defs);
+    }
+    return std::nullopt;
+}
+
 static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs) {
     return std::visit([&](const auto& n) -> ast::Expr {
         using T = std::decay_t<decltype(n)>;
@@ -638,13 +694,15 @@ static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs
             return ast::Expr{e.loc, ast::ExprUnary{n.op,
                 ast::make_expr(unfold_term_funcs(*n.operand, defs))}};
         } else if constexpr (std::is_same_v<T, ast::ExprMatch>) {
-            std::vector<ast::MatchArm> new_arms;
-            for (const auto& arm : n.arms)
-                new_arms.push_back(ast::MatchArm{arm.ctor, arm.binders,
-                    ast::make_expr(unfold_term_funcs(*arm.body, defs))});
-            return ast::Expr{e.loc, ast::ExprMatch{
-                ast::make_expr(unfold_term_funcs(*n.scrutinee, defs)),
-                std::move(new_arms)}};
+            // Reduce the scrutinee first; attempt match reduction only when the
+            // scrutinee is a concrete constructor (literal or ExprCall/ExprVar to
+            // a known ctor).  If the scrutinee is a free variable, leave the match
+            // unreduced — recursing into arm bodies would diverge on recursive fns.
+            auto reduced_scrutinee = ast::make_expr(unfold_term_funcs(*n.scrutinee, defs));
+            ast::ExprMatch with_reduced{std::move(reduced_scrutinee), n.arms};
+            if (auto r = try_reduce_match(with_reduced, defs)) return *r;
+            // Scrutinee is a variable or non-reducible expression — keep as-is.
+            return ast::Expr{e.loc, std::move(with_reduced)};
         } else {
             return e; // literals and vars unchanged
         }
@@ -5804,9 +5862,11 @@ ModuleResult check_module(const std::filesystem::path& path,
             else
                 module_env.insert_or_assign(decl->name,
                                             HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
-            // Build signature table entry: params[0].type -> ... -> Prop (curried).
-            // Expand type aliases so TypeUser{alias} becomes the concrete type.
-            if (!decl->params.empty()) {
+            // Build signature table entry for predicate-style definitions only
+            // (those with a propositional body or declared return type).
+            // Expression-body definitions (def_body_expr) do not have a known return type
+            // yet; skipping them avoids false "type mismatch" warnings in type checking.
+            if (!decl->params.empty() && !decl->def_body_expr) {
                 ast::TypeNode ret{ast::TypeProp{}};
                 for (std::size_t i = decl->params.size(); i-- > 0; ) {
                     ast::TypeNode pt = ast::expand_type_aliases(decl->params[i].type, alias_table);
@@ -5830,6 +5890,50 @@ ModuleResult check_module(const std::filesystem::path& path,
                     entry.params.push_back(p.name);
                 entry.body = *decl->def_body_expr;
                 term_func_table[decl->name] = std::move(entry);
+
+                // If the body is a match expression, also generate per-arm
+                // reduction axioms: ∀ binders, f(ctor(binders)) = body[binders].
+                // These are stored in unfolded form (f(...) reduced to body) so they
+                // can be cited as hypotheses after apply_tdefs unfolds the goal.
+                if (const auto* em = std::get_if<ast::ExprMatch>(&(*decl->def_body_expr)->node)) {
+                    const ast::TypeNode binder_type = decl->params.empty()
+                        ? ast::TypeNode{{ast::TypeNat{}}}
+                        : decl->params[0].type;
+                    for (const auto& arm : em->arms) {
+                        auto make_ctor_expr = [&]() -> ast::Expr {
+                            if (arm.binders.empty()) {
+                                if (arm.ctor == "zero")
+                                    return ast::Expr{{}, ast::ExprLit{"0"}};
+                                return ast::Expr{{}, ast::ExprVar{arm.ctor}};
+                            }
+                            std::vector<ast::ExprPtr> ae;
+                            for (const auto& b : arm.binders)
+                                ae.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{b}}));
+                            return ast::Expr{{}, ast::ExprCall{arm.ctor, std::move(ae)}};
+                        };
+                        // LHS: f(ctor_expr) — apply the same unfolding that apply_tdefs uses.
+                        ast::Expr lhs_call{{}, ast::ExprCall{decl->name,
+                            {ast::make_expr(make_ctor_expr())}}};
+                        ast::Expr lhs_unfolded = unfold_term_funcs(lhs_call, term_func_table);
+                        // Axiom prop: unfolded_f(ctor) = body (both sides unfolded for matching)
+                        ast::Expr rhs_unfolded = unfold_term_funcs(*arm.body, term_func_table);
+                        ast::Prop arm_prop{{}, ast::PropRel{
+                            ast::make_expr(std::move(lhs_unfolded)),
+                            ast::make_expr(std::move(rhs_unfolded)),
+                            ast::RelOp::Eq}};
+                        // Universally quantify over all binders.
+                        for (int bi = static_cast<int>(arm.binders.size()) - 1; bi >= 0; --bi) {
+                            arm_prop = ast::Prop{{}, ast::PropForall{
+                                arm.binders[static_cast<std::size_t>(bi)],
+                                std::make_optional(binder_type),
+                                ast::make_prop(std::move(arm_prop))}};
+                        }
+                        const std::string arm_axiom_name = decl->name + "_" + arm.ctor;
+                        if (auto r = kernel.introduce_axiom(arm_prop))
+                            module_env.try_emplace(arm_axiom_name,
+                                HypEntry{std::move(*r), EntryKind::Derived, decl->visibility});
+                    }
+                }
             }
             break;
         }
