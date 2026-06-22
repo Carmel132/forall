@@ -1,0 +1,36 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+
+-- Commutativity of Int_add proved by case analysis on constructor forms.
+--
+-- Four lemmas cover the constructor combinations (pos/neg_succ × pos/neg_succ);
+-- the general theorem assembles them via int_zero_or_neg_or_pos case splits.
+
+theorem Int_add_comm_pos_pos :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  have h : m + n = n + m by add_comm at m at n
+  then Int_add(pos(m), pos(n)) = Int_add(pos(n), pos(m)) by congr h
+end
+
+theorem Int_add_comm_pos_neg :
+    for all m : Nat, for all n : Nat,
+        Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m))
+proof
+  take m : Nat
+  take n : Nat
+  then Int_add(pos(m), neg_succ(n)) = Int_add(neg_succ(n), pos(m)) by decide
+end
+
+theorem Int_add_comm_neg_neg :
+    for all m : Nat, for all n : Nat,
+        Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m))
+proof
+  take m : Nat
+  take n : Nat
+  have h : m + n = n + m by add_comm at m at n
+  then Int_add(neg_succ(m), neg_succ(n)) = Int_add(neg_succ(n), neg_succ(m)) by congr h
+end
