@@ -129,6 +129,16 @@ add_test(NAME e2e_int_arith_comm
         "${CMAKE_SOURCE_DIR}/stdlib/int_arith_comm.forall"
 )
 
+add_test(NAME e2e_int_add_zero
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_add_zero.forall"
+)
+
+add_test(NAME e2e_int_subNatNat
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_subNatNat.forall"
+)
+
 add_test(NAME e2e_int_ops
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_ops.forall"
