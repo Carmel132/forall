@@ -1580,9 +1580,14 @@ bool check_induction_step(const ast::InductionStep& s,
 
         // Build the constructor application expression for subst.
         // 0-arg constructor → ExprVar{ctor_name}; n-arg → ExprCall{ctor_name, args}.
+        // Special case: "zero" maps to ExprLit{"0"} so that numeric literal 0
+        // and the inductive constructor refer to the same expression.
         ast::Expr ctor_expr{};
         if (arg_var_names.empty()) {
-            ctor_expr = ast::Expr{{}, ast::ExprVar{ctor.name}};
+            if (ctor.name == "zero")
+                ctor_expr = ast::Expr{{}, ast::ExprLit{"0"}};
+            else
+                ctor_expr = ast::Expr{{}, ast::ExprVar{ctor.name}};
         } else {
             std::vector<ast::ExprPtr> arg_exprs;
             for (const auto& vn : arg_var_names)
@@ -5993,7 +5998,10 @@ ModuleResult check_module(const std::filesystem::path& path,
 
                     auto ctor_expr_ns = [&](const std::string& cname,
                                             const std::vector<std::string>& vars) -> ast::Expr {
-                        if (vars.empty()) return ast::Expr{{}, ast::ExprVar{cname}};
+                        if (vars.empty()) {
+                            if (cname == "zero") return ast::Expr{{}, ast::ExprLit{"0"}};
+                            return ast::Expr{{}, ast::ExprVar{cname}};
+                        }
                         std::vector<ast::ExprPtr> ae;
                         for (const auto& v : vars)
                             ae.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{v}}));
@@ -6246,10 +6254,14 @@ ModuleResult check_module(const std::filesystem::path& path,
 
             // Helper: build ExprCall{ctor_name, [ExprVar{v0}, ExprVar{v1}, ...]}
             // (or ExprVar{ctor_name} when there are no args).
+            // "zero" maps to ExprLit{"0"} so that numeric literal 0 and the
+            // inductive constructor unify structurally throughout the checker.
             auto ctor_expr = [&](const std::string& cname,
                                  const std::vector<std::string>& vars) -> ast::Expr {
-                if (vars.empty())
+                if (vars.empty()) {
+                    if (cname == "zero") return ast::Expr{{}, ast::ExprLit{"0"}};
                     return ast::Expr{{}, ast::ExprVar{cname}};
+                }
                 std::vector<ast::ExprPtr> arg_exprs;
                 for (const auto& v : vars)
                     arg_exprs.push_back(ast::make_expr(ast::Expr{{}, ast::ExprVar{v}}));
