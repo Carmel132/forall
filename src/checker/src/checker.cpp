@@ -1319,23 +1319,31 @@ bool check_cases_step(const ast::CasesStep& s,
 
         const auto& arm_then = std::get<ast::ThenStep>(arm_last_then->node);
 
+        // Normalize the arm conclusion so it matches the normalized prop stored
+        // by apply_tdefs in the outer then/have step that uses this result.
+        ast::Prop arm_conc = arm_then.prop;
+        if (ctx.term_func_defs && !ctx.term_func_defs->empty())
+            arm_conc = unfold_term_funcs_prop(arm_conc, *ctx.term_func_defs);
+        if (ctx.pred_defs && !ctx.pred_defs->empty())
+            arm_conc = unfold_preds(arm_conc, *ctx.pred_defs);
+
         // Both arms must conclude the same proposition
         if (!shared_conclusion) {
-            shared_conclusion = arm_then.prop;
-        } else if (!(*shared_conclusion == arm_then.prop)) {
+            shared_conclusion = arm_conc;
+        } else if (!(*shared_conclusion == arm_conc)) {
             diag.emit({diag::Severity::Error, loc,
                        "'cases' arms conclude different propositions: `"
                        + forall::pretty::to_string(*shared_conclusion)
-                       + "` vs `" + forall::pretty::to_string(arm_then.prop) + "`"});
+                       + "` vs `" + forall::pretty::to_string(arm_conc) + "`"});
             had_arm_error = true;
             continue;
         }
 
         // Build arm.prop → R via ImplIntro.  The arm proof was already verified,
         // so introduce_axiom(R) is sound here.
-        const kernel::Judgment conc_j = *kernel.introduce_axiom(arm_then.prop);
+        const kernel::Judgment conc_j = *kernel.introduce_axiom(arm_conc);
         ast::Prop impl_prop{loc, ast::PropImpl{ast::make_prop(arm.prop),
-                                               ast::make_prop(arm_then.prop)}};
+                                               ast::make_prop(arm_conc)}};
         auto impl_j = kernel.apply(kernel::Rule::ImplIntro,
                                    std::span<const kernel::Judgment>{&conc_j, 1},
                                    impl_prop);
@@ -2273,7 +2281,7 @@ bool check_step(const ast::Step& step,
                         });
                         CheckContext calc_ctx{ctx.type_env, ctx.instances, ctx.module_env,
                                              ctx.sigs, &prop, ctx.term_defs, ctx.struct_env,
-                                             ctx.pred_defs, ctx.inductive_env};
+                                             ctx.pred_defs, ctx.inductive_env, ctx.term_func_defs};
                         bool ok = check_calc_step(*cs, s.sub_proof->steps[0].loc,
                                                   calc_env, kernel, diag, calc_ctx);
                         if (!ok) return false;
@@ -2324,7 +2332,7 @@ bool check_step(const ast::Step& step,
                     }
                     CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
                                         ctx.sigs, &prop, &sub_term_defs, ctx.struct_env,
-                                        ctx.pred_defs, ctx.inductive_env};
+                                        ctx.pred_defs, ctx.inductive_env, ctx.term_func_defs};
                     const auto before = diag.diagnostics().size();
                     check_step(sub_step, sub_env, kernel, diag, sub_ctx);
                     const auto& all2 = diag.diagnostics();
@@ -3567,7 +3575,7 @@ bool check_step(const ast::Step& step,
                     }
                     CheckContext sub_ctx{ctx.type_env, ctx.instances, ctx.module_env,
                                         ctx.sigs, &prop, &sub_term_defs, ctx.struct_env,
-                                        ctx.pred_defs, ctx.inductive_env};
+                                        ctx.pred_defs, ctx.inductive_env, ctx.term_func_defs};
                     const auto before = diag.diagnostics().size();
                     check_step(sub_step, sub_env, kernel, diag, sub_ctx);
                     const auto& all2 = diag.diagnostics();
