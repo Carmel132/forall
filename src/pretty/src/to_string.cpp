@@ -275,6 +275,15 @@ std::string ts_expr(const ast::Expr& e) {
                    + op_str
                    + paren(rp <= cur_prec, ts_expr(*n.rhs));
         }
+        else if constexpr (std::is_same_v<T, ast::ExprMatch>) {
+            std::string s = "match " + ts_expr(*n.scrutinee) + " with";
+            for (const auto& arm : n.arms) {
+                s += " | " + arm.ctor;
+                for (const auto& b : arm.binders) s += " " + b;
+                s += " => " + ts_expr(*arm.body);
+            }
+            return s;
+        }
         return "";
     }, e.node);
 }

@@ -637,6 +637,14 @@ static ast::Expr unfold_term_funcs(const ast::Expr& e, const TermFuncTable& defs
         } else if constexpr (std::is_same_v<T, ast::ExprUnary>) {
             return ast::Expr{e.loc, ast::ExprUnary{n.op,
                 ast::make_expr(unfold_term_funcs(*n.operand, defs))}};
+        } else if constexpr (std::is_same_v<T, ast::ExprMatch>) {
+            std::vector<ast::MatchArm> new_arms;
+            for (const auto& arm : n.arms)
+                new_arms.push_back(ast::MatchArm{arm.ctor, arm.binders,
+                    ast::make_expr(unfold_term_funcs(*arm.body, defs))});
+            return ast::Expr{e.loc, ast::ExprMatch{
+                ast::make_expr(unfold_term_funcs(*n.scrutinee, defs)),
+                std::move(new_arms)}};
         } else {
             return e; // literals and vars unchanged
         }
