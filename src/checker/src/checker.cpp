@@ -1820,9 +1820,18 @@ bool check_induction_step(const ast::InductionStep& s,
             return false;
         }
 
+        // Normalize ih_prop via term-function unfolding so that hypotheses derived
+        // from the IH (e.g. by 'decide') are in the same normal form and can be
+        // compared with 'ih' using 'trans', 'eq_subst', etc.
+        ast::Prop ih_prop_norm = ih_prop;
+        if (ctx.term_func_defs && !ctx.term_func_defs->empty())
+            ih_prop_norm = unfold_term_funcs_prop(ih_prop_norm, *ctx.term_func_defs);
+        if (ctx.pred_defs && !ctx.pred_defs->empty())
+            ih_prop_norm = unfold_preds(ih_prop_norm, *ctx.pred_defs);
+
         ScopeStack ind_env = env;
         ind_env.push();
-        auto ih_j = kernel.introduce_axiom(ih_prop);
+        auto ih_j = kernel.introduce_axiom(ih_prop_norm);
         ind_env.insert_or_assign("ih", HypEntry{std::move(*ih_j), EntryKind::Assumption});
 
         bool ind_error = false;
@@ -1857,6 +1866,10 @@ bool check_induction_step(const ast::InductionStep& s,
         }
 
         ast::TypeNode nat_type{{ast::TypeNat{}}};
+        // Use raw ih_prop for the NatInduction kernel rule (the kernel computes
+        // subst(body, var, 0) and subst(body, var, succ(var)) internally, which
+        // must equal the raw base/step conclusions).  The normalized form is only
+        // used for the IH judgment (so 'by trans h_decide and ih' works).
         ast::Prop conclusion{{}, ast::PropForall{s.var,
             std::make_optional(nat_type), ast::make_prop(ih_prop)}};
 
@@ -4552,6 +4565,14 @@ void check_proof(const ast::Decl& decl,
                         ast::PropForall{rit->first, rit->second,
                                         ast::make_prop(wrapped)}};
                 }
+
+                // Normalize 'wrapped' so that induction theorems whose body
+                // contains term-function calls (e.g. Int_subNatNat) compare
+                // equal to the unfolded_statement form.
+                if (term_func_defs && !term_func_defs->empty())
+                    wrapped = unfold_term_funcs_prop(wrapped, *term_func_defs);
+                if (pred_defs && !pred_defs->empty())
+                    wrapped = unfold_preds(wrapped, *pred_defs);
 
                 if (!(wrapped == unfolded_statement))
                     diag.emit({diag::Severity::Error, last_concluding->loc,
