@@ -264,6 +264,7 @@ Token Lexer::nextToken() {
             // "apply" is context-sensitive — kept as Identifier like "base"/"inductive"
             {"wlog",         TokenKind::KwWlog},
             {"suffices",     TokenKind::KwSuffices},
+            {"match",        TokenKind::KwMatch},
             {"decide",       TokenKind::KwDecide},
             {"norm_num",     TokenKind::KwNormNum},
             {"ring",         TokenKind::KwRing},
