@@ -563,24 +563,50 @@ static std::optional<Rational> eval_expr(const ast::Expr& e) {
 
 // Evaluate a relational proposition whose both sides are literal arithmetic.
 // Returns true/false/nullopt (nullopt = cannot decide).
+// Structural normalization for constructor expressions: normalizes numeric sub-expressions
+// and compares structurally. Returns true iff lhs and rhs are "the same" up to arithmetic.
+static bool expr_decide_eq(const ast::Expr& lhs, const ast::Expr& rhs) {
+    // Try numeric evaluation first.
+    auto lv = eval_expr(lhs), rv = eval_expr(rhs);
+    if (lv && rv)
+        return lv->first * rv->second == rv->first * lv->second;
+    // If both are ExprCall with the same constructor name, compare args recursively.
+    const auto* lc = std::get_if<ast::ExprCall>(&lhs.node);
+    const auto* rc = std::get_if<ast::ExprCall>(&rhs.node);
+    if (lc && rc && lc->name == rc->name && lc->args.size() == rc->args.size()) {
+        for (std::size_t i = 0; i < lc->args.size(); ++i)
+            if (!expr_decide_eq(*lc->args[i], *rc->args[i])) return false;
+        return true;
+    }
+    // Plain structural equality as a last resort.
+    return lhs == rhs;
+}
+
 static std::optional<bool> decide_proprel(const ast::PropRel& rel) {
     auto lv = eval_expr(*rel.lhs);
     auto rv = eval_expr(*rel.rhs);
-    if (!lv || !rv) return std::nullopt;
-    // Compare as rationals: l/ld vs r/rd  ⟺  l*rd vs r*ld
-    auto [ln, ld] = *lv;
-    auto [rn, rd] = *rv;
-    long long l = ln * rd;
-    long long r = rn * ld;
-    switch (rel.op) {
-        case ast::RelOp::Eq:    return l == r;
-        case ast::RelOp::NotEq: return l != r;
-        case ast::RelOp::Lt:    return l <  r;
-        case ast::RelOp::LtEq:  return l <= r;
-        case ast::RelOp::Gt:    return l >  r;
-        case ast::RelOp::GtEq:  return l >= r;
-        default: return std::nullopt; // In, NotIn, subset etc.
+    if (lv && rv) {
+        // Compare as rationals: l/ld vs r/rd  ⟺  l*rd vs r*ld
+        auto [ln, ld] = *lv;
+        auto [rn, rd] = *rv;
+        long long l = ln * rd;
+        long long r = rn * ld;
+        switch (rel.op) {
+            case ast::RelOp::Eq:    return l == r;
+            case ast::RelOp::NotEq: return l != r;
+            case ast::RelOp::Lt:    return l <  r;
+            case ast::RelOp::LtEq:  return l <= r;
+            case ast::RelOp::Gt:    return l >  r;
+            case ast::RelOp::GtEq:  return l >= r;
+            default: return std::nullopt;
+        }
     }
+    // For Eq/NotEq, fall back to constructor-aware structural comparison.
+    if (rel.op == ast::RelOp::Eq)
+        return expr_decide_eq(*rel.lhs, *rel.rhs);
+    if (rel.op == ast::RelOp::NotEq)
+        return !expr_decide_eq(*rel.lhs, *rel.rhs);
+    return std::nullopt;
 }
 
 // ── CheckContext ──────────────────────────────────────────────────────────────
