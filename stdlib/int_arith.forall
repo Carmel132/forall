@@ -1,0 +1,60 @@
+import "int.forall"
+
+-- Arithmetic operations on Int defined by structural recursion.
+--
+-- pos(n)      represents n  (n : Nat)
+-- neg_succ(n) represents -(n+1)  (n : Nat)
+--
+-- These definitions replace the axiomatic Int_add/Int_neg/Int_mul
+-- with computable recursive forms.  The per-arm axioms auto-generated
+-- by the checker give the definitional equations:
+--   Int_neg_zero   : Int_neg(pos(0)) = pos(0)
+--   Int_neg_pos    : for all n, Int_neg(pos(succ(n))) = neg_succ(n)
+--   Int_neg_neg    : for all n, Int_neg(neg_succ(n)) = pos(succ(n))
+-- (similarly for Int_subNatNat, Int_add, Int_mul)
+
+-- Negation.
+-- neg(pos(0)) = pos(0), neg(pos(n+1)) = neg_succ(n), neg(neg_succ(n)) = pos(n+1).
+definition Int_neg (x : Int) := match x with
+  | pos k => (match k with | zero => pos(0) | succ n => neg_succ(n))
+  | neg_succ n => pos(succ(n))
+
+-- Subtraction of naturals with sign: m - n.
+-- Int_subNatNat(m, 0) = pos(m)
+-- Int_subNatNat(0, n+1) = neg_succ(n)
+-- Int_subNatNat(m+1, n+1) = Int_subNatNat(m, n)
+definition Int_subNatNat (m : Nat) (n : Nat) := match n with
+  | zero => pos(m)
+  | succ k => (match m with | zero => neg_succ(k) | succ j => Int_subNatNat(j, k))
+
+-- Addition.
+-- pos(m) + pos(n)         = pos(m + n)
+-- pos(m) + neg_succ(n)    = Int_subNatNat(m, n+1)
+-- neg_succ(m) + pos(n)    = Int_subNatNat(n, m+1)
+-- neg_succ(m) + neg_succ(n) = neg_succ(m + n + 1)
+definition Int_add (x : Int) (y : Int) := match x with
+  | pos m => (match y with
+      | pos n => pos(m + n)
+      | neg_succ n => Int_subNatNat(m, succ(n)))
+  | neg_succ m => (match y with
+      | pos n => Int_subNatNat(n, succ(m))
+      | neg_succ n => neg_succ(succ(m + n)))
+
+-- Multiplication.
+-- pos(m) * pos(n)           = pos(m * n)
+-- pos(0) * neg_succ(n)      = pos(0)
+-- pos(m+1) * neg_succ(n)    = neg_succ(m*(n+1) + n)
+-- neg_succ(m) * pos(0)      = pos(0)
+-- neg_succ(m) * pos(n+1)    = neg_succ(m*(n+1) + m)
+-- neg_succ(m) * neg_succ(n) = pos((m+1)*(n+1))
+definition Int_mul (x : Int) (y : Int) := match x with
+  | pos m => (match y with
+      | pos n => pos(m * n)
+      | neg_succ n => (match m with
+          | zero => pos(0)
+          | succ j => neg_succ(j * succ(n) + n)))
+  | neg_succ m => (match y with
+      | pos n => (match n with
+          | zero => pos(0)
+          | succ j => neg_succ(m * succ(j) + j))
+      | neg_succ n => pos(succ(m) * succ(n)))
