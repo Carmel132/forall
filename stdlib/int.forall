@@ -1,11 +1,29 @@
--- Commutative ring axioms for Int (ℤ).
+-- Signed-magnitude integers (ℤ).
 --
--- Integers form a commutative ring: additive group (with subtraction)
--- and multiplicative monoid, no multiplicative inverse for non-units.
--- There is no `mul_inv` axiom (ℤ is not a field).
+-- Int is declared as an inductive type with two constructors:
+--   pos(n : Nat)      -- represents the non-negative integer n
+--   neg_succ(n : Nat) -- represents the negative integer -(n+1)
 --
--- Axiom names follow the convention  <TypeName>_<law>  so that
--- `instance Int : CommRing` can resolve them implicitly.
+-- This mirrors Lean 4's Int.ofNat / Int.negSucc representation.
+-- The inductive declaration auto-generates:
+--   Int_ind             (induction principle)
+--   pos_ne_neg_succ     (constructor disjointness)
+--   pos_injective       (pos is injective)
+--   neg_succ_injective  (neg_succ is injective)
+--
+-- Arithmetic operations are stated as axioms here; recursive definitions
+-- live in int_arith.forall (imported by int_theorems.forall).
+-- Axiom names follow Int_<law> so `instance Int : CommRing` resolves them.
+
+inductive Int :=
+  pos : Nat -> Int
+  neg_succ : Nat -> Int
+
+-- Every integer is non-negative or negative (case-split axiom).
+axiom int_zero_or_neg_or_pos :
+    for all n : Int,
+        (there exists k : Nat, n = pos(k)) or
+        (there exists k : Nat, n = neg_succ(k))
 
 -- Additive group
 axiom Int_add_comm        : for all x : Int, for all y : Int, x + y = y + x
