@@ -94,3 +94,133 @@ proof
       then for all k : Nat, Int_subNatNat(m + succ(n), k) = Int_add(pos(m), Int_subNatNat(succ(n), k))
            by ind_result
 end
+
+-- Second central lemma: Int_add(neg_succ(a), Int_subNatNat(n, k)) = Int_subNatNat(n, succ(k + a))
+-- (equivalent to k + succ(a) since k + succ(a) = succ(k + a) by add_succ)
+-- Proved by induction on n; body is (for all k, ...) so the IH covers all k.
+--
+-- Base (n=0, ∀ k):
+--   Case k=0:
+--     LHS = Int_add(neg_succ(a), pos(0)) = neg_succ(a) = Int_subNatNat(0, succ(a)) by decide.
+--     RHS = Int_subNatNat(0, succ(0 + a)) = Int_subNatNat(0, succ(a)) by congr(zero_add).
+--   Case k=succ(j):
+--     LHS = Int_add(neg_succ(a), neg_succ(j)) = neg_succ(succ(a + j)) by decide.
+--     RHS = Int_subNatNat(0, succ(succ(j) + a)) = neg_succ(succ(j + a)) after succ_add.
+--     Bridge via congr(add_comm).
+--
+-- Inductive (n→succ(n), ∀ k):
+--   Case k=0: both sides reduce to Int_subNatNat(succ(n), succ(a)); RHS via zero_add.
+--   Case k=succ(j): use h_snsj (decide) + eq_subst into IH;
+--     then succ_add to reduce succ(succ(j)+a) to succ(succ(j+a)) → decide.
+
+theorem Int_neg_succ_add_subNatNat :
+    for all a : Nat, for all n : Nat, for all k : Nat,
+        Int_add(neg_succ(a), Int_subNatNat(n, k)) = Int_subNatNat(n, succ(k + a))
+proof
+  take a : Nat
+  induction result on n :
+      for all k : Nat, Int_add(neg_succ(a), Int_subNatNat(n, k)) = Int_subNatNat(n, succ(k + a))
+    base:
+      have base_result : for all k : Nat,
+              Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a))
+        proof
+          take k : Nat
+          have hk : (k = 0) or (there exists m : Nat, k = succ(m)) by nat_zero_or_succ at k
+          cases cases_k : hk
+            case left : k = 0 =>
+              -- LHS = Int_add(neg_succ(a), pos(0)) = Int_subNatNat(0, succ(a)) by decide.
+              -- RHS = Int_subNatNat(0, succ(0 + a)); use zero_add to get succ(a).
+              have h_lhs : Int_add(neg_succ(a), Int_subNatNat(0, 0)) = Int_subNatNat(0, succ(a)) by decide
+              have h_za : 0 + a = a by zero_add at a
+              have h_rhs : Int_subNatNat(0, succ(0 + a)) = Int_subNatNat(0, succ(a)) by congr h_za
+              have h_rhs_b : Int_subNatNat(0, succ(a)) = Int_subNatNat(0, succ(0 + a)) by symm h_rhs
+              have goal_0 : Int_add(neg_succ(a), Int_subNatNat(0, 0)) = Int_subNatNat(0, succ(0 + a))
+                            by trans h_lhs and h_rhs_b
+              then Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a))
+                   by eq_subst left and goal_0
+            case right : (there exists m : Nat, k = succ(m)) =>
+              obtain hresult from right
+                case j : j, hkj : k = succ(j) =>
+                -- LHS = Int_add(neg_succ(a), neg_succ(j)) = neg_succ(succ(a + j)) by decide.
+                have h_lhs : Int_add(neg_succ(a), Int_subNatNat(0, succ(j))) = neg_succ(succ(a + j)) by decide
+                -- RHS = Int_subNatNat(0, succ(succ(j) + a)).
+                -- succ(j) + a = succ(j + a)  by succ_add at j at a.
+                have h_sja : succ(j) + a = succ(j + a) by succ_add at j at a
+                -- Int_subNatNat(0, succ(succ(j) + a)) = Int_subNatNat(0, succ(succ(j + a)))
+                have h_rhs_arg : Int_subNatNat(0, succ(succ(j) + a)) = Int_subNatNat(0, succ(succ(j + a)))
+                                 by congr h_sja
+                -- Int_subNatNat(0, succ(succ(j + a))) = neg_succ(succ(j + a)) by decide.
+                have h_rhs_val : Int_subNatNat(0, succ(succ(j + a))) = neg_succ(succ(j + a)) by decide
+                -- neg_succ(succ(j + a)) = neg_succ(succ(a + j))  by congr(add_comm).
+                have h_comm : j + a = a + j by add_comm at j at a
+                have h_mid : neg_succ(succ(j + a)) = neg_succ(succ(a + j)) by congr h_comm
+                -- Chain RHS → neg_succ(succ(a + j)).
+                have h_rhs1 : Int_subNatNat(0, succ(succ(j) + a)) = neg_succ(succ(j + a))
+                              by trans h_rhs_arg and h_rhs_val
+                have h_rhs2 : Int_subNatNat(0, succ(succ(j) + a)) = neg_succ(succ(a + j))
+                              by trans h_rhs1 and h_mid
+                -- h_lhs: LHS = neg_succ(succ(a+j)). h_rhs2: RHS = neg_succ(succ(a+j)). ✓
+                have h_rhs2_sym : neg_succ(succ(a + j)) = Int_subNatNat(0, succ(succ(j) + a)) by symm h_rhs2
+                have goal_j : Int_add(neg_succ(a), Int_subNatNat(0, succ(j))) = Int_subNatNat(0, succ(succ(j) + a))
+                              by trans h_lhs and h_rhs2_sym
+                then Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a))
+                     by eq_subst hkj and goal_j
+              done
+              then Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a)) by hresult
+          end cases
+          then Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a)) by cases_k
+        end
+      then for all k : Nat, Int_add(neg_succ(a), Int_subNatNat(0, k)) = Int_subNatNat(0, succ(k + a))
+           by base_result
+    inductive:
+      have ind_result : for all k : Nat,
+              Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a))
+        proof
+          take k : Nat
+          have hk : (k = 0) or (there exists m : Nat, k = succ(m)) by nat_zero_or_succ at k
+          cases cases_k : hk
+            case left : k = 0 =>
+              -- Int_subNatNat(succ(n), 0) = pos(succ(n)) by decide.
+              -- Int_add(neg_succ(a), pos(succ(n))) = Int_subNatNat(succ(n), succ(a)) by decide.
+              -- Int_subNatNat(succ(n), succ(0 + a)) = Int_subNatNat(succ(n), succ(a)) by congr(zero_add).
+              have h_lhs : Int_add(neg_succ(a), Int_subNatNat(succ(n), 0)) = Int_subNatNat(succ(n), succ(a)) by decide
+              have h_za : 0 + a = a by zero_add at a
+              have h_rhs : Int_subNatNat(succ(n), succ(0 + a)) = Int_subNatNat(succ(n), succ(a)) by congr h_za
+              have h_rhs_sym : Int_subNatNat(succ(n), succ(a)) = Int_subNatNat(succ(n), succ(0 + a)) by symm h_rhs
+              have goal_0 : Int_add(neg_succ(a), Int_subNatNat(succ(n), 0)) = Int_subNatNat(succ(n), succ(0 + a))
+                            by trans h_lhs and h_rhs_sym
+              then Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a))
+                   by eq_subst left and goal_0
+            case right : (there exists m : Nat, k = succ(m)) =>
+              obtain hresult from right
+                case j : j, hkj : k = succ(j) =>
+                -- Int_subNatNat(succ(n), succ(j)) = Int_subNatNat(n, j) by decide.
+                -- eq_subst: IH at j says Int_add(neg_succ(a), Int_subNatNat(n, j)) = Int_subNatNat(n, succ(j + a)).
+                -- Substituting B→A via h_snsj gives:
+                --   Int_add(neg_succ(a), Int_subNatNat(succ(n), succ(j))) = Int_subNatNat(n, succ(j + a)).
+                -- RHS = Int_subNatNat(succ(n), succ(succ(j) + a)).
+                -- succ(j) + a = succ(j + a) by succ_add.
+                -- Int_subNatNat(succ(n), succ(succ(j + a))) = Int_subNatNat(n, succ(j + a)) by decide.
+                have h_snsj : Int_subNatNat(succ(n), succ(j)) = Int_subNatNat(n, j) by decide
+                have ih_j : Int_add(neg_succ(a), Int_subNatNat(n, j)) = Int_subNatNat(n, succ(j + a)) by ih at j
+                have ih_snsj : Int_add(neg_succ(a), Int_subNatNat(succ(n), succ(j))) = Int_subNatNat(n, succ(j + a))
+                               by eq_subst h_snsj and ih_j
+                have h_sja : succ(j) + a = succ(j + a) by succ_add at j at a
+                have h_rhs_arg : Int_subNatNat(succ(n), succ(succ(j) + a)) = Int_subNatNat(succ(n), succ(succ(j + a)))
+                                 by congr h_sja
+                have h_rhs_reduce : Int_subNatNat(succ(n), succ(succ(j + a))) = Int_subNatNat(n, succ(j + a)) by decide
+                have h_rhs : Int_subNatNat(succ(n), succ(succ(j) + a)) = Int_subNatNat(n, succ(j + a))
+                             by trans h_rhs_arg and h_rhs_reduce
+                have h_rhs_sym : Int_subNatNat(n, succ(j + a)) = Int_subNatNat(succ(n), succ(succ(j) + a)) by symm h_rhs
+                have goal_j : Int_add(neg_succ(a), Int_subNatNat(succ(n), succ(j))) = Int_subNatNat(succ(n), succ(succ(j) + a))
+                              by trans ih_snsj and h_rhs_sym
+                then Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a))
+                     by eq_subst hkj and goal_j
+              done
+              then Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a)) by hresult
+          end cases
+          then Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a)) by cases_k
+        end
+      then for all k : Nat, Int_add(neg_succ(a), Int_subNatNat(succ(n), k)) = Int_subNatNat(succ(n), succ(k + a))
+           by ind_result
+end
