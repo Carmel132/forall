@@ -2763,6 +2763,17 @@ bool check_step(const ast::Step& step,
                         subst_check = apply_tdefs(subst_check);
                         if (subst_check == prem[1].prop())
                             fallback_ok = true;
+                        // Second fallback: eq->lhs may be a normalized match expression that
+                        // appears in the normalized conclusion but not in the raw prop.
+                        // Substitute in the normalized conclusion, then normalize again so
+                        // match-reduction fires (e.g. match pos(0) with | pos n => ... → pos(0)).
+                        if (!fallback_ok) {
+                            ast::Prop norm_concl = apply_tdefs(s.prop);
+                            ast::Prop subst_check2 = ast::subst_expr(norm_concl, *eq->lhs, *eq->rhs);
+                            subst_check2 = apply_tdefs(subst_check2);
+                            if (subst_check2 == prem[1].prop())
+                                fallback_ok = true;
+                        }
                     }
                     if (!fallback_ok) {
                         diag.emit({diag::Severity::Error, step.loc,
@@ -3419,6 +3430,17 @@ bool check_step(const ast::Step& step,
                         subst_check = apply_tdefs(subst_check);
                         if (subst_check == prem[1].prop())
                             fallback_ok = true;
+                        // Second fallback: eq->lhs may be a normalized match expression that
+                        // appears in the normalized conclusion but not in the raw prop.
+                        // Substitute in the normalized conclusion, then normalize again so
+                        // match-reduction fires.
+                        if (!fallback_ok) {
+                            ast::Prop norm_concl = apply_tdefs(s.prop);
+                            ast::Prop subst_check2 = ast::subst_expr(norm_concl, *eq->lhs, *eq->rhs);
+                            subst_check2 = apply_tdefs(subst_check2);
+                            if (subst_check2 == prem[1].prop())
+                                fallback_ok = true;
+                        }
                     }
                     if (!fallback_ok) {
                         diag.emit({diag::Severity::Error, step.loc,
