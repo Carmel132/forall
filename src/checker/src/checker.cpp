@@ -707,31 +707,29 @@ static ast::Expr multi_subst_expr(const ast::Expr& e,
             auto new_scr = ast::make_expr(multi_subst_expr(*n.scrutinee, subs));
             std::vector<ast::MatchArm> new_arms;
             for (const auto& arm : n.arms) {
-                // Build the inner substitution and arm body with capture-avoiding rename:
-                // if a binder b appears free in any substitution VALUE (not key), rename b
-                // to a fresh name in the arm body so the substitution cannot capture it.
+                // Rename ALL arm binders to canonical "__b_<name>" forms before substitution.
+                // This ensures the normalised form is independent of which variables appear in
+                // the substitution values (val_free), so that:
+                //   unfold_term_funcs(f(n, k))[k→j]  ==  unfold_term_funcs(f(n, j))
+                // Both normalise to the same ExprMatch structure regardless of whether k or j
+                // causes a name clash.  Without this, the induction IH (normalised with k) and
+                // the declared conclusion (normalised with j) produce alpha-equivalent but
+                // structurally-different trees, breaking defn_eq.
                 ast::Expr body = *arm.body;
                 std::vector<std::string> new_binders = arm.binders;
-                // Collect free variables across all substitution values (only those still active).
-                std::set<std::string> val_free;
-                for (const auto& [k, v] : subs) {
-                    bool shadowed = false;
-                    for (const auto& b : arm.binders) if (b == k) { shadowed = true; break; }
-                    if (!shadowed) {
-                        const auto fv = ast::free_vars(v);
-                        val_free.insert(fv.begin(), fv.end());
-                    }
-                }
                 for (std::size_t i = 0; i < new_binders.size(); ++i) {
-                    if (val_free.count(new_binders[i])) {
-                        // Binder clashes with a value's free variable — rename it.
-                        const std::string fr = fresh_name();
+                    // Only canonicalise binders that don't already have the "__b_" prefix,
+                    // to avoid double-renaming when multi_subst_expr is called on an already-
+                    // normalised expression (e.g. when a term-function result is substituted
+                    // into another definition's body).
+                    if (new_binders[i].rfind("__b_", 0) != 0) {
+                        const std::string fr = "__b_" + arm.binders[i];
                         body = ast::subst(body, new_binders[i],
                                           ast::Expr{{}, ast::ExprVar{fr}});
                         new_binders[i] = fr;
                     }
                 }
-                // Binders (possibly renamed) shadow substitution inside arm body.
+                // Binders (renamed) shadow substitution inside arm body.
                 std::vector<std::pair<std::string, ast::Expr>> inner;
                 for (const auto& [k, v] : subs) {
                     bool shadowed = false;
@@ -951,6 +949,27 @@ static std::optional<ast::Expr> try_reduce_match(
     } else if (const auto* cc = std::get_if<ast::ExprCall>(&m.scrutinee->node)) {
         ctor_name = cc->name;
         for (const auto& a : cc->args) ctor_args.push_back(a.get());
+    } else if (const auto* bin = std::get_if<ast::ExprBinary>(&m.scrutinee->node)) {
+        // Nat succ_add normalisation: succ(x) + y  →  succ(x + y).
+        // This makes succ(j)+a reduce the same as succ(j+a) under match, since
+        // succ_add is a theorem that holds for all natural numbers. Without this,
+        // Int_subNatNat(n, succ(succ(j)+a)) and Int_subNatNat(n, succ(succ(j+a)))
+        // diverge after apply_tdefs, blocking congr/eq_subst proofs.
+        if (bin->op == ast::BinOp::Add) {
+            const auto* lhs_call = std::get_if<ast::ExprCall>(& bin->lhs->node);
+            if (lhs_call && lhs_call->name == "succ" && lhs_call->args.size() == 1) {
+                // succ(x) + y  →  succ(x + y)
+                ast::Expr inner_sum{m.scrutinee->loc, ast::ExprBinary{
+                    ast::BinOp::Add,
+                    lhs_call->args[0],
+                    bin->rhs}};
+                ast::Expr rewritten{m.scrutinee->loc,
+                    ast::ExprCall{"succ", {ast::make_expr(std::move(inner_sum))}}};
+                ast::ExprMatch m2{ast::make_expr(std::move(rewritten)), m.arms};
+                return try_reduce_match(m2, defs);
+            }
+        }
+        return std::nullopt; // non-concrete scrutinee
     } else {
         return std::nullopt; // non-concrete scrutinee
     }
@@ -2877,7 +2896,22 @@ bool check_step(const ast::Step& step,
                     }
                     cur = std::move(*r);
                 }
-                env.insert_or_assign(step_name, HypEntry{std::move(cur), EntryKind::Derived});
+                // When there are no ImplElim args, certify via introduce_axiom(prop)
+                // so the stored judgment's prop matches the apply_tdefs-normalised form
+                // used elsewhere (decide, single-witness fast-path, etc.). Without this,
+                // the multi-witness cur.prop is an un-normalised ExprCall while other
+                // judgments have ExprMatch, causing Trans middle-term mismatches.
+                if (impl_ref_count == 0) {
+                    auto r_ax = kernel.introduce_axiom(prop);
+                    if (!r_ax) {
+                        diag.emit({diag::Severity::Error, step.loc,
+                                   "internal: introduce_axiom failed: " + r_ax.error().message});
+                        return false;
+                    }
+                    env.insert_or_assign(step_name, HypEntry{std::move(*r_ax), EntryKind::Derived});
+                } else {
+                    env.insert_or_assign(step_name, HypEntry{std::move(cur), EntryKind::Derived});
+                }
                 return true;
             }
             std::optional<RuleApp> app;
