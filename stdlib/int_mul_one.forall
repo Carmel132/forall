@@ -1,0 +1,72 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+import "int_mul_comm.forall"
+
+-- Int_mul(pos(m), pos(1)) = pos(m) follows from mul_one_right (m * 1 = m).
+-- Int_mul(neg_succ(m), pos(1)):
+--   1 = succ(0), so pos(1) = pos(succ(0))
+--   Int_mul(neg_succ(m), pos(succ(0))) = neg_succ(m * succ(0) + 0)
+--   m * succ(0) + 0 = m * 1 + 0 = m + 0 = m
+-- Int_mul(pos(m), neg_succ(0)):  --  note: pos(1) as the first arg uses mul_comm_core pattern
+-- For one_mul: Int_mul(pos(1), x) -- use mul_comm then mul_one.
+
+-- Helper: m * succ(0) + 0 = m
+theorem mul_succ_zero_add_zero : for all m : Nat, m * succ(0) + 0 = m
+proof
+  take m : Nat
+  have h_ms : m * succ(0) = m * 0 + m by mul_succ at m at 0
+  have h_mz : m * 0 = 0 by mul_zero at m
+  have h_rhs : m * 0 + m = 0 + m by congr h_mz
+  have h_expand : m * succ(0) = 0 + m by trans h_ms and h_rhs
+  have h_za : 0 + m = m by zero_add at m
+  have h_ms_eq_m : m * succ(0) = m by trans h_expand and h_za
+  have h_add_zero : m + 0 = m by add_zero at m
+  have h_pre : m * succ(0) + 0 = m + 0 by congr h_ms_eq_m
+  then m * succ(0) + 0 = m by trans h_pre and h_add_zero
+end
+
+theorem Int_mul_one : for all x : Int, Int_mul(x, pos(1)) = x
+proof
+  take x : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases cases_x : hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hx_res from left
+        case xa : xa, hxa : x = pos(xa) =>
+        -- Int_mul(pos(xa), pos(1)) = pos(xa * 1) = pos(xa)
+        have h_mr : xa * 1 = xa by mul_one_right at xa
+        have h : Int_mul(pos(xa), pos(1)) = pos(xa) by congr h_mr
+        have s1 : Int_mul(x, pos(1)) = pos(xa) by eq_subst hxa and h
+        have hxa_symm : pos(xa) = x by symm hxa
+        have s2 : Int_mul(x, pos(1)) = x by trans s1 and hxa_symm
+        then Int_mul(x, pos(1)) = x by exact s2
+      done
+      then Int_mul(x, pos(1)) = x by hx_res
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hx_res from right
+        case xa : xa, hxa : x = neg_succ(xa) =>
+        -- Int_mul(neg_succ(xa), pos(1)) = Int_mul(neg_succ(xa), pos(succ(0)))
+        -- = neg_succ(xa * succ(0) + 0) = neg_succ(xa)
+        have h_one : 1 = succ(0) by one_eq_succ_zero
+        have h_pos_one : pos(1) = pos(succ(0)) by congr h_one
+        have h_ms0 : xa * succ(0) + 0 = xa by mul_succ_zero_add_zero at xa
+        have h : Int_mul(neg_succ(xa), pos(succ(0))) = neg_succ(xa) by congr h_ms0
+        have h_sub : Int_mul(neg_succ(xa), pos(1)) = neg_succ(xa) by eq_subst h_pos_one and h
+        have s1 : Int_mul(x, pos(1)) = neg_succ(xa) by eq_subst hxa and h_sub
+        have hxa_symm : neg_succ(xa) = x by symm hxa
+        have s2 : Int_mul(x, pos(1)) = x by trans s1 and hxa_symm
+        then Int_mul(x, pos(1)) = x by exact s2
+      done
+      then Int_mul(x, pos(1)) = x by hx_res
+  end cases
+  then Int_mul(x, pos(1)) = x by cases_x
+end
+
+theorem Int_one_mul : for all z : Int, Int_mul(pos(1), z) = z
+proof
+  take z : Int
+  have h_one : Int_mul(z, pos(1)) = z by Int_mul_one at z
+  have h_comm : Int_mul(pos(1), z) = Int_mul(z, pos(1)) by Int_mul_comm at pos(1) at z
+  then Int_mul(pos(1), z) = z by trans h_comm and h_one
+end
