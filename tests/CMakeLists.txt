@@ -218,3 +218,8 @@ add_test(NAME e2e_int_add_assoc
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/int_add_assoc.forall"
 )
+
+add_test(NAME e2e_int_mul_comm
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_mul_comm.forall"
+)
