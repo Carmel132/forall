@@ -1,0 +1,144 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+
+-- Helper: j * succ(n) + n = n * succ(j) + j
+-- Proof: expand via mul_succ, use mul_comm, then rearrange with add_assoc/add_comm.
+theorem mul_comm_core :
+    for all j : Nat, for all n : Nat, j * succ(n) + n = n * succ(j) + j
+proof
+  take j : Nat
+  take n : Nat
+  have h_ms_j : j * succ(n) = j * n + j by mul_succ at j at n
+  have h_ms_n : n * succ(j) = n * j + n by mul_succ at n at j
+  have h_mc : j * n = n * j by mul_comm at j at n
+  have lhs_expand : j * succ(n) + n = (j * n + j) + n by congr h_ms_j
+  have rhs_expand : n * succ(j) + j = (n * j + n) + j by congr h_ms_n
+  have mid1 : (j * n + j) + n = (n * j + j) + n by congr h_mc
+  have h_jn_comm : j + n = n + j by add_comm at j at n
+  have h_assoc1_fwd : (n * j + j) + n = n * j + (j + n) by add_assoc at n*j at j at n
+  have h_congr_comm : n * j + (j + n) = n * j + (n + j) by congr h_jn_comm
+  have h_assoc2_fwd : (n * j + n) + j = n * j + (n + j) by add_assoc at n*j at n at j
+  have h_assoc2 : n * j + (n + j) = (n * j + n) + j by symm h_assoc2_fwd
+  have lhs_step1 : j * succ(n) + n = (n * j + j) + n by trans lhs_expand and mid1
+  have lhs_step2 : j * succ(n) + n = n * j + (j + n) by trans lhs_step1 and h_assoc1_fwd
+  have lhs_step3 : j * succ(n) + n = n * j + (n + j) by trans lhs_step2 and h_congr_comm
+  have lhs_step4 : j * succ(n) + n = (n * j + n) + j by trans lhs_step3 and h_assoc2
+  have sym_rhs : (n * j + n) + j = n * succ(j) + j by symm rhs_expand
+  then j * succ(n) + n = n * succ(j) + j by trans lhs_step4 and sym_rhs
+end
+
+theorem Int_mul_comm :
+    for all x : Int, for all y : Int,
+        Int_mul(x, y) = Int_mul(y, x)
+proof
+  take x : Int
+  take y : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases cases_x : hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hx_res from left
+        case xa : xa, hxa : x = pos(xa) =>
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case ya : ya, hya : y = pos(ya) =>
+              have h_mc : xa * ya = ya * xa by mul_comm at xa at ya
+              have h : Int_mul(pos(xa), pos(ya)) = Int_mul(pos(ya), pos(xa)) by congr h_mc
+              have s1 : Int_mul(x, pos(ya)) = Int_mul(pos(ya), x) by eq_subst hxa and h
+              have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst hya and s1
+              then Int_mul(x, y) = Int_mul(y, x) by exact s2
+            done
+            then Int_mul(x, y) = Int_mul(y, x) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case ya : ya, hya : y = neg_succ(ya) =>
+              have hxa2 : (xa = 0) or (there exists m : Nat, xa = succ(m)) by nat_zero_or_succ at xa
+              cases cases_xa : hxa2
+                case left : xa = 0 =>
+                  have h_zero : Int_mul(pos(0), neg_succ(ya)) = Int_mul(neg_succ(ya), pos(0)) by decide
+                  have hxa_is_0 : pos(xa) = pos(0) by congr left
+                  have h_subst_xa : x = pos(0) by trans hxa and hxa_is_0
+                  have s1 : Int_mul(x, neg_succ(ya)) = Int_mul(neg_succ(ya), x)
+                            by eq_subst h_subst_xa and h_zero
+                  have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst hya and s1
+                  then Int_mul(x, y) = Int_mul(y, x) by exact s2
+                case right : (there exists m : Nat, xa = succ(m)) =>
+                  obtain hxa_succ from right
+                    case j : j, hxaj : xa = succ(j) =>
+                    have h_core : j * succ(ya) + ya = ya * succ(j) + j by mul_comm_core at j at ya
+                    have h : Int_mul(pos(succ(j)), neg_succ(ya)) = Int_mul(neg_succ(ya), pos(succ(j)))
+                             by congr h_core
+                    have hxa_is_succ : pos(xa) = pos(succ(j)) by congr hxaj
+                    have h_subst_xa : x = pos(succ(j)) by trans hxa and hxa_is_succ
+                    have s1 : Int_mul(x, neg_succ(ya)) = Int_mul(neg_succ(ya), x)
+                              by eq_subst h_subst_xa and h
+                    have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst hya and s1
+                    then Int_mul(x, y) = Int_mul(y, x) by exact s2
+                  done
+                  then Int_mul(x, y) = Int_mul(y, x) by hxa_succ
+              end cases
+              then Int_mul(x, y) = Int_mul(y, x) by cases_xa
+            done
+            then Int_mul(x, y) = Int_mul(y, x) by hy_res
+        end cases
+        then Int_mul(x, y) = Int_mul(y, x) by cases_y
+      done
+      then Int_mul(x, y) = Int_mul(y, x) by hx_res
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hx_res from right
+        case xa : xa, hxa : x = neg_succ(xa) =>
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case ya : ya, hya : y = pos(ya) =>
+              have hya2 : (ya = 0) or (there exists m : Nat, ya = succ(m)) by nat_zero_or_succ at ya
+              cases cases_ya : hya2
+                case left : ya = 0 =>
+                  have h_zero : Int_mul(neg_succ(xa), pos(0)) = Int_mul(pos(0), neg_succ(xa)) by decide
+                  have hya_is_0 : pos(ya) = pos(0) by congr left
+                  have h_subst_ya : y = pos(0) by trans hya and hya_is_0
+                  have s1 : Int_mul(neg_succ(xa), y) = Int_mul(y, neg_succ(xa))
+                            by eq_subst h_subst_ya and h_zero
+                  have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst hxa and s1
+                  then Int_mul(x, y) = Int_mul(y, x) by exact s2
+                case right : (there exists m : Nat, ya = succ(m)) =>
+                  obtain hya_succ from right
+                    case j : j, hyaj : ya = succ(j) =>
+                    have h_core : xa * succ(j) + j = j * succ(xa) + xa by mul_comm_core at xa at j
+                    have h : Int_mul(neg_succ(xa), pos(succ(j))) = Int_mul(pos(succ(j)), neg_succ(xa))
+                             by congr h_core
+                    have hya_is_succ : pos(ya) = pos(succ(j)) by congr hyaj
+                    have h_subst_ya : y = pos(succ(j)) by trans hya and hya_is_succ
+                    have s1 : Int_mul(x, pos(succ(j))) = Int_mul(pos(succ(j)), x)
+                              by eq_subst hxa and h
+                    have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst h_subst_ya and s1
+                    then Int_mul(x, y) = Int_mul(y, x) by exact s2
+                  done
+                  then Int_mul(x, y) = Int_mul(y, x) by hya_succ
+              end cases
+              then Int_mul(x, y) = Int_mul(y, x) by cases_ya
+            done
+            then Int_mul(x, y) = Int_mul(y, x) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case ya : ya, hya : y = neg_succ(ya) =>
+              have h_mc : succ(xa) * succ(ya) = succ(ya) * succ(xa)
+                          by mul_comm at succ(xa) at succ(ya)
+              have h : Int_mul(neg_succ(xa), neg_succ(ya)) = Int_mul(neg_succ(ya), neg_succ(xa))
+                       by congr h_mc
+              have s1 : Int_mul(neg_succ(xa), y) = Int_mul(y, neg_succ(xa))
+                        by eq_subst hya and h
+              have s2 : Int_mul(x, y) = Int_mul(y, x) by eq_subst hxa and s1
+              then Int_mul(x, y) = Int_mul(y, x) by exact s2
+            done
+            then Int_mul(x, y) = Int_mul(y, x) by hy_res
+        end cases
+        then Int_mul(x, y) = Int_mul(y, x) by cases_y
+      done
+      then Int_mul(x, y) = Int_mul(y, x) by hx_res
+  end cases
+  then Int_mul(x, y) = Int_mul(y, x) by cases_x
+end
