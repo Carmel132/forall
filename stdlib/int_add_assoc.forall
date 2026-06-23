@@ -1,0 +1,433 @@
+import "int_assoc_lemmas.forall"
+import "int_arith_comm.forall"
+
+-- Helper: pos(a) + pos(b) + pos(c) = pos(a) + (pos(b) + pos(c))
+theorem Int_add_assoc_ppp :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(pos(a), pos(b)), pos(c)) = Int_add(pos(a), Int_add(pos(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have h : (a + b) + c = a + (b + c) by add_assoc at a at b at c
+  have lhs_eq : Int_add(Int_add(pos(a), pos(b)), pos(c)) = pos((a + b) + c) by decide
+  have rhs_eq : Int_add(pos(a), Int_add(pos(b), pos(c))) = pos(a + (b + c)) by decide
+  have mid : pos((a + b) + c) = pos(a + (b + c)) by congr h
+  have step1 : Int_add(Int_add(pos(a), pos(b)), pos(c)) = pos(a + (b + c)) by trans lhs_eq and mid
+  have step2 : pos(a + (b + c)) = Int_add(pos(a), Int_add(pos(b), pos(c))) by symm rhs_eq
+  then Int_add(Int_add(pos(a), pos(b)), pos(c)) = Int_add(pos(a), Int_add(pos(b), pos(c)))
+       by trans step1 and step2
+end
+
+-- Helper: pos(a) + pos(b) + neg_succ(c) = pos(a) + (pos(b) + neg_succ(c))
+-- LHS = Int_subNatNat(a+b, succ(c))
+-- RHS = Int_add(pos(a), Int_subNatNat(b, succ(c)))
+-- Central lemma gives: Int_subNatNat(a+b, succ(c)) = Int_add(pos(a), Int_subNatNat(b, succ(c)))
+theorem Int_add_assoc_ppn :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(pos(a), pos(b)), neg_succ(c)) = Int_add(pos(a), Int_add(pos(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  -- LHS normalises to Int_subNatNat(a+b, succ(c))
+  have lhs_eq : Int_add(Int_add(pos(a), pos(b)), neg_succ(c)) = Int_subNatNat(a + b, succ(c)) by decide
+  -- RHS normalises to Int_add(pos(a), Int_subNatNat(b, succ(c)))
+  have rhs_eq : Int_add(pos(a), Int_add(pos(b), neg_succ(c))) = Int_add(pos(a), Int_subNatNat(b, succ(c))) by decide
+  -- Central lemma: Int_subNatNat(a+b, succ(c)) = Int_add(pos(a), Int_subNatNat(b, succ(c)))
+  have mid : Int_subNatNat(a + b, succ(c)) = Int_add(pos(a), Int_subNatNat(b, succ(c)))
+             by Int_subNatNat_add_left at a at b at succ(c)
+  have rhs_sym : Int_add(pos(a), Int_subNatNat(b, succ(c))) = Int_add(pos(a), Int_add(pos(b), neg_succ(c)))
+                 by symm rhs_eq
+  have step1 : Int_add(Int_add(pos(a), pos(b)), neg_succ(c)) = Int_add(pos(a), Int_subNatNat(b, succ(c)))
+               by trans lhs_eq and mid
+  then Int_add(Int_add(pos(a), pos(b)), neg_succ(c)) = Int_add(pos(a), Int_add(pos(b), neg_succ(c)))
+       by trans step1 and rhs_sym
+end
+
+-- Helper: pos(a) + neg_succ(b) + pos(c) = pos(a) + (neg_succ(b) + pos(c))
+-- Both sides equal Int_subNatNat(a+c, succ(b)).
+-- LHS: Int_add(Int_subNatNat(a, succ(b)), pos(c))
+--      = Int_add(pos(c), Int_subNatNat(a, succ(b)))    by comm
+--      = Int_subNatNat(c+a, succ(b))                    by symm(lemma at c at a at succ(b))
+--      = Int_subNatNat(a+c, succ(b))                    by congr(add_comm)
+-- RHS: Int_add(pos(a), Int_subNatNat(c, succ(b)))       by decide
+--      = Int_subNatNat(a+c, succ(b))                    by symm(lemma at a at c at succ(b))
+theorem Int_add_assoc_pnp :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(pos(a), neg_succ(b)), pos(c)) = Int_add(pos(a), Int_add(neg_succ(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  -- LHS reductions
+  have lhs1 : Int_add(Int_add(pos(a), neg_succ(b)), pos(c)) = Int_add(Int_subNatNat(a, succ(b)), pos(c)) by decide
+  have comm_inner : Int_add(Int_subNatNat(a, succ(b)), pos(c)) = Int_add(pos(c), Int_subNatNat(a, succ(b)))
+                    by Int_add_comm at Int_subNatNat(a, succ(b)) at pos(c)
+  have central_ca : Int_subNatNat(c + a, succ(b)) = Int_add(pos(c), Int_subNatNat(a, succ(b)))
+                    by Int_subNatNat_add_left at c at a at succ(b)
+  have comm_ca : c + a = a + c by add_comm at c at a
+  have congr_ca : Int_subNatNat(c + a, succ(b)) = Int_subNatNat(a + c, succ(b)) by congr comm_ca
+  -- Chain LHS to Int_subNatNat(a+c, succ(b))
+  have sym_central_ca : Int_add(pos(c), Int_subNatNat(a, succ(b))) = Int_subNatNat(c + a, succ(b))
+                        by symm central_ca
+  have lhs2 : Int_add(Int_subNatNat(a, succ(b)), pos(c)) = Int_subNatNat(c + a, succ(b))
+              by trans comm_inner and sym_central_ca
+  have lhs3 : Int_add(Int_subNatNat(a, succ(b)), pos(c)) = Int_subNatNat(a + c, succ(b))
+              by trans lhs2 and congr_ca
+  have lhs_final : Int_add(Int_add(pos(a), neg_succ(b)), pos(c)) = Int_subNatNat(a + c, succ(b))
+                   by trans lhs1 and lhs3
+  -- RHS reductions
+  have rhs1 : Int_add(pos(a), Int_add(neg_succ(b), pos(c))) = Int_add(pos(a), Int_subNatNat(c, succ(b))) by decide
+  have central_ac : Int_subNatNat(a + c, succ(b)) = Int_add(pos(a), Int_subNatNat(c, succ(b)))
+                    by Int_subNatNat_add_left at a at c at succ(b)
+  have sym_central_ac : Int_add(pos(a), Int_subNatNat(c, succ(b))) = Int_subNatNat(a + c, succ(b))
+                        by symm central_ac
+  have rhs_final : Int_add(pos(a), Int_add(neg_succ(b), pos(c))) = Int_subNatNat(a + c, succ(b))
+                   by trans rhs1 and sym_central_ac
+  have sym_rhs_final : Int_subNatNat(a + c, succ(b)) = Int_add(pos(a), Int_add(neg_succ(b), pos(c)))
+                       by symm rhs_final
+  then Int_add(Int_add(pos(a), neg_succ(b)), pos(c)) = Int_add(pos(a), Int_add(neg_succ(b), pos(c)))
+       by trans lhs_final and sym_rhs_final
+end
+
+-- Helper: pos(a) + neg_succ(b) + neg_succ(c) = pos(a) + (neg_succ(b) + neg_succ(c))
+-- Both sides equal Int_subNatNat(a, succ(succ(b+c))).
+-- LHS: decide on inner gives Int_subNatNat(a, succ(b)); comm; Int_neg_succ_add_subNatNat; congr(succ_add).
+-- RHS: decide gives Int_subNatNat(a, succ(succ(b+c))).
+theorem Int_add_assoc_pnn :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(pos(a), neg_succ(b)), neg_succ(c)) = Int_add(pos(a), Int_add(neg_succ(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have lhs1 : Int_add(Int_add(pos(a), neg_succ(b)), neg_succ(c)) = Int_add(Int_subNatNat(a, succ(b)), neg_succ(c)) by decide
+  have comm1 : Int_add(Int_subNatNat(a, succ(b)), neg_succ(c)) = Int_add(neg_succ(c), Int_subNatNat(a, succ(b)))
+               by Int_add_comm at Int_subNatNat(a, succ(b)) at neg_succ(c)
+  have central : Int_add(neg_succ(c), Int_subNatNat(a, succ(b))) = Int_subNatNat(a, succ(succ(b) + c))
+                 by Int_neg_succ_add_subNatNat at c at a at succ(b)
+  have lhs2 : Int_add(Int_subNatNat(a, succ(b)), neg_succ(c)) = Int_subNatNat(a, succ(succ(b) + c))
+              by trans comm1 and central
+  have h_sa : succ(b) + c = succ(b + c) by succ_add at b at c
+  have congr_sa : Int_subNatNat(a, succ(succ(b) + c)) = Int_subNatNat(a, succ(succ(b + c))) by congr h_sa
+  have lhs3 : Int_add(Int_subNatNat(a, succ(b)), neg_succ(c)) = Int_subNatNat(a, succ(succ(b + c)))
+              by trans lhs2 and congr_sa
+  have lhs_final : Int_add(Int_add(pos(a), neg_succ(b)), neg_succ(c)) = Int_subNatNat(a, succ(succ(b + c)))
+                   by trans lhs1 and lhs3
+  have rhs_dec : Int_add(pos(a), Int_add(neg_succ(b), neg_succ(c))) = Int_subNatNat(a, succ(succ(b + c))) by decide
+  have sym_rhs : Int_subNatNat(a, succ(succ(b + c))) = Int_add(pos(a), Int_add(neg_succ(b), neg_succ(c)))
+                 by symm rhs_dec
+  then Int_add(Int_add(pos(a), neg_succ(b)), neg_succ(c)) = Int_add(pos(a), Int_add(neg_succ(b), neg_succ(c)))
+       by trans lhs_final and sym_rhs
+end
+
+-- Helper: neg_succ(a) + pos(b) + pos(c) = neg_succ(a) + (pos(b) + pos(c))
+-- Both sides equal Int_subNatNat(b+c, succ(a)).
+-- LHS: decide gives Int_subNatNat(b, succ(a)); comm; symm(lemma at c at b); congr(add_comm).
+-- RHS: decide gives Int_subNatNat(b+c, succ(a)).
+theorem Int_add_assoc_npp :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(neg_succ(a), pos(b)), pos(c)) = Int_add(neg_succ(a), Int_add(pos(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have lhs1 : Int_add(Int_add(neg_succ(a), pos(b)), pos(c)) = Int_add(Int_subNatNat(b, succ(a)), pos(c)) by decide
+  have comm1 : Int_add(Int_subNatNat(b, succ(a)), pos(c)) = Int_add(pos(c), Int_subNatNat(b, succ(a)))
+               by Int_add_comm at Int_subNatNat(b, succ(a)) at pos(c)
+  have central : Int_subNatNat(c + b, succ(a)) = Int_add(pos(c), Int_subNatNat(b, succ(a)))
+                 by Int_subNatNat_add_left at c at b at succ(a)
+  have sym_central : Int_add(pos(c), Int_subNatNat(b, succ(a))) = Int_subNatNat(c + b, succ(a))
+                     by symm central
+  have lhs2 : Int_add(Int_subNatNat(b, succ(a)), pos(c)) = Int_subNatNat(c + b, succ(a))
+              by trans comm1 and sym_central
+  have h_cc : c + b = b + c by add_comm at c at b
+  have congr_cc : Int_subNatNat(c + b, succ(a)) = Int_subNatNat(b + c, succ(a)) by congr h_cc
+  have lhs3 : Int_add(Int_subNatNat(b, succ(a)), pos(c)) = Int_subNatNat(b + c, succ(a))
+              by trans lhs2 and congr_cc
+  have lhs_final : Int_add(Int_add(neg_succ(a), pos(b)), pos(c)) = Int_subNatNat(b + c, succ(a))
+                   by trans lhs1 and lhs3
+  have rhs_dec : Int_add(neg_succ(a), Int_add(pos(b), pos(c))) = Int_subNatNat(b + c, succ(a)) by decide
+  have sym_rhs : Int_subNatNat(b + c, succ(a)) = Int_add(neg_succ(a), Int_add(pos(b), pos(c)))
+                 by symm rhs_dec
+  then Int_add(Int_add(neg_succ(a), pos(b)), pos(c)) = Int_add(neg_succ(a), Int_add(pos(b), pos(c)))
+       by trans lhs_final and sym_rhs
+end
+
+-- Helper: neg_succ(a) + pos(b) + neg_succ(c) = neg_succ(a) + (pos(b) + neg_succ(c))
+-- Both sides equal Int_subNatNat(b, succ(succ(a+c))).
+-- LHS: decide; comm; Int_neg_succ_add_subNatNat at c at b at succ(a); congr(succ_add at a at c).
+-- RHS: decide; Int_neg_succ_add_subNatNat at a at b at succ(c); congr(succ_add at c at a); congr(add_comm).
+theorem Int_add_assoc_npn :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(neg_succ(a), pos(b)), neg_succ(c)) = Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  -- LHS chain to Int_subNatNat(b, succ(succ(a + c)))
+  have lhs1 : Int_add(Int_add(neg_succ(a), pos(b)), neg_succ(c)) = Int_add(Int_subNatNat(b, succ(a)), neg_succ(c)) by decide
+  have comm1 : Int_add(Int_subNatNat(b, succ(a)), neg_succ(c)) = Int_add(neg_succ(c), Int_subNatNat(b, succ(a)))
+               by Int_add_comm at Int_subNatNat(b, succ(a)) at neg_succ(c)
+  have central_lhs : Int_add(neg_succ(c), Int_subNatNat(b, succ(a))) = Int_subNatNat(b, succ(succ(a) + c))
+                     by Int_neg_succ_add_subNatNat at c at b at succ(a)
+  have lhs2 : Int_add(Int_subNatNat(b, succ(a)), neg_succ(c)) = Int_subNatNat(b, succ(succ(a) + c))
+              by trans comm1 and central_lhs
+  have h_sa_lhs : succ(a) + c = succ(a + c) by succ_add at a at c
+  have congr_lhs : Int_subNatNat(b, succ(succ(a) + c)) = Int_subNatNat(b, succ(succ(a + c))) by congr h_sa_lhs
+  have lhs3 : Int_add(Int_subNatNat(b, succ(a)), neg_succ(c)) = Int_subNatNat(b, succ(succ(a + c)))
+              by trans lhs2 and congr_lhs
+  have lhs_final : Int_add(Int_add(neg_succ(a), pos(b)), neg_succ(c)) = Int_subNatNat(b, succ(succ(a + c)))
+                   by trans lhs1 and lhs3
+  -- RHS chain to Int_subNatNat(b, succ(succ(a + c)))
+  have rhs1 : Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c))) = Int_add(neg_succ(a), Int_subNatNat(b, succ(c))) by decide
+  have central_rhs : Int_add(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(b, succ(succ(c) + a))
+                     by Int_neg_succ_add_subNatNat at a at b at succ(c)
+  have rhs2 : Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c))) = Int_subNatNat(b, succ(succ(c) + a))
+              by trans rhs1 and central_rhs
+  have h_sa_rhs : succ(c) + a = succ(c + a) by succ_add at c at a
+  have congr_rhs1 : Int_subNatNat(b, succ(succ(c) + a)) = Int_subNatNat(b, succ(succ(c + a))) by congr h_sa_rhs
+  have rhs2b : Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c))) = Int_subNatNat(b, succ(succ(c + a)))
+               by trans rhs2 and congr_rhs1
+  have h_ca : c + a = a + c by add_comm at c at a
+  have congr_rhs2 : Int_subNatNat(b, succ(succ(c + a))) = Int_subNatNat(b, succ(succ(a + c))) by congr h_ca
+  have rhs3 : Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c))) = Int_subNatNat(b, succ(succ(a + c)))
+              by trans rhs2b and congr_rhs2
+  have sym_rhs3 : Int_subNatNat(b, succ(succ(a + c))) = Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c)))
+                  by symm rhs3
+  then Int_add(Int_add(neg_succ(a), pos(b)), neg_succ(c)) = Int_add(neg_succ(a), Int_add(pos(b), neg_succ(c)))
+       by trans lhs_final and sym_rhs3
+end
+
+-- Helper: neg_succ(a) + neg_succ(b) + pos(c) = neg_succ(a) + (neg_succ(b) + pos(c))
+-- Both sides equal Int_subNatNat(c, succ(succ(a+b))).
+-- LHS: decide gives Int_subNatNat(c, succ(succ(a+b))).
+-- RHS: decide on inner gives Int_subNatNat(c, succ(b)); Int_neg_succ_add_subNatNat at a; congr(succ_add at b at a); congr(add_comm).
+theorem Int_add_assoc_nnp :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(neg_succ(a), neg_succ(b)), pos(c)) = Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have lhs_dec : Int_add(Int_add(neg_succ(a), neg_succ(b)), pos(c)) = Int_subNatNat(c, succ(succ(a + b))) by decide
+  -- RHS chain
+  have rhs1 : Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c))) = Int_add(neg_succ(a), Int_subNatNat(c, succ(b))) by decide
+  have central : Int_add(neg_succ(a), Int_subNatNat(c, succ(b))) = Int_subNatNat(c, succ(succ(b) + a))
+                 by Int_neg_succ_add_subNatNat at a at c at succ(b)
+  have rhs2 : Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c))) = Int_subNatNat(c, succ(succ(b) + a))
+              by trans rhs1 and central
+  have h_sa : succ(b) + a = succ(b + a) by succ_add at b at a
+  have congr1 : Int_subNatNat(c, succ(succ(b) + a)) = Int_subNatNat(c, succ(succ(b + a))) by congr h_sa
+  have rhs2b : Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c))) = Int_subNatNat(c, succ(succ(b + a)))
+               by trans rhs2 and congr1
+  have h_ba : b + a = a + b by add_comm at b at a
+  have congr2 : Int_subNatNat(c, succ(succ(b + a))) = Int_subNatNat(c, succ(succ(a + b))) by congr h_ba
+  have rhs3 : Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c))) = Int_subNatNat(c, succ(succ(a + b)))
+              by trans rhs2b and congr2
+  have sym_rhs3 : Int_subNatNat(c, succ(succ(a + b))) = Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c)))
+                  by symm rhs3
+  then Int_add(Int_add(neg_succ(a), neg_succ(b)), pos(c)) = Int_add(neg_succ(a), Int_add(neg_succ(b), pos(c)))
+       by trans lhs_dec and sym_rhs3
+end
+
+-- Helper: neg_succ(a) + neg_succ(b) + neg_succ(c) = neg_succ(a) + (neg_succ(b) + neg_succ(c))
+-- Both sides equal neg_succ(succ(succ(a + b + c))).
+-- LHS: neg_succ(succ(a+b)) + neg_succ(c) = neg_succ(succ(succ(a+b)+c)) by decide; congr(succ_add at (a+b) at c).
+-- RHS: neg_succ(succ(b+c)) : neg_succ(a) + neg_succ(succ(b+c)) = neg_succ(succ(a+succ(b+c))) by decide;
+--      succ(a+succ(b+c)) = succ(succ(a+(b+c))) by add_succ, add_assoc.
+theorem Int_add_assoc_nnn :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_add(Int_add(neg_succ(a), neg_succ(b)), neg_succ(c)) = Int_add(neg_succ(a), Int_add(neg_succ(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  -- LHS: neg_succ(succ(a+b)) + neg_succ(c) = neg_succ(succ(succ(a+b)+c)) by decide
+  --                                          = neg_succ(succ(succ((a+b)+c)))  by congr(succ_add)
+  --                                          = neg_succ(succ(succ(a+(b+c))))  by congr(add_assoc)
+  have lhs1 : Int_add(Int_add(neg_succ(a), neg_succ(b)), neg_succ(c)) = neg_succ(succ(succ(a + b) + c)) by decide
+  have h_sa_lhs : succ(a + b) + c = succ((a + b) + c) by succ_add at (a + b) at c
+  have congr_lhs1 : neg_succ(succ(succ(a + b) + c)) = neg_succ(succ(succ((a + b) + c))) by congr h_sa_lhs
+  have h_assoc : (a + b) + c = a + (b + c) by add_assoc at a at b at c
+  have congr_lhs2 : neg_succ(succ(succ((a + b) + c))) = neg_succ(succ(succ(a + (b + c)))) by congr h_assoc
+  have lhs_step : Int_add(Int_add(neg_succ(a), neg_succ(b)), neg_succ(c)) = neg_succ(succ(succ((a + b) + c)))
+                  by trans lhs1 and congr_lhs1
+  have lhs_final : Int_add(Int_add(neg_succ(a), neg_succ(b)), neg_succ(c)) = neg_succ(succ(succ(a + (b + c))))
+                   by trans lhs_step and congr_lhs2
+  -- RHS: neg_succ(b+c) inner; then neg_succ(a) + neg_succ(succ(b+c))
+  have rhs1 : Int_add(neg_succ(a), Int_add(neg_succ(b), neg_succ(c))) = neg_succ(succ(a + succ(b + c))) by decide
+  have h_as : a + succ(b + c) = succ(a + (b + c)) by add_succ at a at (b + c)
+  have congr_rhs : neg_succ(succ(a + succ(b + c))) = neg_succ(succ(succ(a + (b + c)))) by congr h_as
+  have rhs_final : Int_add(neg_succ(a), Int_add(neg_succ(b), neg_succ(c))) = neg_succ(succ(succ(a + (b + c))))
+                   by trans rhs1 and congr_rhs
+  have sym_rhs : neg_succ(succ(succ(a + (b + c)))) = Int_add(neg_succ(a), Int_add(neg_succ(b), neg_succ(c)))
+                 by symm rhs_final
+  then Int_add(Int_add(neg_succ(a), neg_succ(b)), neg_succ(c)) = Int_add(neg_succ(a), Int_add(neg_succ(b), neg_succ(c)))
+       by trans lhs_final and sym_rhs
+end
+
+-- Main theorem: Int_add is associative.
+-- Proof: case-split on x, y, z into {pos, neg_succ}^3; delegate to per-constructor helpers.
+theorem Int_add_assoc_full :
+    for all x : Int, for all y : Int, for all z : Int,
+        Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z))
+proof
+  take x : Int
+  take y : Int
+  take z : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+            by int_zero_or_neg_or_pos at z
+  cases cases_x : hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hx_res from left
+        case xa : xa, hxa : x = pos(xa) =>
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case ya : ya, hya : y = pos(ya) =>
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case za : za, hza : z = pos(za) =>
+                    have h : Int_add(Int_add(pos(xa), pos(ya)), pos(za)) = Int_add(pos(xa), Int_add(pos(ya), pos(za)))
+                             by Int_add_assoc_ppp at xa at ya at za
+                    have s1 : Int_add(Int_add(x, pos(ya)), pos(za)) = Int_add(x, Int_add(pos(ya), pos(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), pos(za)) = Int_add(x, Int_add(y, pos(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case za : za, hza : z = neg_succ(za) =>
+                    have h : Int_add(Int_add(pos(xa), pos(ya)), neg_succ(za)) = Int_add(pos(xa), Int_add(pos(ya), neg_succ(za)))
+                             by Int_add_assoc_ppn at xa at ya at za
+                    have s1 : Int_add(Int_add(x, pos(ya)), neg_succ(za)) = Int_add(x, Int_add(pos(ya), neg_succ(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), neg_succ(za)) = Int_add(x, Int_add(y, neg_succ(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+              end cases
+              then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_z
+            done
+            then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case ya : ya, hya : y = neg_succ(ya) =>
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case za : za, hza : z = pos(za) =>
+                    have h : Int_add(Int_add(pos(xa), neg_succ(ya)), pos(za)) = Int_add(pos(xa), Int_add(neg_succ(ya), pos(za)))
+                             by Int_add_assoc_pnp at xa at ya at za
+                    have s1 : Int_add(Int_add(x, neg_succ(ya)), pos(za)) = Int_add(x, Int_add(neg_succ(ya), pos(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), pos(za)) = Int_add(x, Int_add(y, pos(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case za : za, hza : z = neg_succ(za) =>
+                    have h : Int_add(Int_add(pos(xa), neg_succ(ya)), neg_succ(za)) = Int_add(pos(xa), Int_add(neg_succ(ya), neg_succ(za)))
+                             by Int_add_assoc_pnn at xa at ya at za
+                    have s1 : Int_add(Int_add(x, neg_succ(ya)), neg_succ(za)) = Int_add(x, Int_add(neg_succ(ya), neg_succ(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), neg_succ(za)) = Int_add(x, Int_add(y, neg_succ(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+              end cases
+              then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_z
+            done
+            then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hy_res
+        end cases
+        then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_y
+      done
+      then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hx_res
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hx_res from right
+        case xa : xa, hxa : x = neg_succ(xa) =>
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case ya : ya, hya : y = pos(ya) =>
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case za : za, hza : z = pos(za) =>
+                    have h : Int_add(Int_add(neg_succ(xa), pos(ya)), pos(za)) = Int_add(neg_succ(xa), Int_add(pos(ya), pos(za)))
+                             by Int_add_assoc_npp at xa at ya at za
+                    have s1 : Int_add(Int_add(x, pos(ya)), pos(za)) = Int_add(x, Int_add(pos(ya), pos(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), pos(za)) = Int_add(x, Int_add(y, pos(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case za : za, hza : z = neg_succ(za) =>
+                    have h : Int_add(Int_add(neg_succ(xa), pos(ya)), neg_succ(za)) = Int_add(neg_succ(xa), Int_add(pos(ya), neg_succ(za)))
+                             by Int_add_assoc_npn at xa at ya at za
+                    have s1 : Int_add(Int_add(x, pos(ya)), neg_succ(za)) = Int_add(x, Int_add(pos(ya), neg_succ(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), neg_succ(za)) = Int_add(x, Int_add(y, neg_succ(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+              end cases
+              then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_z
+            done
+            then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case ya : ya, hya : y = neg_succ(ya) =>
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case za : za, hza : z = pos(za) =>
+                    have h : Int_add(Int_add(neg_succ(xa), neg_succ(ya)), pos(za)) = Int_add(neg_succ(xa), Int_add(neg_succ(ya), pos(za)))
+                             by Int_add_assoc_nnp at xa at ya at za
+                    have s1 : Int_add(Int_add(x, neg_succ(ya)), pos(za)) = Int_add(x, Int_add(neg_succ(ya), pos(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), pos(za)) = Int_add(x, Int_add(y, pos(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case za : za, hza : z = neg_succ(za) =>
+                    have h : Int_add(Int_add(neg_succ(xa), neg_succ(ya)), neg_succ(za)) = Int_add(neg_succ(xa), Int_add(neg_succ(ya), neg_succ(za)))
+                             by Int_add_assoc_nnn at xa at ya at za
+                    have s1 : Int_add(Int_add(x, neg_succ(ya)), neg_succ(za)) = Int_add(x, Int_add(neg_succ(ya), neg_succ(za)))
+                              by eq_subst hxa and h
+                    have s2 : Int_add(Int_add(x, y), neg_succ(za)) = Int_add(x, Int_add(y, neg_succ(za)))
+                              by eq_subst hya and s1
+                    then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by eq_subst hza and s2
+                  done
+                  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hz_res
+              end cases
+              then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_z
+            done
+            then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hy_res
+        end cases
+        then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_y
+      done
+      then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by hx_res
+  end cases
+  then Int_add(Int_add(x, y), z) = Int_add(x, Int_add(y, z)) by cases_x
+end
