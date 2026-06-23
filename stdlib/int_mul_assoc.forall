@@ -1,0 +1,1167 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+import "int_mul_comm.forall"
+
+-- Helper: succ(a * succ(b) + b) = succ(a) * succ(b)
+theorem succ_of_mul_succ :
+    for all a : Nat, for all b : Nat, succ(a * succ(b) + b) = succ(a) * succ(b)
+proof
+  take a : Nat
+  take b : Nat
+  have h1 : succ(a) * succ(b) = succ(a) * b + succ(a) by mul_succ at succ(a) at b
+  have h2 : succ(a) * b = a * b + b by mul_succ_left at a at b
+  have h2c : succ(a) * b + succ(a) = a * b + b + succ(a) by congr h2
+  have h3 : succ(a) * succ(b) = a * b + b + succ(a) by trans h1 and h2c
+  have h4 : a * succ(b) = a * b + a by mul_succ at a at b
+  have h5 : a * succ(b) + b = a * b + a + b by congr h4
+  have h6 : a * b + a + b = a * b + (a + b) by add_assoc at a*b at a at b
+  have h7 : a + b = b + a by add_comm at a at b
+  have h8 : a * b + (a + b) = a * b + (b + a) by congr h7
+  have h9f : a * b + b + a = a * b + (b + a) by add_assoc at a*b at b at a
+  have h9 : a * b + (b + a) = a * b + b + a by symm h9f
+  have h10 : a * succ(b) + b = a * b + (a + b) by trans h5 and h6
+  have h11 : a * succ(b) + b = a * b + (b + a) by trans h10 and h8
+  have h12 : a * succ(b) + b = a * b + b + a by trans h11 and h9
+  have h13 : succ(a * succ(b) + b) = succ(a * b + b + a) by congr h12
+  have h14 : a * b + b + succ(a) = succ(a * b + b + a) by add_succ at a*b+b at a
+  have h14s : succ(a * b + b + a) = a * b + b + succ(a) by symm h14
+  have h15 : succ(a * succ(b) + b) = a * b + b + succ(a) by trans h13 and h14s
+  have h3s : a * b + b + succ(a) = succ(a) * succ(b) by symm h3
+  then succ(a * succ(b) + b) = succ(a) * succ(b) by trans h15 and h3s
+end
+
+-- Helper: Int_mul(pos(0), y) = pos(0) for any Int y
+theorem Int_mul_pos0_any_r : for all y : Int, Int_mul(pos(0), y) = pos(0)
+proof
+  take y : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases cases_y : hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hy_res from left
+        case n : n, hyn : y = pos(n) =>
+        have h_mzl : 0 * n = 0 by mul_zero_left at n
+        have h_p0n : pos(0 * n) = pos(0) by congr h_mzl
+        have h : Int_mul(pos(0), pos(n)) = pos(0 * n) by decide
+        have h2 : Int_mul(pos(0), pos(n)) = pos(0) by trans h and h_p0n
+        have s : Int_mul(pos(0), y) = pos(0) by eq_subst hyn and h2
+        then Int_mul(pos(0), y) = pos(0) by exact s
+      done
+      then Int_mul(pos(0), y) = pos(0) by hy_res
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hy_res from right
+        case n : n, hyn : y = neg_succ(n) =>
+        have h : Int_mul(pos(0), neg_succ(n)) = pos(0) by decide
+        have s : Int_mul(pos(0), y) = pos(0) by eq_subst hyn and h
+        then Int_mul(pos(0), y) = pos(0) by exact s
+      done
+      then Int_mul(pos(0), y) = pos(0) by hy_res
+  end cases
+  then Int_mul(pos(0), y) = pos(0) by cases_y
+end
+
+-- Helper: Int_mul(x, pos(0)) = pos(0) for any Int x
+theorem Int_mul_any_pos0 : for all x : Int, Int_mul(x, pos(0)) = pos(0)
+proof
+  take x : Int
+  have h_comm : Int_mul(x, pos(0)) = Int_mul(pos(0), x) by Int_mul_comm at x at pos(0)
+  have h_zero : Int_mul(pos(0), x) = pos(0) by Int_mul_pos0_any_r at x
+  then Int_mul(x, pos(0)) = pos(0) by trans h_comm and h_zero
+end
+
+-- pos * pos * pos
+theorem Int_mul_assoc_ppp :
+    for all a b c : Nat,
+        Int_mul(Int_mul(pos(a), pos(b)), pos(c)) = Int_mul(pos(a), Int_mul(pos(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have lhs_o : Int_mul(pos(a * b), pos(c)) = pos(a * b * c) by decide
+  have rhs_o : Int_mul(pos(a), pos(b * c)) = pos(a * (b * c)) by decide
+  have h_ma : a * b * c = a * (b * c) by mul_assoc at a at b at c
+  have h_nat : pos(a * b * c) = pos(a * (b * c)) by congr h_ma
+  have lhs2 : Int_mul(Int_mul(pos(a), pos(b)), pos(c)) = pos(a * b * c) by exact lhs_o
+  have lhs3 : Int_mul(Int_mul(pos(a), pos(b)), pos(c)) = pos(a * (b * c))
+              by trans lhs2 and h_nat
+  have rhs2 : Int_mul(pos(a), Int_mul(pos(b), pos(c))) = pos(a * (b * c)) by exact rhs_o
+  have rhs_s : pos(a * (b * c)) = Int_mul(pos(a), Int_mul(pos(b), pos(c))) by symm rhs2
+  then Int_mul(Int_mul(pos(a), pos(b)), pos(c)) = Int_mul(pos(a), Int_mul(pos(b), pos(c)))
+       by trans lhs3 and rhs_s
+end
+
+-- neg_succ * neg_succ * pos
+theorem Int_mul_assoc_nnp :
+    for all a b c : Nat,
+        Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) = Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have hc : (c = 0) or (there exists m : Nat, c = succ(m)) by nat_zero_or_succ at c
+  cases cases_c : hc
+    case left : c = 0 =>
+      have hc0 : pos(c) = pos(0) by congr left
+      have h_nc : c = 0 by exact left
+      -- LHS: Int_mul(neg_succ(a),neg_succ(b)) = pos(succ(a)*succ(b)), then *pos(c)=*pos(0)=pos(0)
+      have h_sab_c : succ(a) * succ(b) * c = 0
+      proof
+        have h_mz : succ(a) * succ(b) * 0 = 0 by mul_zero at succ(a)*succ(b)
+        have h_cx : succ(a) * succ(b) * c = succ(a) * succ(b) * 0 by congr h_nc
+        then succ(a) * succ(b) * c = 0 by trans h_cx and h_mz
+      end
+      have h_psabc : pos(succ(a) * succ(b) * c) = pos(0) by congr h_sab_c
+      have h_lhs : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) = pos(0)
+                   by exact h_psabc
+      -- RHS: Int_mul(neg_succ(b), pos(c)) = pos(0), then Int_mul(neg_succ(a), pos(0)) = pos(0)
+      have h_rhs_i0 : Int_mul(neg_succ(b), pos(0)) = pos(0) by decide
+      have h_rhs_i : Int_mul(neg_succ(b), pos(c)) = pos(0) by eq_subst hc0 and h_rhs_i0
+      have h_rhs_o : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have h_rhs : Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c))) = pos(0)
+                   by eq_subst h_rhs_i and h_rhs_o
+      have h_rhs_s : pos(0) = Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c))) by symm h_rhs
+      then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) =
+           Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, c = succ(m)) =>
+      obtain hc_res from right
+        case j : j, hcj : c = succ(j) =>
+        have lhs_i : Int_mul(neg_succ(a), neg_succ(b)) = pos(succ(a) * succ(b)) by decide
+        have lhs_o : Int_mul(pos(succ(a) * succ(b)), pos(succ(j))) =
+                     pos(succ(a) * succ(b) * succ(j)) by decide
+        have lhs_tot_j : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(succ(j))) =
+                         pos(succ(a) * succ(b) * succ(j))
+                         by eq_subst lhs_i and lhs_o
+        have rhs_i : Int_mul(neg_succ(b), pos(succ(j))) = neg_succ(b * succ(j) + j) by decide
+        have rhs_o : Int_mul(neg_succ(a), neg_succ(b * succ(j) + j)) =
+                     pos(succ(a) * succ(b * succ(j) + j)) by decide
+        have rhs_tot_j : Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(succ(j)))) =
+                         pos(succ(a) * succ(b * succ(j) + j))
+                         by eq_subst rhs_i and rhs_o
+        have h_sms : succ(b * succ(j) + j) = succ(b) * succ(j) by succ_of_mul_succ at b at j
+        have h_sms_sym : succ(b) * succ(j) = succ(b * succ(j) + j) by symm h_sms
+        have h_ma : succ(a) * succ(b) * succ(j) = succ(a) * (succ(b) * succ(j))
+                    by mul_assoc at succ(a) at succ(b) at succ(j)
+        have h_mc : succ(a) * (succ(b) * succ(j)) = succ(a) * succ(b * succ(j) + j)
+                    by congr h_sms_sym
+        have h_nat : succ(a) * succ(b) * succ(j) = succ(a) * succ(b * succ(j) + j)
+                     by trans h_ma and h_mc
+        have h_pos : pos(succ(a) * succ(b) * succ(j)) = pos(succ(a) * succ(b * succ(j) + j))
+                     by congr h_nat
+        have lhs_tot2 : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(succ(j))) =
+                        pos(succ(a) * succ(b * succ(j) + j))
+                        by trans lhs_tot_j and h_pos
+        have rhs_tot_j_sym : pos(succ(a) * succ(b * succ(j) + j)) =
+                              Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(succ(j))))
+                              by symm rhs_tot_j
+        have lhs_eq_rhs : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(succ(j))) =
+                          Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(succ(j))))
+                          by trans lhs_tot2 and rhs_tot_j_sym
+        have hpc : pos(c) = pos(succ(j)) by congr hcj
+        have goal : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) =
+                    Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+                    by eq_subst hpc and lhs_eq_rhs
+        then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) =
+             Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+             by exact goal
+      done
+      then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) =
+           Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+           by hc_res
+  end cases
+  then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) =
+       Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+       by cases_c
+end
+
+-- pos * pos * neg_succ
+theorem Int_mul_assoc_ppn :
+    for all a b c : Nat,
+        Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) = Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have ha : (a = 0) or (there exists m : Nat, a = succ(m)) by nat_zero_or_succ at a
+  cases cases_a : ha
+    case left : a = 0 =>
+      -- LHS: a*b = 0*b = 0, use intermediate pos(a*b) form
+      have ha0 : pos(a) = pos(0) by congr left
+      have h_mzl : 0 * b = 0 by mul_zero_left at b
+      have h_ab_z : a * b = 0 * b by congr left
+      have h_ab : a * b = 0 by trans h_ab_z and h_mzl
+      have h_pab0 : pos(a * b) = pos(0) by congr h_ab
+      have h_lo : Int_mul(pos(0), neg_succ(c)) = pos(0) by decide
+      have h_lhs_tmp : Int_mul(pos(a * b), neg_succ(c)) = pos(0)
+                       by eq_subst h_pab0 and h_lo
+      have h_lhs : Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) = pos(0)
+                   by exact h_lhs_tmp
+      -- RHS: Int_mul(pos(a), ...) = Int_mul(pos(0), ...) = pos(0)
+      have rhs_o : Int_mul(pos(0), Int_mul(pos(b), neg_succ(c))) = pos(0)
+                   by Int_mul_pos0_any_r at Int_mul(pos(b), neg_succ(c))
+      have h_rhs : Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) = pos(0)
+                   by eq_subst ha0 and rhs_o
+      have h_rhs_s : pos(0) = Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) by symm h_rhs
+      then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+           Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, a = succ(m)) =>
+      obtain ha_res from right
+        case j : j, haj : a = succ(j) =>
+        have ha_s : pos(a) = pos(succ(j)) by congr haj
+        have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+        cases cases_b : hb
+          case left : b = 0 =>
+            have hb0 : b = 0 by exact left
+            have h_pb0 : pos(b) = pos(0) by congr hb0
+            -- LHS = pos(0): a*b = succ(j)*0 = 0
+            have h_ab1 : a * b = succ(j) * b by congr haj
+            have h_ab2 : succ(j) * b = succ(j) * 0 by congr hb0
+            have h_sjmz : succ(j) * 0 = 0 by mul_zero at succ(j)
+            have h_ab3 : succ(j) * b = 0 by trans h_ab2 and h_sjmz
+            have h_ab4 : a * b = 0 by trans h_ab1 and h_ab3
+            have h_pab0 : pos(a * b) = pos(0) by congr h_ab4
+            have h_lo : Int_mul(pos(0), neg_succ(c)) = pos(0) by decide
+            have h_lhs_tmp : Int_mul(pos(a * b), neg_succ(c)) = pos(0)
+                             by eq_subst h_pab0 and h_lo
+            have h_lhs : Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) = pos(0)
+                         by exact h_lhs_tmp
+            -- RHS = pos(0): Int_mul(pos(b),neg_succ(c))=pos(0), then Int_mul(pos(a),pos(0))=pos(0)
+            have rhs_i0 : Int_mul(pos(0), neg_succ(c)) = pos(0) by decide
+            have rhs_i : Int_mul(pos(b), neg_succ(c)) = pos(0) by eq_subst h_pb0 and rhs_i0
+            have lhs_ab_sj : Int_mul(pos(succ(j)), pos(0)) = pos(succ(j) * 0) by decide
+            have pos_sz : pos(succ(j) * 0) = pos(0) by congr h_sjmz
+            have lhs_ab2 : Int_mul(pos(succ(j)), pos(0)) = pos(0) by trans lhs_ab_sj and pos_sz
+            have rhs_o : Int_mul(pos(a), pos(0)) = pos(0) by eq_subst ha_s and lhs_ab2
+            have h_rhs : Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) = pos(0)
+                         by eq_subst rhs_i and rhs_o
+            have h_rhs_s : pos(0) = Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) by symm h_rhs
+            then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+                 Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+                 by trans h_lhs and h_rhs_s
+          case right : (there exists m : Nat, b = succ(m)) =>
+            obtain hb_res from right
+              case k : k, hbk : b = succ(k) =>
+              have hb_s : pos(b) = pos(succ(k)) by congr hbk
+              -- succ_of_mul_succ instances
+              have h_sms_rhs : succ(k * succ(c) + c) = succ(k) * succ(c) by succ_of_mul_succ at k at c
+              have h_sms_rhs_sym : succ(k) * succ(c) = succ(k * succ(c) + c) by symm h_sms_rhs
+              have h_lhs_sms : succ(j * succ(k) + k) = succ(j) * succ(k) by succ_of_mul_succ at j at k
+              have h_lhs_sms_sym : succ(j) * succ(k) = succ(j * succ(k) + k) by symm h_lhs_sms
+              -- LHS total (with succ args): use Nat eq succ(j)*succ(k) = succ(j*succ(k)+k)
+              have lhs_o_succ : Int_mul(pos(succ(j * succ(k) + k)), neg_succ(c)) =
+                                neg_succ((j * succ(k) + k) * succ(c) + c) by decide
+              have lhs_succ_tot : Int_mul(Int_mul(pos(succ(j)), pos(succ(k))), neg_succ(c)) =
+                                  neg_succ((j * succ(k) + k) * succ(c) + c)
+                                  by eq_subst h_lhs_sms_sym and lhs_o_succ
+              -- Lift to a and b
+              have lhs_a : Int_mul(Int_mul(pos(a), pos(succ(k))), neg_succ(c)) =
+                           neg_succ((j * succ(k) + k) * succ(c) + c)
+                           by eq_subst ha_s and lhs_succ_tot
+              have lhs_tot : Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+                             neg_succ((j * succ(k) + k) * succ(c) + c)
+                             by eq_subst hb_s and lhs_a
+              -- RHS inner: Int_mul(pos(succ(k)), neg_succ(c)) = neg_succ(k*succ(c)+c)
+              have rhs_i : Int_mul(pos(succ(k)), neg_succ(c)) =
+                           neg_succ(k * succ(c) + c) by decide
+              -- RHS outer: Int_mul(pos(succ(j)), neg_succ(k*succ(c)+c)) = neg_succ(j*succ(k*succ(c)+c)+(k*succ(c)+c))
+              have rhs_o : Int_mul(pos(succ(j)), neg_succ(k * succ(c) + c)) =
+                           neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c)) by decide
+              -- RHS total (with succ args)
+              have rhs_succ_tot : Int_mul(pos(succ(j)), Int_mul(pos(succ(k)), neg_succ(c))) =
+                                  neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c))
+                                  by eq_subst rhs_i and rhs_o
+              -- Lift to a and b
+              have rhs_b : Int_mul(pos(a), Int_mul(pos(succ(k)), neg_succ(c))) =
+                           neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c))
+                           by eq_subst ha_s and rhs_succ_tot
+              have rhs_tot : Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) =
+                             neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c))
+                             by eq_subst hb_s and rhs_b
+              -- Nat arithmetic: (j*succ(k)+k)*succ(c)+c = j*succ(k*succ(c)+c)+(k*succ(c)+c)
+              have h_ma : j * succ(k) * succ(c) = j * (succ(k) * succ(c))
+                          by mul_assoc at j at succ(k) at succ(c)
+              have h_jsucc : j * (succ(k) * succ(c)) = j * succ(k * succ(c) + c)
+                             by congr h_sms_rhs_sym
+              have h_jma : j * succ(k) * succ(c) = j * succ(k * succ(c) + c)
+                           by trans h_ma and h_jsucc
+              have h_dr : (j * succ(k) + k) * succ(c) = j * succ(k) * succ(c) + k * succ(c)
+                          by mul_distrib_right at j*succ(k) at k at succ(c)
+              have h_jma_cong : j * succ(k) * succ(c) + k * succ(c) =
+                                j * succ(k * succ(c) + c) + k * succ(c)
+                                by congr h_jma
+              have h_dr2 : (j * succ(k) + k) * succ(c) = j * succ(k * succ(c) + c) + k * succ(c)
+                           by trans h_dr and h_jma_cong
+              have h_assoc_lhs : (j * succ(k) + k) * succ(c) + c =
+                                 j * succ(k * succ(c) + c) + k * succ(c) + c
+                                 by congr h_dr2
+              have h_assoc_mid : j * succ(k * succ(c) + c) + k * succ(c) + c =
+                                 j * succ(k * succ(c) + c) + (k * succ(c) + c)
+                                 by add_assoc at j*succ(k*succ(c)+c) at k*succ(c) at c
+              have h_nat : (j * succ(k) + k) * succ(c) + c =
+                           j * succ(k * succ(c) + c) + (k * succ(c) + c)
+                           by trans h_assoc_lhs and h_assoc_mid
+              have h_neg : neg_succ((j * succ(k) + k) * succ(c) + c) =
+                           neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c))
+                           by congr h_nat
+              have lhs2 : Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+                          neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c))
+                          by trans lhs_tot and h_neg
+              have rhs_s : neg_succ(j * succ(k * succ(c) + c) + (k * succ(c) + c)) =
+                           Int_mul(pos(a), Int_mul(pos(b), neg_succ(c))) by symm rhs_tot
+              then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+                   Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+                   by trans lhs2 and rhs_s
+            done
+            then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+                 Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+                 by hb_res
+        end cases
+        then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+             Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+             by cases_b
+      done
+      then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+           Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+           by ha_res
+  end cases
+  then Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) =
+       Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+       by cases_a
+end
+
+-- pos * neg_succ * pos
+theorem Int_mul_assoc_pnp :
+    for all a b c : Nat,
+        Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) = Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have ha : (a = 0) or (there exists m : Nat, a = succ(m)) by nat_zero_or_succ at a
+  cases cases_a : ha
+    case left : a = 0 =>
+      have ha0 : pos(a) = pos(0) by congr left
+      have li0 : Int_mul(pos(0), neg_succ(b)) = pos(0) by Int_mul_pos0_any_r at neg_succ(b)
+      have li : Int_mul(pos(a), neg_succ(b)) = pos(0) by eq_subst ha0 and li0
+      have lo : Int_mul(pos(0), pos(c)) = pos(0) by Int_mul_pos0_any_r at pos(c)
+      have h_lhs : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) = pos(0)
+                   by eq_subst li and lo
+      have rhs_o : Int_mul(pos(0), Int_mul(neg_succ(b), pos(c))) = pos(0)
+                   by Int_mul_pos0_any_r at Int_mul(neg_succ(b), pos(c))
+      have h_rhs : Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) = pos(0)
+                   by eq_subst ha0 and rhs_o
+      have h_rhs_s : pos(0) = Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) by symm h_rhs
+      then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+           Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, a = succ(m)) =>
+      obtain ha_res from right
+        case j : j, haj : a = succ(j) =>
+        have ha_s : pos(a) = pos(succ(j)) by congr haj
+        have hc : (c = 0) or (there exists m : Nat, c = succ(m)) by nat_zero_or_succ at c
+        cases cases_c : hc
+          case left : c = 0 =>
+            have hc0 : pos(c) = pos(0) by congr left
+            have lhs_i_sj : Int_mul(pos(succ(j)), neg_succ(b)) =
+                            neg_succ(j * succ(b) + b) by decide
+            have h_sjmz : succ(j) * 0 = 0 by mul_zero at succ(j)
+            have lhs_o_0 : Int_mul(neg_succ(j * succ(b) + b), pos(0)) = pos(0)
+                           by Int_mul_any_pos0 at neg_succ(j * succ(b) + b)
+            have lhs_succ_c0 : Int_mul(Int_mul(pos(succ(j)), neg_succ(b)), pos(0)) = pos(0)
+                               by eq_subst lhs_i_sj and lhs_o_0
+            have lhs_a : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(0)) = pos(0)
+                         by eq_subst ha_s and lhs_succ_c0
+            have h_lhs : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) = pos(0)
+                         by eq_subst hc0 and lhs_a
+            have rhs_i0 : Int_mul(neg_succ(b), pos(0)) = pos(0)
+                          by Int_mul_any_pos0 at neg_succ(b)
+            have rhs_i : Int_mul(neg_succ(b), pos(c)) = pos(0) by eq_subst hc0 and rhs_i0
+            have r1 : Int_mul(pos(succ(j)), pos(0)) = pos(succ(j) * 0) by decide
+            have r2 : pos(succ(j) * 0) = pos(0) by congr h_sjmz
+            have rhs_o_sj : Int_mul(pos(succ(j)), pos(0)) = pos(0) by trans r1 and r2
+            have rhs_o : Int_mul(pos(a), pos(0)) = pos(0) by eq_subst ha_s and rhs_o_sj
+            have h_rhs : Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) = pos(0)
+                         by eq_subst rhs_i and rhs_o
+            have h_rhs_s : pos(0) = Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) by symm h_rhs
+            then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+                 Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+                 by trans h_lhs and h_rhs_s
+          case right : (there exists m : Nat, c = succ(m)) =>
+            obtain hc_res from right
+              case k : k, hck : c = succ(k) =>
+              have hc_s : pos(c) = pos(succ(k)) by congr hck
+              have h_sms_bk : succ(b * succ(k) + k) = succ(b) * succ(k) by succ_of_mul_succ at b at k
+              have h_sms_bk_sym : succ(b) * succ(k) = succ(b * succ(k) + k) by symm h_sms_bk
+              have h_ma : j * succ(b) * succ(k) = j * (succ(b) * succ(k))
+                          by mul_assoc at j at succ(b) at succ(k)
+              have h_jsucc : j * (succ(b) * succ(k)) = j * succ(b * succ(k) + k)
+                             by congr h_sms_bk_sym
+              have h_jma : j * succ(b) * succ(k) = j * succ(b * succ(k) + k)
+                           by trans h_ma and h_jsucc
+              have h_dr : (j * succ(b) + b) * succ(k) = j * succ(b) * succ(k) + b * succ(k)
+                          by mul_distrib_right at j*succ(b) at b at succ(k)
+              have h_jma_c : j * succ(b) * succ(k) + b * succ(k) =
+                             j * succ(b * succ(k) + k) + b * succ(k)
+                             by congr h_jma
+              have h_dr2 : (j * succ(b) + b) * succ(k) = j * succ(b * succ(k) + k) + b * succ(k)
+                           by trans h_dr and h_jma_c
+              have h_lhs_nat : (j * succ(b) + b) * succ(k) + k =
+                               j * succ(b * succ(k) + k) + b * succ(k) + k
+                               by congr h_dr2
+              have h_mid : j * succ(b * succ(k) + k) + b * succ(k) + k =
+                           j * succ(b * succ(k) + k) + (b * succ(k) + k)
+                           by add_assoc at j*succ(b*succ(k)+k) at b*succ(k) at k
+              have h_nat : (j * succ(b) + b) * succ(k) + k =
+                           j * succ(b * succ(k) + k) + (b * succ(k) + k)
+                           by trans h_lhs_nat and h_mid
+              have lhs_inner : Int_mul(pos(succ(j)), neg_succ(b)) =
+                               neg_succ(j * succ(b) + b) by decide
+              have lhs_outer : Int_mul(neg_succ(j * succ(b) + b), pos(succ(k))) =
+                               neg_succ((j * succ(b) + b) * succ(k) + k) by decide
+              have lhs_succ_tot : Int_mul(Int_mul(pos(succ(j)), neg_succ(b)), pos(succ(k))) =
+                                  neg_succ((j * succ(b) + b) * succ(k) + k)
+                                  by eq_subst lhs_inner and lhs_outer
+              have lhs_a : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(succ(k))) =
+                           neg_succ((j * succ(b) + b) * succ(k) + k)
+                           by eq_subst ha_s and lhs_succ_tot
+              have lhs_tot : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+                             neg_succ((j * succ(b) + b) * succ(k) + k)
+                             by eq_subst hc_s and lhs_a
+              have rhs_inner : Int_mul(neg_succ(b), pos(succ(k))) =
+                               neg_succ(b * succ(k) + k) by decide
+              have rhs_outer : Int_mul(pos(succ(j)), neg_succ(b * succ(k) + k)) =
+                               neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k)) by decide
+              have rhs_succ_tot : Int_mul(pos(succ(j)), Int_mul(neg_succ(b), pos(succ(k)))) =
+                                  neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k))
+                                  by eq_subst rhs_inner and rhs_outer
+              have rhs_a : Int_mul(pos(a), Int_mul(neg_succ(b), pos(succ(k)))) =
+                           neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k))
+                           by eq_subst ha_s and rhs_succ_tot
+              have rhs_tot : Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) =
+                             neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k))
+                             by eq_subst hc_s and rhs_a
+              have h_neg : neg_succ((j * succ(b) + b) * succ(k) + k) =
+                           neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k))
+                           by congr h_nat
+              have lhs2 : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+                          neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k))
+                          by trans lhs_tot and h_neg
+              have rhs_s : neg_succ(j * succ(b * succ(k) + k) + (b * succ(k) + k)) =
+                           Int_mul(pos(a), Int_mul(neg_succ(b), pos(c))) by symm rhs_tot
+              then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+                   Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+                   by trans lhs2 and rhs_s
+            done
+            then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+                 Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+                 by hc_res
+        end cases
+        then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+             Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+             by cases_c
+      done
+      then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+           Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+           by ha_res
+  end cases
+  then Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) =
+       Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+       by cases_a
+end
+
+-- pos * neg_succ * neg_succ
+theorem Int_mul_assoc_pnn :
+    for all a b c : Nat,
+        Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) = Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have ha : (a = 0) or (there exists m : Nat, a = succ(m)) by nat_zero_or_succ at a
+  cases cases_a : ha
+    case left : a = 0 =>
+      have ha0 : pos(a) = pos(0) by congr left
+      have li0 : Int_mul(pos(0), neg_succ(b)) = pos(0) by Int_mul_pos0_any_r at neg_succ(b)
+      have li : Int_mul(pos(a), neg_succ(b)) = pos(0) by eq_subst ha0 and li0
+      have lo : Int_mul(pos(0), neg_succ(c)) = pos(0) by Int_mul_pos0_any_r at neg_succ(c)
+      have h_lhs : Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) = pos(0)
+                   by eq_subst li and lo
+      have rhs_o : Int_mul(pos(0), Int_mul(neg_succ(b), neg_succ(c))) = pos(0)
+                   by Int_mul_pos0_any_r at Int_mul(neg_succ(b), neg_succ(c))
+      have h_rhs : Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c))) = pos(0)
+                   by eq_subst ha0 and rhs_o
+      have h_rhs_s : pos(0) = Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c))) by symm h_rhs
+      then Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) =
+           Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, a = succ(m)) =>
+      obtain ha_res from right
+        case j : j, haj : a = succ(j) =>
+        have ha_s : pos(a) = pos(succ(j)) by congr haj
+        have h_sms_jb : succ(j * succ(b) + b) = succ(j) * succ(b) by succ_of_mul_succ at j at b
+        -- LHS: Int_mul(pos(succ(j)), neg_succ(b)) = neg_succ(j*succ(b)+b)
+        --      Int_mul(neg_succ(j*succ(b)+b), neg_succ(c)) = pos(succ(j*succ(b)+b)*succ(c))
+        --      = pos(succ(j)*succ(b)*succ(c)) by congr h_sms_jb
+        have lhs_inner : Int_mul(pos(succ(j)), neg_succ(b)) = neg_succ(j * succ(b) + b) by decide
+        have lhs_outer : Int_mul(neg_succ(j * succ(b) + b), neg_succ(c)) =
+                         pos(succ(j * succ(b) + b) * succ(c)) by decide
+        have lhs_succ : Int_mul(Int_mul(pos(succ(j)), neg_succ(b)), neg_succ(c)) =
+                        pos(succ(j * succ(b) + b) * succ(c))
+                        by eq_subst lhs_inner and lhs_outer
+        have h_lhs_nat : succ(j * succ(b) + b) * succ(c) = succ(j) * succ(b) * succ(c)
+                         by congr h_sms_jb
+        have h_lhs_nat_c : pos(succ(j * succ(b) + b) * succ(c)) = pos(succ(j) * succ(b) * succ(c))
+                           by congr h_lhs_nat
+        have lhs_succ2 : Int_mul(Int_mul(pos(succ(j)), neg_succ(b)), neg_succ(c)) =
+                         pos(succ(j) * succ(b) * succ(c))
+                         by trans lhs_succ and h_lhs_nat_c
+        have lhs_a : Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) =
+                     pos(succ(j) * succ(b) * succ(c))
+                     by eq_subst ha_s and lhs_succ2
+        have rhs_inner : Int_mul(neg_succ(b), neg_succ(c)) = pos(succ(b) * succ(c)) by decide
+        have h_ma : succ(j) * succ(b) * succ(c) = succ(j) * (succ(b) * succ(c))
+                    by mul_assoc at succ(j) at succ(b) at succ(c)
+        have h_ma_sym : succ(j) * (succ(b) * succ(c)) = succ(j) * succ(b) * succ(c) by symm h_ma
+        have rhs_outer_succ : Int_mul(pos(succ(j)), pos(succ(b) * succ(c))) =
+                              pos(succ(j) * (succ(b) * succ(c))) by decide
+        have rhs_succ : Int_mul(pos(succ(j)), Int_mul(neg_succ(b), neg_succ(c))) =
+                        pos(succ(j) * (succ(b) * succ(c)))
+                        by eq_subst rhs_inner and rhs_outer_succ
+        have h_ma_sym_c : pos(succ(j) * (succ(b) * succ(c))) = pos(succ(j) * succ(b) * succ(c))
+                          by congr h_ma_sym
+        have rhs_succ2 : Int_mul(pos(succ(j)), Int_mul(neg_succ(b), neg_succ(c))) =
+                         pos(succ(j) * succ(b) * succ(c))
+                         by trans rhs_succ and h_ma_sym_c
+        have rhs_tot : Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c))) =
+                       pos(succ(j) * succ(b) * succ(c))
+                       by eq_subst ha_s and rhs_succ2
+        have rhs_s : pos(succ(j) * succ(b) * succ(c)) =
+                     Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c))) by symm rhs_tot
+        then Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) =
+             Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+             by trans lhs_a and rhs_s
+      done
+      then Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) =
+           Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+           by ha_res
+  end cases
+  then Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) =
+       Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+       by cases_a
+end
+
+-- neg_succ * pos * pos
+theorem Int_mul_assoc_npp :
+    for all a b c : Nat,
+        Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) = Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+  cases cases_b : hb
+    case left : b = 0 =>
+      have hb0 : pos(b) = pos(0) by congr left
+      have li0 : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have li : Int_mul(neg_succ(a), pos(b)) = pos(0) by eq_subst hb0 and li0
+      have lo : Int_mul(pos(0), pos(c)) = pos(0) by Int_mul_pos0_any_r at pos(c)
+      have h_lhs : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) = pos(0)
+                   by eq_subst li and lo
+      have rhs_o : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have hbc_nat : b * c = 0 * c by congr left
+      have h0c : 0 * c = 0 by mul_zero_left at c
+      have hbc0 : b * c = 0 by trans hbc_nat and h0c
+      have h_pbc0 : pos(b * c) = pos(0) by congr hbc0
+      have h_lo0 : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have h_lhs_tmp : Int_mul(neg_succ(a), pos(b * c)) = pos(0) by eq_subst h_pbc0 and h_lo0
+      have h_rhs : Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) = pos(0)
+                   by exact h_lhs_tmp
+      have h_rhs_s : pos(0) = Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) by symm h_rhs
+      then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+           Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, b = succ(m)) =>
+      obtain hb_res from right
+        case j : j, hbj : b = succ(j) =>
+        have hb_s : pos(b) = pos(succ(j)) by congr hbj
+        have hc : (c = 0) or (there exists m : Nat, c = succ(m)) by nat_zero_or_succ at c
+        cases cases_c : hc
+          case left : c = 0 =>
+            have hc0 : pos(c) = pos(0) by congr left
+            have lhs_i_sj : Int_mul(neg_succ(a), pos(succ(j))) =
+                            neg_succ(a * succ(j) + j) by decide
+            have lhs_o_0 : Int_mul(neg_succ(a * succ(j) + j), pos(0)) = pos(0)
+                           by Int_mul_any_pos0 at neg_succ(a * succ(j) + j)
+            have lhs_succ_c0 : Int_mul(Int_mul(neg_succ(a), pos(succ(j))), pos(0)) = pos(0)
+                               by eq_subst lhs_i_sj and lhs_o_0
+            have lhs_b : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(0)) = pos(0)
+                         by eq_subst hb_s and lhs_succ_c0
+            have h_lhs : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) = pos(0)
+                         by eq_subst hc0 and lhs_b
+            have rhs_i_0 : Int_mul(pos(succ(j)), pos(0)) = pos(0)
+                           proof
+                             have r1 : Int_mul(pos(succ(j)), pos(0)) = pos(succ(j) * 0) by decide
+                             have h_sjmz : succ(j) * 0 = 0 by mul_zero at succ(j)
+                             have r2 : pos(succ(j) * 0) = pos(0) by congr h_sjmz
+                             then Int_mul(pos(succ(j)), pos(0)) = pos(0) by trans r1 and r2
+                           end
+            have rhs_i_c : Int_mul(pos(b), pos(c)) = pos(0)
+                           proof
+                             have ri1 : Int_mul(pos(b), pos(0)) = pos(0)
+                                        by eq_subst hb_s and rhs_i_0
+                             then Int_mul(pos(b), pos(c)) = pos(0) by eq_subst hc0 and ri1
+                           end
+            have h_bc_z : b * c = b * 0 by congr left
+            have h_mz : b * 0 = 0 by mul_zero at b
+            have h_bc0 : b * c = 0 by trans h_bc_z and h_mz
+            have h_pbc0 : pos(b * c) = pos(0) by congr h_bc0
+            have rhs_o0 : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+            have h_rhs_tmp : Int_mul(neg_succ(a), pos(b * c)) = pos(0)
+                             by eq_subst h_pbc0 and rhs_o0
+            have h_rhs : Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) = pos(0)
+                         by exact h_rhs_tmp
+            have h_rhs_s : pos(0) = Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) by symm h_rhs
+            then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+                 Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+                 by trans h_lhs and h_rhs_s
+          case right : (there exists m : Nat, c = succ(m)) =>
+            obtain hc_res from right
+              case k : k, hck : c = succ(k) =>
+              have hc_s : pos(c) = pos(succ(k)) by congr hck
+              have h_sms_jk : succ(j * succ(k) + k) = succ(j) * succ(k) by succ_of_mul_succ at j at k
+              have h_sms_jk_sym : succ(j) * succ(k) = succ(j * succ(k) + k) by symm h_sms_jk
+              -- Nat arithmetic: (a*succ(j)+j)*succ(k)+k = a*succ(j*succ(k)+k)+(j*succ(k)+k)
+              have h_ma : a * succ(j) * succ(k) = a * (succ(j) * succ(k))
+                          by mul_assoc at a at succ(j) at succ(k)
+              have h_jsucc : a * (succ(j) * succ(k)) = a * succ(j * succ(k) + k)
+                             by congr h_sms_jk_sym
+              have h_ama : a * succ(j) * succ(k) = a * succ(j * succ(k) + k)
+                           by trans h_ma and h_jsucc
+              have h_dr : (a * succ(j) + j) * succ(k) = a * succ(j) * succ(k) + j * succ(k)
+                          by mul_distrib_right at a*succ(j) at j at succ(k)
+              have h_ama_c : a * succ(j) * succ(k) + j * succ(k) =
+                             a * succ(j * succ(k) + k) + j * succ(k)
+                             by congr h_ama
+              have h_dr2 : (a * succ(j) + j) * succ(k) = a * succ(j * succ(k) + k) + j * succ(k)
+                           by trans h_dr and h_ama_c
+              have h_lhs_nat : (a * succ(j) + j) * succ(k) + k =
+                               a * succ(j * succ(k) + k) + j * succ(k) + k
+                               by congr h_dr2
+              have h_mid : a * succ(j * succ(k) + k) + j * succ(k) + k =
+                           a * succ(j * succ(k) + k) + (j * succ(k) + k)
+                           by add_assoc at a*succ(j*succ(k)+k) at j*succ(k) at k
+              have h_nat : (a * succ(j) + j) * succ(k) + k =
+                           a * succ(j * succ(k) + k) + (j * succ(k) + k)
+                           by trans h_lhs_nat and h_mid
+              -- LHS
+              have lhs_inner : Int_mul(neg_succ(a), pos(succ(j))) =
+                               neg_succ(a * succ(j) + j) by decide
+              have lhs_outer : Int_mul(neg_succ(a * succ(j) + j), pos(succ(k))) =
+                               neg_succ((a * succ(j) + j) * succ(k) + k) by decide
+              have lhs_succ_tot : Int_mul(Int_mul(neg_succ(a), pos(succ(j))), pos(succ(k))) =
+                                  neg_succ((a * succ(j) + j) * succ(k) + k)
+                                  by eq_subst lhs_inner and lhs_outer
+              have lhs_b : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(succ(k))) =
+                           neg_succ((a * succ(j) + j) * succ(k) + k)
+                           by eq_subst hb_s and lhs_succ_tot
+              have lhs_tot : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+                             neg_succ((a * succ(j) + j) * succ(k) + k)
+                             by eq_subst hc_s and lhs_b
+              -- RHS
+              have rhs_inner : Int_mul(pos(succ(j)), pos(succ(k))) =
+                               pos(succ(j) * succ(k)) by decide
+              have rhs_outer : Int_mul(neg_succ(a), pos(succ(j * succ(k) + k))) =
+                               neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k)) by decide
+              have rhs_succ_tot : Int_mul(neg_succ(a), Int_mul(pos(succ(j)), pos(succ(k)))) =
+                                  neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k))
+                                  by eq_subst h_sms_jk_sym and rhs_outer
+              have rhs_b : Int_mul(neg_succ(a), Int_mul(pos(b), pos(succ(k)))) =
+                           neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k))
+                           by eq_subst hb_s and rhs_succ_tot
+              have rhs_tot : Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) =
+                             neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k))
+                             by eq_subst hc_s and rhs_b
+              -- Connect
+              have h_neg : neg_succ((a * succ(j) + j) * succ(k) + k) =
+                           neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k))
+                           by congr h_nat
+              have lhs2 : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+                          neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k))
+                          by trans lhs_tot and h_neg
+              have rhs_s : neg_succ(a * succ(j * succ(k) + k) + (j * succ(k) + k)) =
+                           Int_mul(neg_succ(a), Int_mul(pos(b), pos(c))) by symm rhs_tot
+              then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+                   Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+                   by trans lhs2 and rhs_s
+            done
+            then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+                 Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+                 by hc_res
+        end cases
+        then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+             Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+             by cases_c
+      done
+      then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+           Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+           by hb_res
+  end cases
+  then Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) =
+       Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+       by cases_b
+end
+
+-- neg_succ * pos * neg_succ
+theorem Int_mul_assoc_npn :
+    for all a b c : Nat,
+        Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) = Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+  cases cases_b : hb
+    case left : b = 0 =>
+      have hb0 : pos(b) = pos(0) by congr left
+      have li0 : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have li : Int_mul(neg_succ(a), pos(b)) = pos(0) by eq_subst hb0 and li0
+      have lo : Int_mul(pos(0), neg_succ(c)) = pos(0) by Int_mul_pos0_any_r at neg_succ(c)
+      have h_lhs : Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) = pos(0)
+                   by eq_subst li and lo
+      have rhs_i_0 : Int_mul(pos(0), neg_succ(c)) = pos(0) by Int_mul_pos0_any_r at neg_succ(c)
+      have rhs_i : Int_mul(pos(b), neg_succ(c)) = pos(0) by eq_subst hb0 and rhs_i_0
+      have h_rhs_o0 : Int_mul(neg_succ(a), pos(0)) = pos(0) by decide
+      have h_rhs : Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c))) = pos(0)
+                   by eq_subst rhs_i and h_rhs_o0
+      have h_rhs_s : pos(0) = Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c))) by symm h_rhs
+      then Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) =
+           Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+           by trans h_lhs and h_rhs_s
+    case right : (there exists m : Nat, b = succ(m)) =>
+      obtain hb_res from right
+        case j : j, hbj : b = succ(j) =>
+        have hb_s : pos(b) = pos(succ(j)) by congr hbj
+        have h_sms_aj : succ(a * succ(j) + j) = succ(a) * succ(j) by succ_of_mul_succ at a at j
+        have h_sms_jc : succ(j * succ(c) + c) = succ(j) * succ(c) by succ_of_mul_succ at j at c
+        have h_sms_jc_sym : succ(j) * succ(c) = succ(j * succ(c) + c) by symm h_sms_jc
+        -- LHS: neg_succ(a)*pos(succ(j)) = neg_succ(a*succ(j)+j)
+        --      neg_succ(a*succ(j)+j)*neg_succ(c) = pos(succ(a*succ(j)+j)*succ(c))
+        --      = pos(succ(a)*succ(j)*succ(c)) via h_sms_aj
+        have lhs_inner : Int_mul(neg_succ(a), pos(succ(j))) = neg_succ(a * succ(j) + j) by decide
+        have lhs_outer : Int_mul(neg_succ(a * succ(j) + j), neg_succ(c)) =
+                         pos(succ(a * succ(j) + j) * succ(c)) by decide
+        have lhs_succ : Int_mul(Int_mul(neg_succ(a), pos(succ(j))), neg_succ(c)) =
+                        pos(succ(a * succ(j) + j) * succ(c))
+                        by eq_subst lhs_inner and lhs_outer
+        have h_lhs_nat : succ(a * succ(j) + j) * succ(c) = succ(a) * succ(j) * succ(c)
+                         by congr h_sms_aj
+        have h_lhs_nat_c : pos(succ(a * succ(j) + j) * succ(c)) = pos(succ(a) * succ(j) * succ(c))
+                           by congr h_lhs_nat
+        have lhs_succ2 : Int_mul(Int_mul(neg_succ(a), pos(succ(j))), neg_succ(c)) =
+                         pos(succ(a) * succ(j) * succ(c))
+                         by trans lhs_succ and h_lhs_nat_c
+        have lhs_tot : Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) =
+                       pos(succ(a) * succ(j) * succ(c))
+                       by eq_subst hb_s and lhs_succ2
+        -- RHS: pos(succ(j))*neg_succ(c) = neg_succ(j*succ(c)+c)
+        --      neg_succ(a)*neg_succ(j*succ(c)+c) = pos(succ(a)*succ(j*succ(c)+c))
+        --      = pos(succ(a)*succ(j)*succ(c)) via h_sms_jc
+        have rhs_inner : Int_mul(pos(succ(j)), neg_succ(c)) = neg_succ(j * succ(c) + c) by decide
+        have rhs_outer : Int_mul(neg_succ(a), neg_succ(j * succ(c) + c)) =
+                         pos(succ(a) * succ(j * succ(c) + c)) by decide
+        have rhs_succ : Int_mul(neg_succ(a), Int_mul(pos(succ(j)), neg_succ(c))) =
+                        pos(succ(a) * succ(j * succ(c) + c))
+                        by eq_subst rhs_inner and rhs_outer
+        have h_rhs_nat : succ(a) * succ(j * succ(c) + c) = succ(a) * succ(j) * succ(c)
+                         proof
+                           have hm1 : succ(a) * succ(j * succ(c) + c) = succ(a) * (succ(j) * succ(c))
+                                      by congr h_sms_jc
+                           have hma2 : succ(a) * succ(j) * succ(c) = succ(a) * (succ(j) * succ(c))
+                                       by mul_assoc at succ(a) at succ(j) at succ(c)
+                           have hm2 : succ(a) * (succ(j) * succ(c)) = succ(a) * succ(j) * succ(c)
+                                      by symm hma2
+                           then succ(a) * succ(j * succ(c) + c) = succ(a) * succ(j) * succ(c)
+                                by trans hm1 and hm2
+                         end
+        have h_rhs_nat_c : pos(succ(a) * succ(j * succ(c) + c)) = pos(succ(a) * succ(j) * succ(c))
+                           by congr h_rhs_nat
+        have rhs_succ2 : Int_mul(neg_succ(a), Int_mul(pos(succ(j)), neg_succ(c))) =
+                         pos(succ(a) * succ(j) * succ(c))
+                         by trans rhs_succ and h_rhs_nat_c
+        have rhs_tot : Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c))) =
+                       pos(succ(a) * succ(j) * succ(c))
+                       by eq_subst hb_s and rhs_succ2
+        have rhs_s : pos(succ(a) * succ(j) * succ(c)) =
+                     Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c))) by symm rhs_tot
+        then Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) =
+             Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+             by trans lhs_tot and rhs_s
+      done
+      then Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) =
+           Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+           by hb_res
+  end cases
+  then Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) =
+       Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+       by cases_b
+end
+
+-- neg_succ * neg_succ * neg_succ
+theorem Int_mul_assoc_nnn :
+    for all a b c : Nat,
+        Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) = Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+  cases cases_b : hb
+    case left : b = 0 =>
+      have hb0 : neg_succ(b) = neg_succ(0) by congr left
+      -- LHS: use sms key: succ(a)*succ(0) = succ(a*succ(0)+0) (Nat), so scrutinee matches
+      have h_sms_a0 : succ(a * succ(0) + 0) = succ(a) * succ(0) by succ_of_mul_succ at a at 0
+      have h_sms_a0_sym : succ(a) * succ(0) = succ(a * succ(0) + 0) by symm h_sms_a0
+      have lhs_outer0 : Int_mul(pos(succ(a * succ(0) + 0)), neg_succ(c)) =
+                        neg_succ((a * succ(0) + 0) * succ(c) + c) by decide
+      have lhs_b0 : Int_mul(Int_mul(neg_succ(a), neg_succ(0)), neg_succ(c)) =
+                    neg_succ((a * succ(0) + 0) * succ(c) + c)
+                    by eq_subst h_sms_a0_sym and lhs_outer0
+      -- (a*succ(0)+0)*succ(c)+c = a*succ(c)+c: factor through a*succ(0)+0 = a
+      have h_az0 : a * succ(0) + 0 = a * succ(0) by add_zero at a*succ(0)
+      have h_as0ms : a * succ(0) = a * 0 + a by mul_succ at a at 0
+      have h_mz : a * 0 = 0 by mul_zero at a
+      have h_0a : 0 + a = a by zero_add at a
+      have h_a0a : a * 0 + a = a by eq_subst h_mz and h_0a
+      have h_as0b : a * succ(0) = a by trans h_as0ms and h_a0a
+      have h_az0b : a * succ(0) + 0 = a by trans h_az0 and h_as0b
+      have h_lhs_nat : (a * succ(0) + 0) * succ(c) + c = a * succ(c) + c by congr h_az0b
+      have h_lhs_neg : neg_succ((a * succ(0) + 0) * succ(c) + c) = neg_succ(a * succ(c) + c)
+                       by congr h_lhs_nat
+      have lhs_b0b : Int_mul(Int_mul(neg_succ(a), neg_succ(0)), neg_succ(c)) =
+                     neg_succ(a * succ(c) + c)
+                     by trans lhs_b0 and h_lhs_neg
+      have h_lhs_tot : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+                       neg_succ(a * succ(c) + c)
+                       by eq_subst hb0 and lhs_b0b
+      -- RHS: use sms key: succ(0)*succ(c) = succ(0*succ(c)+c) (Nat), so scrutinee matches
+      have h_sms_0c : succ(0 * succ(c) + c) = succ(0) * succ(c) by succ_of_mul_succ at 0 at c
+      have h_sms_0c_sym : succ(0) * succ(c) = succ(0 * succ(c) + c) by symm h_sms_0c
+      have rhs_outer0 : Int_mul(neg_succ(a), pos(succ(0 * succ(c) + c))) =
+                        neg_succ(a * succ(0 * succ(c) + c) + (0 * succ(c) + c)) by decide
+      have rhs_b0 : Int_mul(neg_succ(a), Int_mul(neg_succ(0), neg_succ(c))) =
+                    neg_succ(a * succ(0 * succ(c) + c) + (0 * succ(c) + c))
+                    by eq_subst h_sms_0c_sym and rhs_outer0
+      -- 0*succ(c) = 0, so 0*succ(c)+c = c, a*succ(0*succ(c)+c)+(0*succ(c)+c) = a*succ(c)+c
+      have h_0sc : 0 * succ(c) = 0 by mul_zero_left at succ(c)
+      have h_0sc_c : 0 * succ(c) + c = 0 + c by congr h_0sc
+      have h_0c : 0 + c = c by zero_add at c
+      have h_0scc : 0 * succ(c) + c = c by trans h_0sc_c and h_0c
+      have h_rhs_nat : a * succ(0 * succ(c) + c) + (0 * succ(c) + c) = a * succ(c) + c
+                       by congr h_0scc
+      have h_rhs_neg : neg_succ(a * succ(0 * succ(c) + c) + (0 * succ(c) + c)) =
+                       neg_succ(a * succ(c) + c)
+                       by congr h_rhs_nat
+      have rhs_b0b : Int_mul(neg_succ(a), Int_mul(neg_succ(0), neg_succ(c))) =
+                     neg_succ(a * succ(c) + c)
+                     by trans rhs_b0 and h_rhs_neg
+      have h_rhs_tot : Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c))) =
+                       neg_succ(a * succ(c) + c)
+                       by eq_subst hb0 and rhs_b0b
+      have h_rhs_s : neg_succ(a * succ(c) + c) =
+                     Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c))) by symm h_rhs_tot
+      then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+           Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+           by trans h_lhs_tot and h_rhs_s
+    case right : (there exists m : Nat, b = succ(m)) =>
+      obtain hb_res from right
+        case k : k, hbk : b = succ(k) =>
+        have hb_s : neg_succ(b) = neg_succ(succ(k)) by congr hbk
+        -- h_sms_jk: succ(a*succ(succ(k))+succ(k)) = succ(a)*succ(succ(k))
+        have h_sms_ab : succ(a * succ(succ(k)) + succ(k)) = succ(a) * succ(succ(k))
+                        by succ_of_mul_succ at a at succ(k)
+        have h_sms_ab_sym : succ(a) * succ(succ(k)) = succ(a * succ(succ(k)) + succ(k))
+                            by symm h_sms_ab
+        -- h_sms_bc: succ(succ(k)*succ(c)+succ(k)) = succ(succ(k))*succ(c) ... wait
+        -- neg_succ(succ(k))*neg_succ(c) = pos(succ(succ(k))*succ(c))
+        -- succ_of_mul_succ at succ(k) at c: succ(succ(k)*succ(c)+c) = succ(succ(k))*succ(c)
+        have h_sms_bc : succ(succ(k) * succ(c) + c) = succ(succ(k)) * succ(c)
+                        by succ_of_mul_succ at succ(k) at c
+        have h_sms_bc_sym : succ(succ(k)) * succ(c) = succ(succ(k) * succ(c) + c)
+                            by symm h_sms_bc
+        -- LHS inner: neg_succ(a)*neg_succ(succ(k)) = pos(succ(a)*succ(succ(k)))
+        --           = pos(succ(a*succ(succ(k))+succ(k))) via h_sms_ab
+        have lhs_inner_s : Int_mul(neg_succ(a), neg_succ(succ(k))) =
+                           pos(succ(a) * succ(succ(k))) by decide
+        have h_lhs_p : pos(succ(a) * succ(succ(k))) = pos(succ(a * succ(succ(k)) + succ(k)))
+                       by congr h_sms_ab_sym
+        have lhs_inner_s2 : Int_mul(neg_succ(a), neg_succ(succ(k))) =
+                            pos(succ(a * succ(succ(k)) + succ(k)))
+                            by trans lhs_inner_s and h_lhs_p
+        -- LHS outer: pos(succ(X))*neg_succ(c) = neg_succ(X*succ(c)+c)
+        have lhs_outer_s : Int_mul(pos(succ(a * succ(succ(k)) + succ(k))), neg_succ(c)) =
+                           neg_succ((a * succ(succ(k)) + succ(k)) * succ(c) + c) by decide
+        -- LHS total for succ(k): use Nat key succ(a)*succ(succ(k)) = succ(a*succ(succ(k))+succ(k))
+        have lhs_tot_s : Int_mul(Int_mul(neg_succ(a), neg_succ(succ(k))), neg_succ(c)) =
+                         neg_succ((a * succ(succ(k)) + succ(k)) * succ(c) + c)
+                         by eq_subst h_sms_ab_sym and lhs_outer_s
+        -- Lift to b
+        have lhs_tot : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+                       neg_succ((a * succ(succ(k)) + succ(k)) * succ(c) + c)
+                       by eq_subst hb_s and lhs_tot_s
+        -- RHS inner: neg_succ(succ(k))*neg_succ(c) = pos(succ(succ(k))*succ(c))
+        --           = pos(succ(succ(k)*succ(c)+c)) via h_sms_bc
+        have rhs_inner_s : Int_mul(neg_succ(succ(k)), neg_succ(c)) =
+                           pos(succ(succ(k)) * succ(c)) by decide
+        have h_rhs_p : pos(succ(succ(k)) * succ(c)) = pos(succ(succ(k) * succ(c) + c))
+                       by congr h_sms_bc_sym
+        have rhs_inner_s2 : Int_mul(neg_succ(succ(k)), neg_succ(c)) =
+                            pos(succ(succ(k) * succ(c) + c))
+                            by trans rhs_inner_s and h_rhs_p
+        -- RHS outer: neg_succ(a)*pos(succ(Y)) = neg_succ(a*succ(Y)+Y)
+        have rhs_outer_s : Int_mul(neg_succ(a), pos(succ(succ(k) * succ(c) + c))) =
+                           neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c))
+                           by decide
+        -- RHS total for succ(k): use Nat key succ(succ(k))*succ(c) = succ(succ(k)*succ(c)+c)
+        have rhs_tot_s : Int_mul(neg_succ(a), Int_mul(neg_succ(succ(k)), neg_succ(c))) =
+                         neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c))
+                         by eq_subst h_sms_bc_sym and rhs_outer_s
+        -- Lift to b
+        have rhs_tot : Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c))) =
+                       neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c))
+                       by eq_subst hb_s and rhs_tot_s
+        -- Nat arithmetic: (a*succ(succ(k))+succ(k))*succ(c)+c = a*succ(succ(k)*succ(c)+c)+(succ(k)*succ(c)+c)
+        -- This follows from mul_distrib_right and mul_assoc (same as ppn arithmetic)
+        have h_dr : (a * succ(succ(k)) + succ(k)) * succ(c) =
+                    a * succ(succ(k)) * succ(c) + succ(k) * succ(c)
+                    by mul_distrib_right at a*succ(succ(k)) at succ(k) at succ(c)
+        have h_ma : a * succ(succ(k)) * succ(c) = a * (succ(succ(k)) * succ(c))
+                    by mul_assoc at a at succ(succ(k)) at succ(c)
+        have h_jsucc : a * (succ(succ(k)) * succ(c)) = a * succ(succ(k) * succ(c) + c)
+                       by congr h_sms_bc_sym
+        have h_jma : a * succ(succ(k)) * succ(c) = a * succ(succ(k) * succ(c) + c)
+                     by trans h_ma and h_jsucc
+        have h_jma_cong : a * succ(succ(k)) * succ(c) + succ(k) * succ(c) =
+                          a * succ(succ(k) * succ(c) + c) + succ(k) * succ(c)
+                          by congr h_jma
+        have h_dr2 : (a * succ(succ(k)) + succ(k)) * succ(c) =
+                     a * succ(succ(k) * succ(c) + c) + succ(k) * succ(c)
+                     by trans h_dr and h_jma_cong
+        have h_assoc_lhs : (a * succ(succ(k)) + succ(k)) * succ(c) + c =
+                           a * succ(succ(k) * succ(c) + c) + succ(k) * succ(c) + c
+                           by congr h_dr2
+        have h_assoc_mid : a * succ(succ(k) * succ(c) + c) + succ(k) * succ(c) + c =
+                           a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c)
+                           by add_assoc at a*succ(succ(k)*succ(c)+c) at succ(k)*succ(c) at c
+        have h_nat : (a * succ(succ(k)) + succ(k)) * succ(c) + c =
+                     a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c)
+                     by trans h_assoc_lhs and h_assoc_mid
+        have h_neg : neg_succ((a * succ(succ(k)) + succ(k)) * succ(c) + c) =
+                     neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c))
+                     by congr h_nat
+        have lhs2 : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+                    neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c))
+                    by trans lhs_tot and h_neg
+        have rhs_s : neg_succ(a * succ(succ(k) * succ(c) + c) + (succ(k) * succ(c) + c)) =
+                     Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c))) by symm rhs_tot
+        then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+             Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+             by trans lhs2 and rhs_s
+      done
+      then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+           Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+           by hb_res
+  end cases
+  then Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) =
+       Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+       by cases_b
+end
+
+
+
+-- Main associativity theorem
+theorem Int_mul_assoc :
+    for all x y z : Int,
+        Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+proof
+  take x : Int
+  take y : Int
+  take z : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases cases_x : hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hx_res from left
+        case a : a, hxa : x = pos(a) =>
+        have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+                  by int_zero_or_neg_or_pos at y
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case b : b, hyb : y = pos(b) =>
+              have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                        by int_zero_or_neg_or_pos at z
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case c : c, hzc : z = pos(c) =>
+                    have h_abc : Int_mul(Int_mul(pos(a), pos(b)), pos(c)) = Int_mul(pos(a), Int_mul(pos(b), pos(c)))
+                                 by Int_mul_assoc_ppp at a at b at c
+                    have h1 : Int_mul(Int_mul(x, pos(b)), pos(c)) = Int_mul(x, Int_mul(pos(b), pos(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), pos(c)) = Int_mul(x, Int_mul(y, pos(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case c : c, hzc : z = neg_succ(c) =>
+                    have h_abc : Int_mul(Int_mul(pos(a), pos(b)), neg_succ(c)) = Int_mul(pos(a), Int_mul(pos(b), neg_succ(c)))
+                                 by Int_mul_assoc_ppn at a at b at c
+                    have h1 : Int_mul(Int_mul(x, pos(b)), neg_succ(c)) = Int_mul(x, Int_mul(pos(b), neg_succ(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), neg_succ(c)) = Int_mul(x, Int_mul(y, neg_succ(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+              end cases
+              then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_z
+            done
+            then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case b : b, hyb : y = neg_succ(b) =>
+              have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                        by int_zero_or_neg_or_pos at z
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case c : c, hzc : z = pos(c) =>
+                    have h_abc : Int_mul(Int_mul(pos(a), neg_succ(b)), pos(c)) = Int_mul(pos(a), Int_mul(neg_succ(b), pos(c)))
+                                 by Int_mul_assoc_pnp at a at b at c
+                    have h1 : Int_mul(Int_mul(x, neg_succ(b)), pos(c)) = Int_mul(x, Int_mul(neg_succ(b), pos(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), pos(c)) = Int_mul(x, Int_mul(y, pos(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case c : c, hzc : z = neg_succ(c) =>
+                    have h_abc : Int_mul(Int_mul(pos(a), neg_succ(b)), neg_succ(c)) = Int_mul(pos(a), Int_mul(neg_succ(b), neg_succ(c)))
+                                 by Int_mul_assoc_pnn at a at b at c
+                    have h1 : Int_mul(Int_mul(x, neg_succ(b)), neg_succ(c)) = Int_mul(x, Int_mul(neg_succ(b), neg_succ(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), neg_succ(c)) = Int_mul(x, Int_mul(y, neg_succ(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+              end cases
+              then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_z
+            done
+            then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hy_res
+        end cases
+        then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_y
+      done
+      then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hx_res
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hx_res from right
+        case a : a, hxa : x = neg_succ(a) =>
+        have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+                  by int_zero_or_neg_or_pos at y
+        cases cases_y : hy
+          case left : (there exists k : Nat, y = pos(k)) =>
+            obtain hy_res from left
+              case b : b, hyb : y = pos(b) =>
+              have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                        by int_zero_or_neg_or_pos at z
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case c : c, hzc : z = pos(c) =>
+                    have h_abc : Int_mul(Int_mul(neg_succ(a), pos(b)), pos(c)) = Int_mul(neg_succ(a), Int_mul(pos(b), pos(c)))
+                                 by Int_mul_assoc_npp at a at b at c
+                    have h1 : Int_mul(Int_mul(x, pos(b)), pos(c)) = Int_mul(x, Int_mul(pos(b), pos(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), pos(c)) = Int_mul(x, Int_mul(y, pos(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case c : c, hzc : z = neg_succ(c) =>
+                    have h_abc : Int_mul(Int_mul(neg_succ(a), pos(b)), neg_succ(c)) = Int_mul(neg_succ(a), Int_mul(pos(b), neg_succ(c)))
+                                 by Int_mul_assoc_npn at a at b at c
+                    have h1 : Int_mul(Int_mul(x, pos(b)), neg_succ(c)) = Int_mul(x, Int_mul(pos(b), neg_succ(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), neg_succ(c)) = Int_mul(x, Int_mul(y, neg_succ(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+              end cases
+              then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_z
+            done
+            then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hy_res
+          case right : (there exists k : Nat, y = neg_succ(k)) =>
+            obtain hy_res from right
+              case b : b, hyb : y = neg_succ(b) =>
+              have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                        by int_zero_or_neg_or_pos at z
+              cases cases_z : hz
+                case left : (there exists k : Nat, z = pos(k)) =>
+                  obtain hz_res from left
+                    case c : c, hzc : z = pos(c) =>
+                    have h_abc : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), pos(c)) = Int_mul(neg_succ(a), Int_mul(neg_succ(b), pos(c)))
+                                 by Int_mul_assoc_nnp at a at b at c
+                    have h1 : Int_mul(Int_mul(x, neg_succ(b)), pos(c)) = Int_mul(x, Int_mul(neg_succ(b), pos(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), pos(c)) = Int_mul(x, Int_mul(y, pos(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+                case right : (there exists k : Nat, z = neg_succ(k)) =>
+                  obtain hz_res from right
+                    case c : c, hzc : z = neg_succ(c) =>
+                    have h_abc : Int_mul(Int_mul(neg_succ(a), neg_succ(b)), neg_succ(c)) = Int_mul(neg_succ(a), Int_mul(neg_succ(b), neg_succ(c)))
+                                 by Int_mul_assoc_nnn at a at b at c
+                    have h1 : Int_mul(Int_mul(x, neg_succ(b)), neg_succ(c)) = Int_mul(x, Int_mul(neg_succ(b), neg_succ(c)))
+                              by eq_subst hxa and h_abc
+                    have h2 : Int_mul(Int_mul(x, y), neg_succ(c)) = Int_mul(x, Int_mul(y, neg_succ(c)))
+                              by eq_subst hyb and h1
+                    have h3 : Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z))
+                              by eq_subst hzc and h2
+                    then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by h3
+                  done
+                  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hz_res
+              end cases
+              then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_z
+            done
+            then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hy_res
+        end cases
+        then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_y
+      done
+      then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by hx_res
+  end cases
+  then Int_mul(Int_mul(x, y), z) = Int_mul(x, Int_mul(y, z)) by cases_x
+end
