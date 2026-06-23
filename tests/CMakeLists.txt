@@ -208,3 +208,13 @@ add_test(NAME e2e_real_isomorphism
     COMMAND $<TARGET_FILE:forall>
         "${CMAKE_SOURCE_DIR}/stdlib/real_isomorphism.forall"
 )
+
+add_test(NAME e2e_int_assoc_lemmas
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_assoc_lemmas.forall"
+)
+
+add_test(NAME e2e_int_add_assoc
+    COMMAND $<TARGET_FILE:forall>
+        "${CMAKE_SOURCE_DIR}/stdlib/int_add_assoc.forall"
+)
