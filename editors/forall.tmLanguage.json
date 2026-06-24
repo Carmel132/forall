@@ -10,8 +10,9 @@
     { "include": "#declaration-keyword" },
     { "include": "#proof-structure" },
     { "include": "#proof-justification" },
-    { "include": "#logical-connective" },
     { "include": "#quantifier-phrase" },
+    { "include": "#not-in" },
+    { "include": "#logical-connective" },
     { "include": "#term-operator" },
     { "include": "#set-operator" },
     { "include": "#relational-operator" },
@@ -38,22 +39,17 @@
 
     "declaration-keyword": {
       "name": "storage.type.forall",
-      "match": "\\b(axiom|theorem|lemma|definition|import|namespace|open|type|structure|quotient|instance|abstract|private|protected|inductive|alias|over)\\b"
+      "match": "\\b(axiom|theorem|lemma|definition|import|namespace|open|type|structure|quotient|instance)\\b"
     },
 
     "proof-structure": {
       "name": "keyword.control.proof.forall",
-      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|hence|so|contradiction|cases|case|done|let|take|fix|obtain|be|we|on|induction|base|inductive|show|exact|rewrite|apply|calc|split|wlog|push|note|observe|since|suffices|therefore|thus)\\b|□"
+      "match": "\\b(proof|end|qed|suppose|assume|have|then|therefore|thus|hence|so|contradiction|cases|case|done|let|be|on|take|obtain|induction|base|inductive|show|exact|rewrite|apply|calc|split|wlog|suffices|match|true|push|neg|we)\\b|□"
     },
 
     "proof-justification": {
       "name": "keyword.operator.proof.forall",
-      "match": "\\b(by|with|at|from|because|decide|norm_num|ring|linarith|nlinarith|omega|simp|field_simp|positivity|gcongr|contra|contrapositive|refl|symm|trans|congr|eq_subst|funext|push_neg|hypothesis|assumption)\\b"
-    },
-
-    "logical-connective": {
-      "name": "keyword.operator.logical.forall",
-      "match": "\\b(and|or|not|implies|iff|false)\\b|[∧∨¬↔⊥→]|->"
+      "match": "\\b(by|with|at|from|because|decide|norm_num|ring|linarith|nlinarith|omega|simp|field_simp|positivity|gcongr|contra|contrapositive|refl|symm|trans|congr|eq_subst|funext|hypothesis|assumption)\\b"
     },
 
     "quantifier-phrase": {
@@ -69,14 +65,24 @@
       ]
     },
 
+    "not-in": {
+      "name": "keyword.operator.set.forall",
+      "match": "\\bnot\\s+in\\b"
+    },
+
+    "logical-connective": {
+      "name": "keyword.operator.logical.forall",
+      "match": "\\b(and|or|not|implies|iff|false)\\b|[∧∨¬↔⊥→←]|->"
+    },
+
     "term-operator": {
       "name": "keyword.operator.term.forall",
-      "match": "\\b(fun|if|else|sum|prod|compose|circ|inv|div|mod|for|all|there|exists|in)\\b|[λ∑∏∘⌊⌋⌈⌉]|=>"
+      "match": "\\b(fun|if|else|sum|prod|compose|circ|inv|div|mod|in)\\b|[λ∑∏∘⌊⌋⌈⌉]|=>"
     },
 
     "set-operator": {
       "name": "keyword.operator.set.forall",
-      "match": "\\b(union|inter|setminus|subseteq|subset|supseteq|compl|not\\s+in)\\b|[∪∩∖∈∉⊆⊂⊇]|\\\\"
+      "match": "\\b(union|inter|setminus|subseteq|subset|supseteq|compl)\\b|[∪∩∖∈∉⊆⊂⊇]|\\\\"
     },
 
     "relational-operator": {
