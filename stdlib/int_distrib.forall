@@ -1,0 +1,1593 @@
+import "int_arith.forall"
+import "nat_theorems.forall"
+import "int_mul_assoc.forall"
+import "int_assoc_lemmas.forall"
+import "int_arith_comm.forall"
+
+-- ── Helper: Int_subNatNat(m+d, n+d) = Int_subNatNat(m, n) ────────────────────
+
+theorem Int_subNatNat_cancel :
+    for all m : Nat, for all n : Nat, for all d : Nat,
+        Int_subNatNat(m + d, n + d) = Int_subNatNat(m, n)
+proof
+  take m : Nat
+  take n : Nat
+  induction result on d :
+      Int_subNatNat(m + d, n + d) = Int_subNatNat(m, n)
+    base:
+      have h_mz : m + 0 = m by add_zero at m
+      have h_nz : n + 0 = n by add_zero at n
+      have key : Int_subNatNat(m, n) = Int_subNatNat(m, n) by decide
+      have goal0 : Int_subNatNat(m, n + 0) = Int_subNatNat(m, n) by eq_subst h_nz and key
+      then Int_subNatNat(m + 0, n + 0) = Int_subNatNat(m, n) by eq_subst h_mz and goal0
+    inductive:
+      have h_ms : m + succ(d) = succ(m + d) by add_succ at m at d
+      have h_ns : n + succ(d) = succ(n + d) by add_succ at n at d
+      have h_ss : Int_subNatNat(succ(m + d), succ(n + d)) = Int_subNatNat(m + d, n + d) by decide
+      have step1 : Int_subNatNat(m + succ(d), succ(n + d)) = Int_subNatNat(m + d, n + d)
+                   by eq_subst h_ms and h_ss
+      have step2 : Int_subNatNat(m + succ(d), n + succ(d)) = Int_subNatNat(m + d, n + d)
+                   by eq_subst h_ns and step1
+      then Int_subNatNat(m + succ(d), n + succ(d)) = Int_subNatNat(m, n) by trans step2 and ih
+end
+
+-- ── Helper: Int_mul(pos(succ(j)), Int_subNatNat(b, c)) = Int_subNatNat(succ(j)*b, succ(j)*c) ──
+-- Quantifiers: j, c, b so induction on c with ∀b body works after taking j.
+
+theorem Int_mul_succ_subNatNat :
+    for all j : Nat, for all c : Nat, for all b : Nat,
+        Int_mul(pos(succ(j)), Int_subNatNat(b, c)) = Int_subNatNat(succ(j) * b, succ(j) * c)
+proof
+  take j : Nat
+  induction result on c :
+      for all b : Nat, Int_mul(pos(succ(j)), Int_subNatNat(b, c)) = Int_subNatNat(succ(j) * b, succ(j) * c)
+    base:
+      have base_r : for all b : Nat,
+              Int_mul(pos(succ(j)), Int_subNatNat(b, 0)) = Int_subNatNat(succ(j) * b, succ(j) * 0)
+        proof
+          take b : Nat
+          have lhs : Int_mul(pos(succ(j)), Int_subNatNat(b, 0)) = pos(succ(j) * b) by decide
+          have h_sj0 : succ(j) * 0 = 0 by mul_zero at succ(j)
+          have rhs0 : Int_subNatNat(succ(j) * b, 0) = pos(succ(j) * b) by decide
+          have same_rhs0 : Int_subNatNat(succ(j) * b, 0) = Int_subNatNat(succ(j) * b, 0) by decide
+          have rhs1 : Int_subNatNat(succ(j) * b, succ(j) * 0) = Int_subNatNat(succ(j) * b, 0)
+                      by eq_subst h_sj0 and same_rhs0
+          have rhs : Int_subNatNat(succ(j) * b, succ(j) * 0) = pos(succ(j) * b) by trans rhs1 and rhs0
+          have rhs_sym : pos(succ(j) * b) = Int_subNatNat(succ(j) * b, succ(j) * 0) by symm rhs
+          then Int_mul(pos(succ(j)), Int_subNatNat(b, 0)) = Int_subNatNat(succ(j) * b, succ(j) * 0)
+               by trans lhs and rhs_sym
+        end
+      then for all b : Nat, Int_mul(pos(succ(j)), Int_subNatNat(b, 0)) = Int_subNatNat(succ(j) * b, succ(j) * 0)
+           by base_r
+    inductive:
+      have ind_r : for all b : Nat,
+              Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+        proof
+          take b : Nat
+          have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+          cases c_b : hb
+            case left : b = 0 =>
+              have hb0 : b = 0 by left
+              have lhs_b0 : Int_mul(pos(succ(j)), Int_subNatNat(0, succ(c))) = neg_succ(j * succ(c) + c) by decide
+              have h_sjsc : succ(j * succ(c) + c) = succ(j) * succ(c) by succ_of_mul_succ at j at c
+              have h_sjsc_sym : succ(j) * succ(c) = succ(j * succ(c) + c) by symm h_sjsc
+              have h_sj0 : succ(j) * 0 = 0 by mul_zero at succ(j)
+              have rhs_0sc : Int_subNatNat(0, succ(j * succ(c) + c)) = neg_succ(j * succ(c) + c) by decide
+              have same_rhs0sc : Int_subNatNat(0, succ(j * succ(c) + c)) =
+                                 Int_subNatNat(0, succ(j * succ(c) + c)) by decide
+              have rhs1 : Int_subNatNat(succ(j) * 0, succ(j * succ(c) + c)) =
+                          Int_subNatNat(0, succ(j * succ(c) + c))
+                          by eq_subst h_sj0 and same_rhs0sc
+              have rhs1_val : Int_subNatNat(succ(j) * 0, succ(j * succ(c) + c)) = neg_succ(j * succ(c) + c)
+                              by trans rhs1 and rhs_0sc
+              have same_rhs1 : Int_subNatNat(succ(j) * 0, succ(j * succ(c) + c)) =
+                               Int_subNatNat(succ(j) * 0, succ(j * succ(c) + c)) by decide
+              have rhs2 : Int_subNatNat(succ(j) * 0, succ(j) * succ(c)) =
+                          Int_subNatNat(succ(j) * 0, succ(j * succ(c) + c))
+                          by eq_subst h_sjsc_sym and same_rhs1
+              have rhs2_val : Int_subNatNat(succ(j) * 0, succ(j) * succ(c)) = neg_succ(j * succ(c) + c)
+                              by trans rhs2 and rhs1_val
+              have h_sjb : succ(j) * b = succ(j) * 0 by congr hb0
+              have same_0b : Int_subNatNat(succ(j) * 0, succ(j) * succ(c)) =
+                             Int_subNatNat(succ(j) * 0, succ(j) * succ(c)) by decide
+              have rhs_fix : Int_subNatNat(succ(j) * b, succ(j) * succ(c)) =
+                             Int_subNatNat(succ(j) * 0, succ(j) * succ(c))
+                             by eq_subst h_sjb and same_0b
+              have rhs_chain : Int_subNatNat(succ(j) * b, succ(j) * succ(c)) = neg_succ(j * succ(c) + c)
+                               by trans rhs_fix and rhs2_val
+              have rhs_sym : neg_succ(j * succ(c) + c) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+                             by symm rhs_chain
+              have lhs_s1 : Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = neg_succ(j * succ(c) + c)
+                            by eq_subst hb0 and lhs_b0
+              then Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+                   by trans lhs_s1 and rhs_sym
+            case right : (there exists m : Nat, b = succ(m)) =>
+              obtain hb_s from right
+                case p : p, hbp : b = succ(p) =>
+                have h_reduce : Int_subNatNat(succ(p), succ(c)) = Int_subNatNat(p, c) by decide
+                have ih_p : Int_mul(pos(succ(j)), Int_subNatNat(p, c)) = Int_subNatNat(succ(j) * p, succ(j) * c)
+                            by ih at p
+                have h_spc : Int_mul(pos(succ(j)), Int_subNatNat(succ(p), succ(c))) = Int_subNatNat(succ(j) * p, succ(j) * c)
+                             by eq_subst h_reduce and ih_p
+                have h_sp : succ(j) * succ(p) = succ(j) * p + succ(j) by mul_succ at succ(j) at p
+                have h_sc : succ(j) * succ(c) = succ(j) * c + succ(j) by mul_succ at succ(j) at c
+                have h_cancel : Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j)) =
+                                Int_subNatNat(succ(j) * p, succ(j) * c)
+                                by Int_subNatNat_cancel at succ(j)*p at succ(j)*c at succ(j)
+                have h_cancel_sym : Int_subNatNat(succ(j) * p, succ(j) * c) =
+                                    Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j))
+                                    by symm h_cancel
+                have same_c : Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j)) =
+                              Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j)) by decide
+                have e1 : Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j)) =
+                          Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j))
+                          by eq_subst h_sp and same_c
+                have e1_sym : Int_subNatNat(succ(j) * p + succ(j), succ(j) * c + succ(j)) =
+                              Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j))
+                              by symm e1
+                have same_s : Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j)) =
+                              Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j)) by decide
+                have e3 : Int_subNatNat(succ(j) * succ(p), succ(j) * succ(c)) =
+                          Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j))
+                          by eq_subst h_sc and same_s
+                have e3_sym : Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j)) =
+                              Int_subNatNat(succ(j) * succ(p), succ(j) * succ(c))
+                              by symm e3
+                have chain2 : Int_subNatNat(succ(j) * p, succ(j) * c) =
+                              Int_subNatNat(succ(j) * succ(p), succ(j) * c + succ(j))
+                              by trans h_cancel_sym and e1_sym
+                have chain3 : Int_subNatNat(succ(j) * p, succ(j) * c) =
+                              Int_subNatNat(succ(j) * succ(p), succ(j) * succ(c))
+                              by trans chain2 and e3_sym
+                have h_lhs : Int_mul(pos(succ(j)), Int_subNatNat(succ(p), succ(c))) =
+                             Int_subNatNat(succ(j) * succ(p), succ(j) * succ(c))
+                             by trans h_spc and chain3
+                then Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+                     by eq_subst hbp and h_lhs
+              done
+              then Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+                   by hb_s
+          end cases
+          then Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c)) by c_b
+        end
+      then for all b : Nat, Int_mul(pos(succ(j)), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(j) * b, succ(j) * succ(c))
+           by ind_r
+end
+
+-- ── Helper: Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a*b, a*c) ──
+
+theorem Int_mul_pos_subNatNat :
+    for all a : Nat, for all b : Nat, for all c : Nat,
+        Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a * b, a * c)
+proof
+  take a : Nat
+  take b : Nat
+  take c : Nat
+  have ha : (a = 0) or (there exists m : Nat, a = succ(m)) by nat_zero_or_succ at a
+  cases c_a : ha
+    case left : a = 0 =>
+      have ha0 : a = 0 by left
+      have ha_eq : pos(a) = pos(0) by congr ha0
+      have lhs0 : Int_mul(pos(0), Int_subNatNat(b, c)) = pos(0) by Int_mul_pos0_any_r at Int_subNatNat(b, c)
+      have s1 : Int_mul(pos(a), Int_subNatNat(b, c)) = pos(0) by eq_subst ha_eq and lhs0
+      have h_ab0 : a * b = 0 * b by congr ha0
+      have h_ac0 : a * c = 0 * c by congr ha0
+      have h_0b : 0 * b = 0 by mul_zero_left at b
+      have h_0c : 0 * c = 0 by mul_zero_left at c
+      have rhs0 : Int_subNatNat(0, 0) = pos(0) by decide
+      have same_0 : Int_subNatNat(0, 0) = Int_subNatNat(0, 0) by decide
+      have rhs1 : Int_subNatNat(0 * b, 0) = Int_subNatNat(0, 0) by eq_subst h_0b and same_0
+      have rhs1_val : Int_subNatNat(0 * b, 0) = pos(0) by trans rhs1 and rhs0
+      have same_0b : Int_subNatNat(0 * b, 0) = Int_subNatNat(0 * b, 0) by decide
+      have rhs2 : Int_subNatNat(0 * b, 0 * c) = Int_subNatNat(0 * b, 0) by eq_subst h_0c and same_0b
+      have rhs2_val : Int_subNatNat(0 * b, 0 * c) = pos(0) by trans rhs2 and rhs1_val
+      have same_0c : Int_subNatNat(0 * b, 0 * c) = Int_subNatNat(0 * b, 0 * c) by decide
+      have rhs3 : Int_subNatNat(a * b, 0 * c) = Int_subNatNat(0 * b, 0 * c) by eq_subst h_ab0 and same_0c
+      have rhs3_val : Int_subNatNat(a * b, 0 * c) = pos(0) by trans rhs3 and rhs2_val
+      have same_ac : Int_subNatNat(a * b, 0 * c) = Int_subNatNat(a * b, 0 * c) by decide
+      have rhs4 : Int_subNatNat(a * b, a * c) = Int_subNatNat(a * b, 0 * c) by eq_subst h_ac0 and same_ac
+      have rhs4_val : Int_subNatNat(a * b, a * c) = pos(0) by trans rhs4 and rhs3_val
+      have rhs_sym : pos(0) = Int_subNatNat(a * b, a * c) by symm rhs4_val
+      then Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a * b, a * c) by trans s1 and rhs_sym
+    case right : (there exists m : Nat, a = succ(m)) =>
+      obtain ha_s from right
+        case j : j, haj : a = succ(j) =>
+        have ha_eq : pos(a) = pos(succ(j)) by congr haj
+        have goal_j : Int_mul(pos(succ(j)), Int_subNatNat(b, c)) = Int_subNatNat(succ(j) * b, succ(j) * c)
+                      by Int_mul_succ_subNatNat at j at c at b
+        have s1 : Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(succ(j) * b, succ(j) * c)
+                  by eq_subst ha_eq and goal_j
+        have h_ab : a * b = succ(j) * b by congr haj
+        have h_ac : a * c = succ(j) * c by congr haj
+        have same_sj : Int_subNatNat(succ(j) * b, succ(j) * c) = Int_subNatNat(succ(j) * b, succ(j) * c) by decide
+        have rhs1 : Int_subNatNat(a * b, succ(j) * c) = Int_subNatNat(succ(j) * b, succ(j) * c)
+                    by eq_subst h_ab and same_sj
+        have same_ab : Int_subNatNat(a * b, succ(j) * c) = Int_subNatNat(a * b, succ(j) * c) by decide
+        have rhs2 : Int_subNatNat(a * b, a * c) = Int_subNatNat(a * b, succ(j) * c) by eq_subst h_ac and same_ab
+        have rhs_chain : Int_subNatNat(a * b, a * c) = Int_subNatNat(succ(j) * b, succ(j) * c)
+                         by trans rhs2 and rhs1
+        have rhs_sym : Int_subNatNat(succ(j) * b, succ(j) * c) = Int_subNatNat(a * b, a * c) by symm rhs_chain
+        then Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a * b, a * c) by trans s1 and rhs_sym
+      done
+      then Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a * b, a * c) by ha_s
+  end cases
+  then Int_mul(pos(a), Int_subNatNat(b, c)) = Int_subNatNat(a * b, a * c) by c_a
+end
+
+-- ── Helper: Int_mul(neg_succ(a), Int_subNatNat(b, c)) = Int_subNatNat(succ(a)*c, succ(a)*b) ──
+-- Quantifiers: a, c, b so induction on c with ∀b body works after taking a.
+
+theorem Int_mul_neg_subNatNat :
+    for all a : Nat, for all c : Nat, for all b : Nat,
+        Int_mul(neg_succ(a), Int_subNatNat(b, c)) = Int_subNatNat(succ(a) * c, succ(a) * b)
+proof
+  take a : Nat
+  induction result on c :
+      for all b : Nat, Int_mul(neg_succ(a), Int_subNatNat(b, c)) = Int_subNatNat(succ(a) * c, succ(a) * b)
+    base:
+      have base_r : for all b : Nat,
+              Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b)
+        proof
+          take b : Nat
+          -- LHS: neg_succ(a)*pos(b)
+          -- b=0: neg_succ(a)*pos(0) = pos(0) = Int_subNatNat(0, 0) = Int_subNatNat(succ(a)*0, succ(a)*0)
+          -- b=succ(j): neg_succ(a)*pos(succ(j)) = neg_succ(a*succ(j)+j) by decide
+          --            succ(a)*succ(j) = succ(a*succ(j)+j) by succ_of_mul_succ at a at j (symm)
+          --            Int_subNatNat(succ(a)*0, succ(a)*succ(j)) = Int_subNatNat(0, succ(a*succ(j)+j))
+          --            = neg_succ(a*succ(j)+j) by decide
+          have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+          cases c_b : hb
+            case left : b = 0 =>
+              have hb0 : b = 0 by left
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              have lhs_b0 : Int_mul(neg_succ(a), Int_subNatNat(0, 0)) = pos(0) by decide
+              have lhs_s1 : Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = pos(0) by eq_subst hb0 and lhs_b0
+              have rhs_base : Int_subNatNat(0, 0) = pos(0) by decide
+              have same_0 : Int_subNatNat(0, 0) = Int_subNatNat(0, 0) by decide
+              have h_sab : succ(a) * b = succ(a) * 0 by congr hb0
+              have rhs1_pre : Int_subNatNat(succ(a) * 0, succ(a) * 0) = Int_subNatNat(succ(a) * 0, 0)
+                              by eq_subst h_sa0 and same_0
+              have rhs1 : Int_subNatNat(succ(a) * 0, succ(a) * b) = Int_subNatNat(succ(a) * 0, 0)
+                          by eq_subst h_sab and rhs1_pre
+              have rhs2 : Int_subNatNat(succ(a) * 0, 0) = Int_subNatNat(0, 0)
+                          by eq_subst h_sa0 and same_0
+              have rhs2_val : Int_subNatNat(succ(a) * 0, 0) = pos(0) by trans rhs2 and rhs_base
+              have rhs_val : Int_subNatNat(succ(a) * 0, succ(a) * b) = pos(0) by trans rhs1 and rhs2_val
+              have rhs_sym : pos(0) = Int_subNatNat(succ(a) * 0, succ(a) * b) by symm rhs_val
+              then Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b)
+                   by trans lhs_s1 and rhs_sym
+            case right : (there exists m : Nat, b = succ(m)) =>
+              obtain hb_s from right
+                case p : p, hbp : b = succ(p) =>
+                have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+                have lhs_sp : Int_mul(neg_succ(a), Int_subNatNat(succ(p), 0)) = neg_succ(a * succ(p) + p) by decide
+                have h_sasp : succ(a * succ(p) + p) = succ(a) * succ(p) by succ_of_mul_succ at a at p
+                have h_sasp_sym : succ(a) * succ(p) = succ(a * succ(p) + p) by symm h_sasp
+                have rhs_sp : Int_subNatNat(0, succ(a * succ(p) + p)) = neg_succ(a * succ(p) + p) by decide
+                have same_sp : Int_subNatNat(0, succ(a * succ(p) + p)) =
+                               Int_subNatNat(0, succ(a * succ(p) + p)) by decide
+                have same_sa0sp : Int_subNatNat(0, succ(a) * succ(p)) =
+                                  Int_subNatNat(0, succ(a) * succ(p)) by decide
+                have rhs1a : Int_subNatNat(succ(a) * 0, succ(a) * succ(p)) =
+                             Int_subNatNat(0, succ(a) * succ(p))
+                             by eq_subst h_sa0 and same_sa0sp
+                have rhs1b : Int_subNatNat(0, succ(a) * succ(p)) =
+                             Int_subNatNat(0, succ(a * succ(p) + p))
+                             by eq_subst h_sasp_sym and same_sp
+                have rhs1 : Int_subNatNat(succ(a) * 0, succ(a) * succ(p)) =
+                            Int_subNatNat(0, succ(a * succ(p) + p))
+                            by trans rhs1a and rhs1b
+                have rhs1_val : Int_subNatNat(succ(a) * 0, succ(a) * succ(p)) = neg_succ(a * succ(p) + p)
+                                by trans rhs1 and rhs_sp
+                have rhs1_sym : neg_succ(a * succ(p) + p) = Int_subNatNat(succ(a) * 0, succ(a) * succ(p))
+                                by symm rhs1_val
+                have lhs_bsp : Int_mul(neg_succ(a), Int_subNatNat(succ(p), 0)) =
+                               Int_subNatNat(succ(a) * 0, succ(a) * succ(p))
+                               by trans lhs_sp and rhs1_sym
+                then Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b)
+                     by eq_subst hbp and lhs_bsp
+              done
+              then Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b)
+                   by hb_s
+          end cases
+          then Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b) by c_b
+        end
+      then for all b : Nat, Int_mul(neg_succ(a), Int_subNatNat(b, 0)) = Int_subNatNat(succ(a) * 0, succ(a) * b)
+           by base_r
+    inductive:
+      -- ih : for all b, neg_succ(a)*Int_subNatNat(b, c) = Int_subNatNat(succ(a)*c, succ(a)*b)
+      have ind_r : for all b : Nat,
+              Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+        proof
+          take b : Nat
+          have hb : (b = 0) or (there exists m : Nat, b = succ(m)) by nat_zero_or_succ at b
+          cases c_b : hb
+            case left : b = 0 =>
+              have hb0 : b = 0 by left
+              -- neg_succ(a)*Int_subNatNat(0, succ(c)) = neg_succ(a)*neg_succ(c) = pos(succ(a)*succ(c)) by decide
+              have lhs_b0 : Int_mul(neg_succ(a), Int_subNatNat(0, succ(c))) = pos(succ(a) * succ(c)) by decide
+              have lhs_s1 : Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = pos(succ(a) * succ(c))
+                            by eq_subst hb0 and lhs_b0
+              -- RHS: Int_subNatNat(succ(a)*succ(c), succ(a)*0) = Int_subNatNat(succ(a)*succ(c), 0)
+              --    = pos(succ(a)*succ(c)) by decide
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              have h_sab : succ(a) * b = succ(a) * 0 by congr hb0
+              have same_rhs : Int_subNatNat(succ(a) * succ(c), 0) = Int_subNatNat(succ(a) * succ(c), 0) by decide
+              have rhs1 : Int_subNatNat(succ(a) * succ(c), succ(a) * 0) =
+                          Int_subNatNat(succ(a) * succ(c), 0)
+                          by eq_subst h_sa0 and same_rhs
+              have rhs1_pos : Int_subNatNat(succ(a) * succ(c), 0) = pos(succ(a) * succ(c)) by decide
+              have rhs1_val : Int_subNatNat(succ(a) * succ(c), succ(a) * 0) = pos(succ(a) * succ(c))
+                              by trans rhs1 and rhs1_pos
+              have same_b : Int_subNatNat(succ(a) * succ(c), succ(a) * 0) =
+                            Int_subNatNat(succ(a) * succ(c), succ(a) * 0) by decide
+              have rhs2 : Int_subNatNat(succ(a) * succ(c), succ(a) * b) =
+                          Int_subNatNat(succ(a) * succ(c), succ(a) * 0)
+                          by eq_subst h_sab and same_b
+              have rhs2_val : Int_subNatNat(succ(a) * succ(c), succ(a) * b) = pos(succ(a) * succ(c))
+                              by trans rhs2 and rhs1_val
+              have rhs_sym : pos(succ(a) * succ(c)) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+                             by symm rhs2_val
+              then Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+                   by trans lhs_s1 and rhs_sym
+            case right : (there exists m : Nat, b = succ(m)) =>
+              obtain hb_s from right
+                case p : p, hbp : b = succ(p) =>
+                -- neg_succ(a)*Int_subNatNat(succ(p), succ(c)) = neg_succ(a)*Int_subNatNat(p, c) by decide
+                have h_reduce : Int_subNatNat(succ(p), succ(c)) = Int_subNatNat(p, c) by decide
+                have ih_p : Int_mul(neg_succ(a), Int_subNatNat(p, c)) = Int_subNatNat(succ(a) * c, succ(a) * p)
+                            by ih at p
+                have h_spc : Int_mul(neg_succ(a), Int_subNatNat(succ(p), succ(c))) = Int_subNatNat(succ(a) * c, succ(a) * p)
+                             by eq_subst h_reduce and ih_p
+                -- succ(a)*succ(c) = succ(a)*c + succ(a); succ(a)*succ(p) = succ(a)*p + succ(a)
+                have h_sc : succ(a) * succ(c) = succ(a) * c + succ(a) by mul_succ at succ(a) at c
+                have h_sp : succ(a) * succ(p) = succ(a) * p + succ(a) by mul_succ at succ(a) at p
+                -- cancel: Int_subNatNat(succ(a)*c+succ(a), succ(a)*p+succ(a)) = Int_subNatNat(succ(a)*c, succ(a)*p)
+                have h_cancel : Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a)) =
+                                Int_subNatNat(succ(a) * c, succ(a) * p)
+                                by Int_subNatNat_cancel at succ(a)*c at succ(a)*p at succ(a)
+                have h_cancel_sym : Int_subNatNat(succ(a) * c, succ(a) * p) =
+                                    Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a))
+                                    by symm h_cancel
+                -- e_c: Int_subNatNat(succ(a)*succ(c), succ(a)*p+succ(a)) = Int_subNatNat(succ(a)*c+succ(a), succ(a)*p+succ(a))
+                have same_ec : Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a)) =
+                               Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a)) by decide
+                have e_c : Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a)) =
+                           Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a))
+                           by eq_subst h_sc and same_ec
+                have e_c_sym : Int_subNatNat(succ(a) * c + succ(a), succ(a) * p + succ(a)) =
+                               Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a))
+                               by symm e_c
+                -- e_p: Int_subNatNat(succ(a)*succ(c), succ(a)*succ(p)) = Int_subNatNat(succ(a)*succ(c), succ(a)*p+succ(a))
+                have same_ep : Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a)) =
+                               Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a)) by decide
+                have e_p : Int_subNatNat(succ(a) * succ(c), succ(a) * succ(p)) =
+                           Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a))
+                           by eq_subst h_sp and same_ep
+                have e_p_sym : Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a)) =
+                               Int_subNatNat(succ(a) * succ(c), succ(a) * succ(p))
+                               by symm e_p
+                -- chain: c,p -> c+sa,p+sa -> sc,p+sa -> sc,sp
+                have chain2 : Int_subNatNat(succ(a) * c, succ(a) * p) =
+                              Int_subNatNat(succ(a) * succ(c), succ(a) * p + succ(a))
+                              by trans h_cancel_sym and e_c_sym
+                have chain3 : Int_subNatNat(succ(a) * c, succ(a) * p) =
+                              Int_subNatNat(succ(a) * succ(c), succ(a) * succ(p))
+                              by trans chain2 and e_p_sym
+                have h_lhs : Int_mul(neg_succ(a), Int_subNatNat(succ(p), succ(c))) =
+                             Int_subNatNat(succ(a) * succ(c), succ(a) * succ(p))
+                             by trans h_spc and chain3
+                then Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+                     by eq_subst hbp and h_lhs
+              done
+              then Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+                   by hb_s
+          end cases
+          then Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b) by c_b
+        end
+      then for all b : Nat, Int_mul(neg_succ(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(succ(a) * succ(c), succ(a) * b)
+           by ind_r
+end
+
+-- ── Left distributivity for pos left factor ───────────────────────────────────
+-- Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+-- Proved using Int_mul_pos_subNatNat + Int_subNatNat_add_left
+-- Case-split on y = pos(b) / neg_succ(b), z = pos(c) / neg_succ(c)
+
+theorem Int_distrib_left_pos :
+    for all a : Nat, for all y : Int, for all z : Int,
+        Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+proof
+  take a : Nat
+  take y : Int
+  take z : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+            by int_zero_or_neg_or_pos at z
+  cases c_y : hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hy_res from left
+        case b : b, hyb : y = pos(b) =>
+        cases c_z : hz
+          case left : (there exists k : Nat, z = pos(k)) =>
+            obtain hz_res from left
+              case c : c, hzc : z = pos(c) =>
+              -- pp case
+              have h_add : Int_add(pos(b), pos(c)) = pos(b + c) by decide
+              have lhs_inner : Int_mul(pos(a), pos(b + c)) = pos(a * (b + c)) by decide
+              have h_dist : a * (b + c) = a * b + a * c by mul_distrib_left at a at b at c
+              have lhs_nat : pos(a * (b + c)) = pos(a * b + a * c) by congr h_dist
+              have lhs_val : Int_mul(pos(a), pos(b + c)) = pos(a * b + a * c) by trans lhs_inner and lhs_nat
+              have lhs_congr : Int_mul(pos(a), Int_add(pos(b), pos(c))) = Int_mul(pos(a), pos(b + c)) by congr h_add
+              have lhs_eq : Int_mul(pos(a), Int_add(pos(b), pos(c))) = pos(a * b + a * c) by trans lhs_congr and lhs_val
+              have rhs_eq : Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), pos(c))) = pos(a * b + a * c) by decide
+              have rhs_sym : pos(a * b + a * c) = Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), pos(c))) by symm rhs_eq
+              have goal_bc : Int_mul(pos(a), Int_add(pos(b), pos(c))) = Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), pos(c)))
+                             by trans lhs_eq and rhs_sym
+              have s1 : Int_mul(pos(a), Int_add(y, pos(c))) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), pos(c)))
+                        by eq_subst hyb and goal_bc
+              then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                   by eq_subst hzc and s1
+            done
+            then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hz_res
+          case right : (there exists k : Nat, z = neg_succ(k)) =>
+            obtain hz_res from right
+              case c : c, hzc : z = neg_succ(c) =>
+              -- pn case: pos(b) + neg_succ(c) = Int_subNatNat(b, succ(c))
+              have h_add : Int_add(pos(b), neg_succ(c)) = Int_subNatNat(b, succ(c)) by decide
+              -- LHS = pos(a) * Int_subNatNat(b, succ(c)) = Int_subNatNat(a*b, a*succ(c))
+              have lhs_val : Int_mul(pos(a), Int_subNatNat(b, succ(c))) = Int_subNatNat(a * b, a * succ(c))
+                             by Int_mul_pos_subNatNat at a at b at succ(c)
+              have lhs_congr_pn : Int_mul(pos(a), Int_add(pos(b), neg_succ(c))) =
+                                  Int_mul(pos(a), Int_subNatNat(b, succ(c))) by congr h_add
+              have lhs_eq : Int_mul(pos(a), Int_add(pos(b), neg_succ(c))) = Int_subNatNat(a * b, a * succ(c))
+                            by trans lhs_congr_pn and lhs_val
+              -- RHS: pos(a)*pos(b) = pos(a*b)
+              have mul_pb : Int_mul(pos(a), pos(b)) = pos(a * b) by decide
+              -- pos(a)*neg_succ(c) = pos(a)*Int_subNatNat(0, succ(c)) = Int_subNatNat(a*0, a*succ(c))
+              have neg_c_form : neg_succ(c) = Int_subNatNat(0, succ(c)) by decide
+              have h_a0 : a * 0 = 0 by mul_zero at a
+              have same_nc : Int_subNatNat(0, a * succ(c)) = Int_subNatNat(0, a * succ(c)) by decide
+              have mul_nc_inner : Int_mul(pos(a), Int_subNatNat(0, succ(c))) = Int_subNatNat(a * 0, a * succ(c))
+                                  by Int_mul_pos_subNatNat at a at 0 at succ(c)
+              have mul_nc_congr : Int_mul(pos(a), neg_succ(c)) = Int_mul(pos(a), Int_subNatNat(0, succ(c)))
+                                  by congr neg_c_form
+              have mul_nc_raw : Int_mul(pos(a), neg_succ(c)) = Int_subNatNat(a * 0, a * succ(c))
+                                by trans mul_nc_congr and mul_nc_inner
+              have mul_nc_step : Int_subNatNat(a * 0, a * succ(c)) = Int_subNatNat(0, a * succ(c))
+                                 by eq_subst h_a0 and same_nc
+              have mul_nc_val : Int_mul(pos(a), neg_succ(c)) = Int_subNatNat(0, a * succ(c))
+                                by trans mul_nc_raw and mul_nc_step
+              -- Int_add(pos(a*b), Int_subNatNat(0, a*succ(c)))
+              -- = Int_subNatNat(a*b+0, a*succ(c)) by Int_subNatNat_add_left (symm)
+              have add_left : Int_subNatNat(a * b + 0, a * succ(c)) =
+                              Int_add(pos(a * b), Int_subNatNat(0, a * succ(c)))
+                              by Int_subNatNat_add_left at a*b at 0 at a*succ(c)
+              have add_left_sym : Int_add(pos(a * b), Int_subNatNat(0, a * succ(c))) =
+                                  Int_subNatNat(a * b + 0, a * succ(c))
+                                  by symm add_left
+              have h_ab0 : a * b + 0 = a * b by add_zero at a*b
+              have same_rhs : Int_subNatNat(a * b, a * succ(c)) = Int_subNatNat(a * b, a * succ(c)) by decide
+              have rhs_inner : Int_subNatNat(a * b + 0, a * succ(c)) = Int_subNatNat(a * b, a * succ(c))
+                               by eq_subst h_ab0 and same_rhs
+              have rhs_chain : Int_add(pos(a * b), Int_subNatNat(0, a * succ(c))) = Int_subNatNat(a * b, a * succ(c))
+                               by trans add_left_sym and rhs_inner
+              -- Now: Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), neg_succ(c)))
+              -- = Int_add(pos(a*b), Int_subNatNat(0, a*succ(c))) by congr mul_pb and congr mul_nc_val
+              have same_rhs2 : Int_add(pos(a * b), Int_subNatNat(0, a * succ(c))) =
+                               Int_add(pos(a * b), Int_subNatNat(0, a * succ(c))) by decide
+              have rhs_sub_nc : Int_add(Int_mul(pos(a), pos(b)), Int_subNatNat(0, a * succ(c))) =
+                                Int_add(pos(a * b), Int_subNatNat(0, a * succ(c)))
+                                by eq_subst mul_pb and same_rhs2
+              have same_rhs3 : Int_add(Int_mul(pos(a), pos(b)), Int_subNatNat(0, a * succ(c))) =
+                               Int_add(Int_mul(pos(a), pos(b)), Int_subNatNat(0, a * succ(c))) by decide
+              have rhs_sub_mul : Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), neg_succ(c))) =
+                                 Int_add(Int_mul(pos(a), pos(b)), Int_subNatNat(0, a * succ(c)))
+                                 by eq_subst mul_nc_val and same_rhs3
+              have rhs_mid : Int_add(Int_mul(pos(a), pos(b)), Int_subNatNat(0, a * succ(c))) =
+                             Int_subNatNat(a * b, a * succ(c))
+                             by trans rhs_sub_nc and rhs_chain
+              have rhs_val : Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), neg_succ(c))) =
+                             Int_subNatNat(a * b, a * succ(c))
+                             by trans rhs_sub_mul and rhs_mid
+              have rhs_sym : Int_subNatNat(a * b, a * succ(c)) =
+                             Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), neg_succ(c)))
+                             by symm rhs_val
+              have goal_bc : Int_mul(pos(a), Int_add(pos(b), neg_succ(c))) =
+                             Int_add(Int_mul(pos(a), pos(b)), Int_mul(pos(a), neg_succ(c)))
+                             by trans lhs_eq and rhs_sym
+              have s1 : Int_mul(pos(a), Int_add(y, neg_succ(c))) =
+                        Int_add(Int_mul(pos(a), y), Int_mul(pos(a), neg_succ(c)))
+                        by eq_subst hyb and goal_bc
+              then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                   by eq_subst hzc and s1
+            done
+            then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hz_res
+        end cases
+        then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by c_z
+      done
+      then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hy_res
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hy_res from right
+        case b : b, hyb : y = neg_succ(b) =>
+        cases c_z : hz
+          case left : (there exists k : Nat, z = pos(k)) =>
+            obtain hz_res from left
+              case c : c, hzc : z = pos(c) =>
+              -- np case: neg_succ(b) + pos(c) = Int_subNatNat(c, succ(b))
+              have h_add : Int_add(neg_succ(b), pos(c)) = Int_subNatNat(c, succ(b)) by decide
+              -- LHS = pos(a) * Int_subNatNat(c, succ(b)) = Int_subNatNat(a*c, a*succ(b))
+              have lhs_val : Int_mul(pos(a), Int_subNatNat(c, succ(b))) = Int_subNatNat(a * c, a * succ(b))
+                             by Int_mul_pos_subNatNat at a at c at succ(b)
+              have lhs_congr_np : Int_mul(pos(a), Int_add(neg_succ(b), pos(c))) =
+                                  Int_mul(pos(a), Int_subNatNat(c, succ(b))) by congr h_add
+              have lhs_eq : Int_mul(pos(a), Int_add(neg_succ(b), pos(c))) = Int_subNatNat(a * c, a * succ(b))
+                            by trans lhs_congr_np and lhs_val
+              -- RHS: pos(a)*neg_succ(b) = Int_subNatNat(0, a*succ(b))
+              have neg_b_form : neg_succ(b) = Int_subNatNat(0, succ(b)) by decide
+              have h_a0 : a * 0 = 0 by mul_zero at a
+              have same_nb : Int_subNatNat(0, a * succ(b)) = Int_subNatNat(0, a * succ(b)) by decide
+              have mul_nb_inner : Int_mul(pos(a), Int_subNatNat(0, succ(b))) = Int_subNatNat(a * 0, a * succ(b))
+                                  by Int_mul_pos_subNatNat at a at 0 at succ(b)
+              have mul_nb_congr : Int_mul(pos(a), neg_succ(b)) = Int_mul(pos(a), Int_subNatNat(0, succ(b)))
+                                  by congr neg_b_form
+              have mul_nb_raw : Int_mul(pos(a), neg_succ(b)) = Int_subNatNat(a * 0, a * succ(b))
+                                by trans mul_nb_congr and mul_nb_inner
+              have mul_nb_step : Int_subNatNat(a * 0, a * succ(b)) = Int_subNatNat(0, a * succ(b))
+                                 by eq_subst h_a0 and same_nb
+              have mul_nb_val : Int_mul(pos(a), neg_succ(b)) = Int_subNatNat(0, a * succ(b))
+                                by trans mul_nb_raw and mul_nb_step
+              -- pos(a)*pos(c) = pos(a*c) = Int_subNatNat(a*c, 0)
+              have mul_pc : Int_mul(pos(a), pos(c)) = pos(a * c) by decide
+              -- Int_add(Int_subNatNat(0, a*succ(b)), pos(a*c))
+              -- Use Int_add_comm: = Int_add(pos(a*c), Int_subNatNat(0, a*succ(b)))
+              -- = Int_subNatNat(a*c+0, a*succ(b)) by Int_subNatNat_add_left
+              -- = Int_subNatNat(a*c, a*succ(b)) by add_zero
+              have comm_nb_pc : Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c)) =
+                                Int_add(pos(a * c), Int_subNatNat(0, a * succ(b)))
+                                by Int_add_comm at Int_subNatNat(0, a*succ(b)) at pos(a*c)
+              have add_left : Int_subNatNat(a * c + 0, a * succ(b)) =
+                              Int_add(pos(a * c), Int_subNatNat(0, a * succ(b)))
+                              by Int_subNatNat_add_left at a*c at 0 at a*succ(b)
+              have add_left_sym : Int_add(pos(a * c), Int_subNatNat(0, a * succ(b))) =
+                                  Int_subNatNat(a * c + 0, a * succ(b))
+                                  by symm add_left
+              have h_ac0 : a * c + 0 = a * c by add_zero at a*c
+              have same_ac : Int_subNatNat(a * c, a * succ(b)) = Int_subNatNat(a * c, a * succ(b)) by decide
+              have rhs_inner : Int_subNatNat(a * c + 0, a * succ(b)) = Int_subNatNat(a * c, a * succ(b))
+                               by eq_subst h_ac0 and same_ac
+              have rhs_pos : Int_add(pos(a * c), Int_subNatNat(0, a * succ(b))) = Int_subNatNat(a * c, a * succ(b))
+                             by trans add_left_sym and rhs_inner
+              have rhs_chain : Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c)) = Int_subNatNat(a * c, a * succ(b))
+                               by trans comm_nb_pc and rhs_pos
+              -- Build RHS: Int_add(mul(pos(a), neg_succ(b)), mul(pos(a), pos(c)))
+              -- = Int_add(Int_subNatNat(0, a*succ(b)), pos(a*c))
+              have same_r2 : Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c)) =
+                             Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c)) by decide
+              have rhs_sub_pc : Int_add(Int_subNatNat(0, a * succ(b)), Int_mul(pos(a), pos(c))) =
+                                Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c))
+                                by eq_subst mul_pc and same_r2
+              have same_r3 : Int_add(Int_subNatNat(0, a * succ(b)), Int_mul(pos(a), pos(c))) =
+                             Int_add(Int_subNatNat(0, a * succ(b)), Int_mul(pos(a), pos(c))) by decide
+              have rhs_sub_nb : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), pos(c))) =
+                                Int_add(Int_subNatNat(0, a * succ(b)), Int_mul(pos(a), pos(c)))
+                                by eq_subst mul_nb_val and same_r3
+              have rhs_r2 : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), pos(c))) =
+                            Int_add(Int_subNatNat(0, a * succ(b)), pos(a * c))
+                            by trans rhs_sub_nb and rhs_sub_pc
+              have rhs_val : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), pos(c))) =
+                             Int_subNatNat(a * c, a * succ(b))
+                             by trans rhs_r2 and rhs_chain
+              have rhs_sym : Int_subNatNat(a * c, a * succ(b)) =
+                             Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), pos(c)))
+                             by symm rhs_val
+              have goal_bc : Int_mul(pos(a), Int_add(neg_succ(b), pos(c))) =
+                             Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), pos(c)))
+                             by trans lhs_eq and rhs_sym
+              have s1 : Int_mul(pos(a), Int_add(y, pos(c))) =
+                        Int_add(Int_mul(pos(a), y), Int_mul(pos(a), pos(c)))
+                        by eq_subst hyb and goal_bc
+              then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                   by eq_subst hzc and s1
+            done
+            then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hz_res
+          case right : (there exists k : Nat, z = neg_succ(k)) =>
+            obtain hz_res from right
+              case c : c, hzc : z = neg_succ(c) =>
+              -- nn case: neg_succ(b) + neg_succ(c) = neg_succ(succ(b+c)) = Int_subNatNat(0, succ(succ(b+c)))
+              have h_add : Int_add(neg_succ(b), neg_succ(c)) = neg_succ(succ(b + c)) by decide
+              have h_neg_form : neg_succ(succ(b + c)) = Int_subNatNat(0, succ(succ(b + c))) by decide
+              -- LHS = pos(a)*Int_subNatNat(0, succ(succ(b+c))) = Int_subNatNat(a*0, a*succ(succ(b+c)))
+              --     = Int_subNatNat(0, a*succ(succ(b+c)))
+              have lhs_inner : Int_mul(pos(a), Int_subNatNat(0, succ(succ(b + c)))) =
+                               Int_subNatNat(a * 0, a * succ(succ(b + c)))
+                               by Int_mul_pos_subNatNat at a at 0 at succ(succ(b+c))
+              have h_a0 : a * 0 = 0 by mul_zero at a
+              have same_lhs : Int_subNatNat(0, a * succ(succ(b + c))) =
+                              Int_subNatNat(0, a * succ(succ(b + c))) by decide
+              have lhs_inner2 : Int_subNatNat(a * 0, a * succ(succ(b + c))) =
+                                Int_subNatNat(0, a * succ(succ(b + c)))
+                                by eq_subst h_a0 and same_lhs
+              have lhs_inner3 : Int_mul(pos(a), Int_subNatNat(0, succ(succ(b + c)))) =
+                                Int_subNatNat(0, a * succ(succ(b + c)))
+                                by trans lhs_inner and lhs_inner2
+              have lhs_neg_congr : Int_mul(pos(a), neg_succ(succ(b + c))) =
+                                   Int_mul(pos(a), Int_subNatNat(0, succ(succ(b + c)))) by congr h_neg_form
+              have lhs_neg : Int_mul(pos(a), neg_succ(succ(b + c))) = Int_subNatNat(0, a * succ(succ(b + c)))
+                             by trans lhs_neg_congr and lhs_inner3
+              have lhs_eq_congr : Int_mul(pos(a), Int_add(neg_succ(b), neg_succ(c))) =
+                                  Int_mul(pos(a), neg_succ(succ(b + c))) by congr h_add
+              have lhs_eq : Int_mul(pos(a), Int_add(neg_succ(b), neg_succ(c))) =
+                            Int_subNatNat(0, a * succ(succ(b + c)))
+                            by trans lhs_eq_congr and lhs_neg
+              -- expand a*succ(succ(b+c)) using mul_distrib_left
+              -- a*succ(succ(b+c)) = a*(succ(b)+succ(c)) since succ(b)+succ(c)=succ(succ(b+c))
+              -- succ(b)+succ(c) = succ(succ(b+c)) by add_succ + succ_add
+              have h_sbs : succ(b) + succ(c) = succ(succ(b) + c) by add_succ at succ(b) at c
+              have h_succ_b : succ(b) + c = succ(b + c) by succ_add at b at c
+              have h_succ_bc : succ(succ(b) + c) = succ(succ(b + c)) by congr h_succ_b
+              have h_sbs_val : succ(b) + succ(c) = succ(succ(b + c)) by trans h_sbs and h_succ_bc
+              have h_sbs_sym : succ(succ(b + c)) = succ(b) + succ(c) by symm h_sbs_val
+              have h_dist : a * (succ(b) + succ(c)) = a * succ(b) + a * succ(c) by mul_distrib_left at a at succ(b) at succ(c)
+              have same_dist : a * succ(succ(b + c)) = a * succ(succ(b + c)) by decide
+              have h_expand : a * succ(succ(b + c)) = a * succ(b) + a * succ(c)
+                proof
+                  have h_rw : a * succ(succ(b + c)) = a * (succ(b) + succ(c)) by congr h_sbs_sym
+                  then a * succ(succ(b + c)) = a * succ(b) + a * succ(c) by trans h_rw and h_dist
+                end
+              -- RHS: pos(a)*neg_succ(b) = Int_subNatNat(0, a*succ(b))
+              --      pos(a)*neg_succ(c) = Int_subNatNat(0, a*succ(c))
+              --      Int_add(Int_subNatNat(0, a*succ(b)), Int_subNatNat(0, a*succ(c)))
+              -- Use Int_neg_succ_add_subNatNat: Int_add(neg_succ(a*succ(b)-1), Int_subNatNat(0, a*succ(c)))
+              -- Hmm, complex. Let me use a direct approach.
+              -- neg_succ(b) = Int_subNatNat(0, succ(b)), neg_succ(c) = Int_subNatNat(0, succ(c))
+              -- mul_nb : pos(a)*neg_succ(b) = Int_subNatNat(0, a*succ(b))
+              have neg_b_form : neg_succ(b) = Int_subNatNat(0, succ(b)) by decide
+              have neg_c_form : neg_succ(c) = Int_subNatNat(0, succ(c)) by decide
+              have same_nb0 : Int_subNatNat(0, a * succ(b)) = Int_subNatNat(0, a * succ(b)) by decide
+              have same_nc0 : Int_subNatNat(0, a * succ(c)) = Int_subNatNat(0, a * succ(c)) by decide
+              have mul_nb_inner : Int_mul(pos(a), Int_subNatNat(0, succ(b))) = Int_subNatNat(a * 0, a * succ(b))
+                                  by Int_mul_pos_subNatNat at a at 0 at succ(b)
+              have mul_nb_congr : Int_mul(pos(a), neg_succ(b)) = Int_mul(pos(a), Int_subNatNat(0, succ(b)))
+                                  by congr neg_b_form
+              have mul_nb_raw : Int_mul(pos(a), neg_succ(b)) = Int_subNatNat(a * 0, a * succ(b))
+                                by trans mul_nb_congr and mul_nb_inner
+              have mul_nb_step : Int_subNatNat(a * 0, a * succ(b)) = Int_subNatNat(0, a * succ(b))
+                                 by eq_subst h_a0 and same_nb0
+              have mul_nb_val : Int_mul(pos(a), neg_succ(b)) = Int_subNatNat(0, a * succ(b))
+                                by trans mul_nb_raw and mul_nb_step
+              have mul_nc_inner : Int_mul(pos(a), Int_subNatNat(0, succ(c))) = Int_subNatNat(a * 0, a * succ(c))
+                                  by Int_mul_pos_subNatNat at a at 0 at succ(c)
+              have mul_nc_congr : Int_mul(pos(a), neg_succ(c)) = Int_mul(pos(a), Int_subNatNat(0, succ(c)))
+                                  by congr neg_c_form
+              have mul_nc_raw : Int_mul(pos(a), neg_succ(c)) = Int_subNatNat(a * 0, a * succ(c))
+                                by trans mul_nc_congr and mul_nc_inner
+              have mul_nc_step : Int_subNatNat(a * 0, a * succ(c)) = Int_subNatNat(0, a * succ(c))
+                                 by eq_subst h_a0 and same_nc0
+              have mul_nc_val : Int_mul(pos(a), neg_succ(c)) = Int_subNatNat(0, a * succ(c))
+                                by trans mul_nc_raw and mul_nc_step
+              -- Int_add(Int_subNatNat(0, a*succ(b)), Int_subNatNat(0, a*succ(c)))
+              -- Use Int_neg_succ_add_subNatNat:
+              -- For a*succ(b) = 0 (a=0): both pos(0), sum is pos(0).
+              -- For a*succ(b) = succ(k):
+              --   Int_subNatNat(0, succ(k)) = neg_succ(k)
+              --   Int_add(neg_succ(k), Int_subNatNat(0, a*succ(c))) = Int_subNatNat(0, succ(a*succ(c)+k))
+              --   But this is Int_subNatNat(0, succ(0 + k + a*succ(c)))... complex
+              -- Instead: case-split on a = 0 or succ(j)
+              have ha2 : (a = 0) or (there exists m : Nat, a = succ(m)) by nat_zero_or_succ at a
+              cases c_a : ha2
+                case left : a = 0 =>
+                  have ha0 : a = 0 by left
+                  -- a=0: pos(a)=pos(0), lhs = pos(0), rhs = pos(0)+pos(0) = pos(0)
+                  have h_a0_2 : Int_mul(pos(0), Int_add(neg_succ(b), neg_succ(c))) = pos(0)
+                                by Int_mul_pos0_any_r at Int_add(neg_succ(b), neg_succ(c))
+                  have ha_pos : pos(a) = pos(0) by congr ha0
+                  have lhs_0 : Int_mul(pos(a), Int_add(y, z)) = pos(0)
+                    proof
+                      have s1 : Int_mul(pos(a), Int_add(neg_succ(b), neg_succ(c))) = pos(0)
+                                by eq_subst ha_pos and h_a0_2
+                      have s2 : Int_mul(pos(a), Int_add(y, neg_succ(c))) = pos(0) by eq_subst hyb and s1
+                      then Int_mul(pos(a), Int_add(y, z)) = pos(0) by eq_subst hzc and s2
+                    end
+                  have h_mul_nb0_v : Int_mul(pos(0), neg_succ(b)) = pos(0) by Int_mul_pos0_any_r at neg_succ(b)
+                  have h_mul_nb0 : Int_mul(pos(a), neg_succ(b)) = pos(0) by eq_subst ha_pos and h_mul_nb0_v
+                  have h_mul_nc0_v : Int_mul(pos(0), neg_succ(c)) = pos(0) by Int_mul_pos0_any_r at neg_succ(c)
+                  have h_mul_nc0 : Int_mul(pos(a), neg_succ(c)) = pos(0) by eq_subst ha_pos and h_mul_nc0_v
+                  have same_0p : Int_add(pos(0), pos(0)) = Int_add(pos(0), pos(0)) by decide
+                  have rhs_nb : Int_add(Int_mul(pos(a), neg_succ(b)), pos(0)) = Int_add(pos(0), pos(0))
+                                by eq_subst h_mul_nb0 and same_0p
+                  have same_0n : Int_add(Int_mul(pos(a), neg_succ(b)), pos(0)) =
+                                 Int_add(Int_mul(pos(a), neg_succ(b)), pos(0)) by decide
+                  have rhs_nc : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c))) =
+                                Int_add(Int_mul(pos(a), neg_succ(b)), pos(0))
+                                by eq_subst h_mul_nc0 and same_0n
+                  have rhs_00 : Int_add(pos(0), pos(0)) = pos(0) by decide
+                  have rhs_mid2 : Int_add(Int_mul(pos(a), neg_succ(b)), pos(0)) = pos(0)
+                                  by trans rhs_nb and rhs_00
+                  have rhs_chain2 : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c))) = pos(0)
+                                    by trans rhs_nc and rhs_mid2
+                  have rhs_val : Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) = pos(0)
+                    proof
+                      have s1 : Int_add(Int_mul(pos(a), y), Int_mul(pos(a), neg_succ(c))) = pos(0)
+                                by eq_subst hyb and rhs_chain2
+                      then Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) = pos(0) by eq_subst hzc and s1
+                    end
+                  have rhs_sym2 : pos(0) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by symm rhs_val
+                  then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                       by trans lhs_0 and rhs_sym2
+                case right : (there exists m : Nat, a = succ(m)) =>
+                  obtain ha_s from right
+                    case j : j, haj : a = succ(j) =>
+                    -- a = succ(j)
+                    -- a*succ(b) = succ(j)*succ(b) = succ(j*succ(b)+b) via succ_of_mul_succ
+                    -- a*succ(c) = succ(j)*succ(c) = succ(j*succ(c)+c) via succ_of_mul_succ
+                    -- a*succ(succ(b+c)) = succ(j)*succ(succ(b+c))
+                    -- = succ(j)*succ(b)+succ(j)*succ(c) = ...
+                    -- Int_add(neg_succ(a*succ(b)-1), neg_succ(a*succ(c)-1)) = neg_succ(succ(a*succ(b)-1+a*succ(c)-1+1))
+                    -- Hmm, let's use the expansion directly.
+                    -- mul_nb_val : pos(a)*neg_succ(b) = Int_subNatNat(0, a*succ(b)) = Int_subNatNat(0, succ(j)*succ(b))
+                    --            = Int_subNatNat(0, succ(j*succ(b)+b)) by succ_of_mul_succ
+                    --            = neg_succ(j*succ(b)+b)
+                    -- Similarly pos(a)*neg_succ(c) = neg_succ(j*succ(c)+c)
+                    -- Int_add(neg_succ(j*succ(b)+b), neg_succ(j*succ(c)+c)) = neg_succ(succ(j*succ(b)+b+j*succ(c)+c))
+                    -- LHS: Int_subNatNat(0, a*succ(succ(b+c))) = Int_subNatNat(0, succ(j)*succ(succ(b+c)))
+                    --     = Int_subNatNat(0, succ(j*succ(succ(b+c))+succ(b+c)))
+                    -- Need: j*succ(succ(b+c))+succ(b+c) = succ(j*succ(b)+b+j*succ(c)+c)
+                    -- This is the pnn_nat_id!
+                    have ha_eq : pos(a) = pos(succ(j)) by congr haj
+                    have h_a_sj : a * succ(b) = succ(j) * succ(b) by congr haj
+                    have h_a_sc : a * succ(c) = succ(j) * succ(c) by congr haj
+                    have h_a_ssc : a * succ(succ(b + c)) = succ(j) * succ(succ(b + c)) by congr haj
+                    -- succ(j)*succ(b) = succ(j*succ(b)+b); succ(j)*succ(c) = succ(j*succ(c)+c)
+                    have h_sjb : succ(j * succ(b) + b) = succ(j) * succ(b) by succ_of_mul_succ at j at b
+                    have h_sjb_sym : succ(j) * succ(b) = succ(j * succ(b) + b) by symm h_sjb
+                    have h_sjc : succ(j * succ(c) + c) = succ(j) * succ(c) by succ_of_mul_succ at j at c
+                    have h_sjc_sym : succ(j) * succ(c) = succ(j * succ(c) + c) by symm h_sjc
+                    -- LHS: Int_subNatNat(0, a*succ(succ(b+c)))
+                    --    = Int_subNatNat(0, succ(j)*succ(succ(b+c)))
+                    --    = Int_subNatNat(0, succ(j*succ(succ(b+c))+succ(b+c))) -- by succ_of_mul_succ at j at succ(b+c)
+                    have h_sj_ssc : succ(j * succ(succ(b + c)) + succ(b + c)) = succ(j) * succ(succ(b + c))
+                                    by succ_of_mul_succ at j at succ(b+c)
+                    have h_sj_ssc_sym : succ(j) * succ(succ(b + c)) = succ(j * succ(succ(b + c)) + succ(b + c))
+                                        by symm h_sj_ssc
+                    -- pnn_nat_id: j*succ(succ(b+c))+succ(b+c) = succ(j*succ(b)+b+j*succ(c)+c)
+                    have pnn_id : j * succ(succ(b + c)) + succ(b + c) = succ(j * succ(b) + b + (j * succ(c) + c))
+                      proof
+                        have h1 : j * succ(b) = j * b + j by mul_succ at j at b
+                        have h2 : j * succ(c) = j * c + j by mul_succ at j at c
+                        have h3 : j * (b + c) = j * b + j * c by mul_distrib_left at j at b at c
+                        have h4 : j * succ(b + c) = j * (b + c) + j by mul_succ at j at b+c
+                        have h5 : j * succ(succ(b + c)) = j * succ(b + c) + j by mul_succ at j at succ(b+c)
+                        then j * succ(succ(b + c)) + succ(b + c) = succ(j * succ(b) + b + (j * succ(c) + c)) by nlinarith
+                      end
+                    -- LHS reduction:
+                    -- a*succ(succ(b+c)) = succ(j)*succ(succ(b+c)) = succ(j*succ(succ(b+c))+succ(b+c))
+                    --                   = succ(succ(j*succ(b)+b+j*succ(c)+c))
+                    have h_lhs_a : a * succ(succ(b + c)) = succ(j * succ(succ(b + c)) + succ(b + c))
+                      proof
+                        then a * succ(succ(b + c)) = succ(j * succ(succ(b + c)) + succ(b + c)) by trans h_a_ssc and h_sj_ssc_sym
+                      end
+                    have pnn_congr : succ(j * succ(succ(b + c)) + succ(b + c)) =
+                                     succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                     by congr pnn_id
+                    have h_lhs_expand : a * succ(succ(b + c)) = succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                        by trans h_lhs_a and pnn_congr
+                    -- LHS of main goal: Int_subNatNat(0, a*succ(succ(b+c)))
+                    --                 = Int_subNatNat(0, succ(succ(j*succ(b)+b+j*succ(c)+c)))
+                    --                 = neg_succ(succ(j*succ(b)+b+j*succ(c)+c)) by decide
+                    have same_lhs2 : Int_subNatNat(0, succ(succ(j * succ(b) + b + (j * succ(c) + c)))) =
+                                     Int_subNatNat(0, succ(succ(j * succ(b) + b + (j * succ(c) + c)))) by decide
+                    have lhs_red : Int_subNatNat(0, a * succ(succ(b + c))) =
+                                   Int_subNatNat(0, succ(succ(j * succ(b) + b + (j * succ(c) + c))))
+                                   by eq_subst h_lhs_expand and same_lhs2
+                    have lhs_neg_val : Int_subNatNat(0, succ(succ(j * succ(b) + b + (j * succ(c) + c)))) =
+                                       neg_succ(succ(j * succ(b) + b + (j * succ(c) + c))) by decide
+                    have lhs_final : Int_subNatNat(0, a * succ(succ(b + c))) =
+                                     neg_succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                     by trans lhs_red and lhs_neg_val
+                    -- RHS reduction:
+                    -- a*succ(b) = succ(j)*succ(b) = succ(j*succ(b)+b)
+                    -- Int_subNatNat(0, a*succ(b)) = Int_subNatNat(0, succ(j*succ(b)+b)) = neg_succ(j*succ(b)+b)
+                    -- a*succ(c) = succ(j)*succ(c) = succ(j*succ(c)+c)
+                    -- Int_subNatNat(0, a*succ(c)) = neg_succ(j*succ(c)+c)
+                    -- Int_add(neg_succ(j*succ(b)+b), neg_succ(j*succ(c)+c)) = neg_succ(succ(j*succ(b)+b+j*succ(c)+c))
+                    have rhs_ab_nat : a * succ(b) = succ(j * succ(b) + b)
+                                      by trans h_a_sj and h_sjb_sym
+                    have same_ab : Int_subNatNat(0, succ(j * succ(b) + b)) =
+                                   Int_subNatNat(0, succ(j * succ(b) + b)) by decide
+                    have rhs_ab : Int_subNatNat(0, a * succ(b)) =
+                                  Int_subNatNat(0, succ(j * succ(b) + b))
+                                  by eq_subst rhs_ab_nat and same_ab
+                    have rhs_ab_step : Int_subNatNat(0, succ(j * succ(b) + b)) = neg_succ(j * succ(b) + b) by decide
+                    have rhs_ab_neg : Int_subNatNat(0, a * succ(b)) = neg_succ(j * succ(b) + b)
+                                      by trans rhs_ab and rhs_ab_step
+                    have rhs_ac_nat : a * succ(c) = succ(j * succ(c) + c)
+                                      by trans h_a_sc and h_sjc_sym
+                    have same_ac : Int_subNatNat(0, succ(j * succ(c) + c)) =
+                                   Int_subNatNat(0, succ(j * succ(c) + c)) by decide
+                    have rhs_ac_pre : Int_subNatNat(0, a * succ(c)) =
+                                      Int_subNatNat(0, succ(j * succ(c) + c))
+                                      by eq_subst rhs_ac_nat and same_ac
+                    have rhs_ac_step : Int_subNatNat(0, succ(j * succ(c) + c)) = neg_succ(j * succ(c) + c) by decide
+                    have rhs_ac : Int_subNatNat(0, a * succ(c)) = neg_succ(j * succ(c) + c)
+                                  by trans rhs_ac_pre and rhs_ac_step
+                    -- mul_nb_val : pos(a)*neg_succ(b) = Int_subNatNat(0, a*succ(b)) = neg_succ(j*succ(b)+b)
+                    have mul_nb_neg : Int_mul(pos(a), neg_succ(b)) = neg_succ(j * succ(b) + b)
+                                      by trans mul_nb_val and rhs_ab_neg
+                    have mul_nc_neg : Int_mul(pos(a), neg_succ(c)) = neg_succ(j * succ(c) + c)
+                                      by trans mul_nc_val and rhs_ac
+                    -- Int_add(neg_succ(j*succ(b)+b), neg_succ(j*succ(c)+c)) = neg_succ(succ(j*succ(b)+b+j*succ(c)+c))
+                    have add_nn : Int_add(neg_succ(j * succ(b) + b), neg_succ(j * succ(c) + c)) =
+                                  neg_succ(succ(j * succ(b) + b + (j * succ(c) + c))) by decide
+                    -- Build: Int_add(mul(a, neg_succ(b)), mul(a, neg_succ(c)))
+                    --      = Int_add(neg_succ(j*succ(b)+b), mul(a, neg_succ(c)))
+                    --      = Int_add(neg_succ(j*succ(b)+b), neg_succ(j*succ(c)+c))
+                    --      = neg_succ(succ(j*succ(b)+b+j*succ(c)+c))
+                    have same_rhs_n1 : Int_add(neg_succ(j * succ(b) + b), Int_mul(pos(a), neg_succ(c))) =
+                                       Int_add(neg_succ(j * succ(b) + b), Int_mul(pos(a), neg_succ(c))) by decide
+                    have rhs_n1 : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c))) =
+                                  Int_add(neg_succ(j * succ(b) + b), Int_mul(pos(a), neg_succ(c)))
+                                  by eq_subst mul_nb_neg and same_rhs_n1
+                    have same_rhs_n2 : Int_add(neg_succ(j * succ(b) + b), neg_succ(j * succ(c) + c)) =
+                                       Int_add(neg_succ(j * succ(b) + b), neg_succ(j * succ(c) + c)) by decide
+                    have rhs_n2 : Int_add(neg_succ(j * succ(b) + b), Int_mul(pos(a), neg_succ(c))) =
+                                  Int_add(neg_succ(j * succ(b) + b), neg_succ(j * succ(c) + c))
+                                  by eq_subst mul_nc_neg and same_rhs_n2
+                    have rhs_n12 : Int_add(neg_succ(j * succ(b) + b), Int_mul(pos(a), neg_succ(c))) =
+                                   neg_succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                   by trans rhs_n2 and add_nn
+                    have rhs_nn : Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c))) =
+                                  neg_succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                  by trans rhs_n1 and rhs_n12
+                    -- Final: LHS (the main goal's LHS) = neg_succ(succ(j*succ(b)+b+j*succ(c)+c)) = RHS
+                    have goal_neg : Int_mul(pos(a), Int_add(neg_succ(b), neg_succ(c))) =
+                                    neg_succ(succ(j * succ(b) + b + (j * succ(c) + c)))
+                                    by trans lhs_eq and lhs_final
+                    have rhs_sym3 : neg_succ(succ(j * succ(b) + b + (j * succ(c) + c))) =
+                                    Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c)))
+                                    by symm rhs_nn
+                    have goal_bc : Int_mul(pos(a), Int_add(neg_succ(b), neg_succ(c))) =
+                                   Int_add(Int_mul(pos(a), neg_succ(b)), Int_mul(pos(a), neg_succ(c)))
+                                   by trans goal_neg and rhs_sym3
+                    have s1 : Int_mul(pos(a), Int_add(y, neg_succ(c))) =
+                              Int_add(Int_mul(pos(a), y), Int_mul(pos(a), neg_succ(c)))
+                              by eq_subst hyb and goal_bc
+                    then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                         by eq_subst hzc and s1
+                  done
+                  then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by ha_s
+              end cases
+              then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by c_a
+            done
+            then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hz_res
+        end cases
+        then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by c_z
+      done
+      then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by hy_res
+  end cases
+  then Int_mul(pos(a), Int_add(y, z)) = Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z)) by c_y
+end
+
+-- Helper: pos(n) = Int_subNatNat(n, 0)
+theorem pos_eq_subNatNat : for all n : Nat, pos(n) = Int_subNatNat(n, 0)
+proof
+  induction h on n : pos(n) = Int_subNatNat(n, 0)
+    base:
+      then pos(0) = Int_subNatNat(0, 0) by decide
+    inductive:
+      then pos(succ(n)) = Int_subNatNat(succ(n), 0) by decide
+end
+
+-- Helper: neg_succ(n) = Int_subNatNat(0, succ(n))
+theorem neg_succ_eq_subNatNat : for all n : Nat, neg_succ(n) = Int_subNatNat(0, succ(n))
+proof
+  induction h on n : neg_succ(n) = Int_subNatNat(0, succ(n))
+    base:
+      then neg_succ(0) = Int_subNatNat(0, succ(0)) by decide
+    inductive:
+      then neg_succ(succ(n)) = Int_subNatNat(0, succ(succ(n))) by decide
+end
+
+-- Helper: Int_add(Int_subNatNat(0, q), Int_subNatNat(r, s)) = Int_subNatNat(r, q + s)
+theorem neg_subNatNat_add : for all q : Nat, for all r : Nat, for all s : Nat,
+    Int_add(Int_subNatNat(0, q), Int_subNatNat(r, s)) = Int_subNatNat(r, q + s)
+proof
+  induction h on q :
+      for all r : Nat, for all s : Nat,
+          Int_add(Int_subNatNat(0, q), Int_subNatNat(r, s)) = Int_subNatNat(r, q + s)
+    base:
+      have base_result : for all r : Nat, for all s : Nat,
+              Int_add(Int_subNatNat(0, 0), Int_subNatNat(r, s)) = Int_subNatNat(r, 0 + s)
+        proof
+          take r : Nat
+          take s : Nat
+          have h_zr : 0 + r = r by zero_add at r
+          have h_sl : Int_subNatNat(0 + r, s) = Int_add(pos(0), Int_subNatNat(r, s))
+                      by Int_subNatNat_add_left at 0 at r at s
+          have h_sym : Int_add(pos(0), Int_subNatNat(r, s)) = Int_subNatNat(0 + r, s)
+                       by symm h_sl
+          have same_rs : Int_subNatNat(r, s) = Int_subNatNat(r, s) by decide
+          have h_congr : Int_subNatNat(0 + r, s) = Int_subNatNat(r, s) by eq_subst h_zr and same_rs
+          have h_pz : Int_add(pos(0), Int_subNatNat(r, s)) = Int_subNatNat(r, s)
+                      by trans h_sym and h_congr
+          have base_pre : Int_add(Int_subNatNat(0, 0), Int_subNatNat(r, s)) = Int_add(pos(0), Int_subNatNat(r, s))
+                          by decide
+          have h_base1 : Int_add(Int_subNatNat(0, 0), Int_subNatNat(r, s)) = Int_subNatNat(r, s)
+                         by trans base_pre and h_pz
+          have h_zs : 0 + s = s by zero_add at s
+          have h_rzs : Int_subNatNat(r, s) = Int_subNatNat(r, 0 + s) by eq_subst h_zs and same_rs
+          then Int_add(Int_subNatNat(0, 0), Int_subNatNat(r, s)) = Int_subNatNat(r, 0 + s)
+               by trans h_base1 and h_rzs
+        end
+      then for all r : Nat, for all s : Nat,
+               Int_add(Int_subNatNat(0, 0), Int_subNatNat(r, s)) = Int_subNatNat(r, 0 + s)
+           by base_result
+    inductive:
+      have ind_result : for all r : Nat, for all s : Nat,
+              Int_add(Int_subNatNat(0, succ(q)), Int_subNatNat(r, s)) = Int_subNatNat(r, succ(q) + s)
+        proof
+          take r : Nat
+          take s : Nat
+          have h_neg_q : Int_subNatNat(0, succ(q)) = neg_succ(q) by decide
+          have h_add : Int_add(neg_succ(q), Int_subNatNat(r, s)) = Int_subNatNat(r, succ(s + q))
+                       by Int_neg_succ_add_subNatNat at q at r at s
+          have h_sqs : succ(s + q) = succ(q) + s by nlinarith
+          have same_r_sqs : Int_subNatNat(r, succ(q) + s) = Int_subNatNat(r, succ(q) + s) by decide
+          have h_red : Int_subNatNat(r, succ(s + q)) = Int_subNatNat(r, succ(q) + s)
+                       by eq_subst h_sqs and same_r_sqs
+          have h_add2 : Int_add(neg_succ(q), Int_subNatNat(r, s)) = Int_subNatNat(r, succ(q) + s)
+                        by trans h_add and h_red
+          have h_pre1 : Int_add(Int_subNatNat(0, succ(q)), Int_subNatNat(r, s)) =
+                        Int_add(neg_succ(q), Int_subNatNat(r, s))
+                        by congr h_neg_q
+          then Int_add(Int_subNatNat(0, succ(q)), Int_subNatNat(r, s)) = Int_subNatNat(r, succ(q) + s)
+               by trans h_pre1 and h_add2
+        end
+      then for all r : Nat, for all s : Nat,
+               Int_add(Int_subNatNat(0, succ(q)), Int_subNatNat(r, s)) = Int_subNatNat(r, succ(q) + s)
+           by ind_result
+end
+
+-- Helper: Int_add(Int_subNatNat(p, 0), Int_subNatNat(r, s)) = Int_subNatNat(p + r, s)
+theorem pos_subNatNat_add : for all p : Nat, for all r : Nat, for all s : Nat,
+    Int_add(Int_subNatNat(p, 0), Int_subNatNat(r, s)) = Int_subNatNat(p + r, s)
+proof
+  take p : Nat
+  take r : Nat
+  take s : Nat
+  have h_add_left : Int_subNatNat(p + r, s) = Int_add(pos(p), Int_subNatNat(r, s))
+                    by Int_subNatNat_add_left at p at r at s
+  have h_sym : Int_add(pos(p), Int_subNatNat(r, s)) = Int_subNatNat(p + r, s)
+               by symm h_add_left
+  have h_pos_eq : Int_subNatNat(p, 0) = pos(p) by decide
+  have same_prs : Int_add(pos(p), Int_subNatNat(r, s)) = Int_add(pos(p), Int_subNatNat(r, s)) by decide
+  have h_congr : Int_add(Int_subNatNat(p, 0), Int_subNatNat(r, s)) = Int_add(pos(p), Int_subNatNat(r, s))
+                 by congr h_pos_eq
+  then Int_add(Int_subNatNat(p, 0), Int_subNatNat(r, s)) = Int_subNatNat(p + r, s)
+       by trans h_congr and h_sym
+end
+
+-- Distributivity for neg_succ factor: neg_succ(a) * (y + z) = neg_succ(a)*y + neg_succ(a)*z
+theorem Int_distrib_neg_left :
+    for all a : Nat, for all y : Int, for all z : Int,
+        Int_mul(neg_succ(a), Int_add(y, z)) = Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+proof
+  take a : Nat
+  take y : Int
+  take z : Int
+  have hy : (there exists k : Nat, y = pos(k)) or (there exists k : Nat, y = neg_succ(k))
+            by int_zero_or_neg_or_pos at y
+  cases c_hy : hy
+    case left : (there exists k : Nat, y = pos(k)) =>
+      obtain hy_res from left
+        case m : m, hym : y = pos(m) =>
+        have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                  by int_zero_or_neg_or_pos at z
+        cases c_hz : hz
+          case left : (there exists k : Nat, z = pos(k)) =>
+            -- pp case: y = pos(m), z = pos(n)
+            obtain hz_res from left
+              case n : n, hzn : z = pos(n) =>
+              -- LHS: neg_succ(a) * Int_add(pos(m), pos(n)) = neg_succ(a) * pos(m+n)
+              have add_pp : Int_add(pos(m), pos(n)) = pos(m + n) by decide
+              -- neg_succ(a) * pos(m) = Int_subNatNat(succ(a)*0, succ(a)*m)  [via Int_mul_neg_subNatNat]
+              -- = Int_subNatNat(0, succ(a)*m)
+              have pos_m_eq : pos(m) = Int_subNatNat(m, 0) by pos_eq_subNatNat at m
+              have pos_n_eq : pos(n) = Int_subNatNat(n, 0) by pos_eq_subNatNat at n
+              have pos_mn_eq : pos(m + n) = Int_subNatNat(m + n, 0) by pos_eq_subNatNat at m+n
+              have mul_nm_raw : Int_mul(neg_succ(a), Int_subNatNat(m, 0)) =
+                                Int_subNatNat(succ(a) * 0, succ(a) * m)
+                                by Int_mul_neg_subNatNat at a at 0 at m
+              have mul_nn_raw : Int_mul(neg_succ(a), Int_subNatNat(n, 0)) =
+                                Int_subNatNat(succ(a) * 0, succ(a) * n)
+                                by Int_mul_neg_subNatNat at a at 0 at n
+              have mul_nmn_raw : Int_mul(neg_succ(a), Int_subNatNat(m + n, 0)) =
+                                 Int_subNatNat(succ(a) * 0, succ(a) * (m + n))
+                                 by Int_mul_neg_subNatNat at a at 0 at m+n
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              -- Int_mul(neg_succ(a), pos(m)) = Int_subNatNat(0, succ(a)*m)
+              have same_sm0 : Int_subNatNat(0, succ(a) * m) = Int_subNatNat(0, succ(a) * m) by decide
+              have mul_nm_step : Int_subNatNat(succ(a) * 0, succ(a) * m) = Int_subNatNat(0, succ(a) * m)
+                                 by eq_subst h_sa0 and same_sm0
+              have mul_nm_sn : Int_mul(neg_succ(a), Int_subNatNat(m, 0)) = Int_subNatNat(0, succ(a) * m)
+                               by trans mul_nm_raw and mul_nm_step
+              have mul_nm_congr : Int_mul(neg_succ(a), pos(m)) = Int_mul(neg_succ(a), Int_subNatNat(m, 0))
+                                  by congr pos_m_eq
+              have mul_nm_val : Int_mul(neg_succ(a), pos(m)) = Int_subNatNat(0, succ(a) * m)
+                                by trans mul_nm_congr and mul_nm_sn
+              -- Int_mul(neg_succ(a), pos(n)) = Int_subNatNat(0, succ(a)*n)
+              have same_sn0 : Int_subNatNat(0, succ(a) * n) = Int_subNatNat(0, succ(a) * n) by decide
+              have mul_nn_step : Int_subNatNat(succ(a) * 0, succ(a) * n) = Int_subNatNat(0, succ(a) * n)
+                                 by eq_subst h_sa0 and same_sn0
+              have mul_nn_sn : Int_mul(neg_succ(a), Int_subNatNat(n, 0)) = Int_subNatNat(0, succ(a) * n)
+                               by trans mul_nn_raw and mul_nn_step
+              have mul_nn_congr : Int_mul(neg_succ(a), pos(n)) = Int_mul(neg_succ(a), Int_subNatNat(n, 0))
+                                  by congr pos_n_eq
+              have mul_nn_val : Int_mul(neg_succ(a), pos(n)) = Int_subNatNat(0, succ(a) * n)
+                                by trans mul_nn_congr and mul_nn_sn
+              -- Int_mul(neg_succ(a), pos(m+n)) = Int_subNatNat(0, succ(a)*(m+n))
+              have same_smn0 : Int_subNatNat(0, succ(a) * (m + n)) = Int_subNatNat(0, succ(a) * (m + n)) by decide
+              have mul_nmn_step : Int_subNatNat(succ(a) * 0, succ(a) * (m + n)) = Int_subNatNat(0, succ(a) * (m + n))
+                                  by eq_subst h_sa0 and same_smn0
+              have mul_nmn_sn : Int_mul(neg_succ(a), Int_subNatNat(m + n, 0)) = Int_subNatNat(0, succ(a) * (m + n))
+                                by trans mul_nmn_raw and mul_nmn_step
+              have mul_nmn_congr : Int_mul(neg_succ(a), pos(m + n)) = Int_mul(neg_succ(a), Int_subNatNat(m + n, 0))
+                                   by congr pos_mn_eq
+              have mul_nmn_val : Int_mul(neg_succ(a), pos(m + n)) = Int_subNatNat(0, succ(a) * (m + n))
+                                 by trans mul_nmn_congr and mul_nmn_sn
+              -- LHS = neg_succ(a) * pos(m+n) = Int_subNatNat(0, succ(a)*(m+n))
+              have lhs_congr : Int_mul(neg_succ(a), Int_add(pos(m), pos(n))) = Int_mul(neg_succ(a), pos(m + n))
+                               by congr add_pp
+              have lhs_val : Int_mul(neg_succ(a), Int_add(pos(m), pos(n))) = Int_subNatNat(0, succ(a) * (m + n))
+                             by trans lhs_congr and mul_nmn_val
+              -- RHS: Int_add(Int_subNatNat(0, succ(a)*m), Int_subNatNat(0, succ(a)*n))
+              --    = Int_subNatNat(0, succ(a)*m + succ(a)*n)
+              have rhs_add : Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(0, succ(a) * n)) =
+                             Int_subNatNat(0, succ(a) * m + succ(a) * n)
+                             by neg_subNatNat_add at succ(a)*m at 0 at succ(a)*n
+              -- succ(a)*m + succ(a)*n = succ(a)*(m+n)
+              have h_distrib_raw : succ(a) * (m + n) = succ(a) * m + succ(a) * n
+                                   by mul_distrib_left at succ(a) at m at n
+              have h_distrib : succ(a) * m + succ(a) * n = succ(a) * (m + n)
+                               by symm h_distrib_raw
+              have same_smn : Int_subNatNat(0, succ(a) * (m + n)) = Int_subNatNat(0, succ(a) * (m + n)) by decide
+              have rhs_distrib : Int_subNatNat(0, succ(a) * m + succ(a) * n) = Int_subNatNat(0, succ(a) * (m + n))
+                                 by eq_subst h_distrib and same_smn
+              have rhs_val : Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(0, succ(a) * n)) =
+                             Int_subNatNat(0, succ(a) * (m + n))
+                             by trans rhs_add and rhs_distrib
+              -- Link mul values to RHS
+              have rhs_nm_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(0, succ(a) * n)) =
+                                  Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(0, succ(a) * n))
+                                  by congr mul_nm_val
+              have same_rhs_nm : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) by decide
+              have rhs_nn_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(0, succ(a) * n))
+                                  by congr mul_nn_val
+              have rhs_mid_pp : Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(0, succ(a) * n)) =
+                               Int_subNatNat(0, succ(a) * (m + n))
+                               by trans rhs_nm_congr and rhs_val
+              have rhs_both : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) =
+                              Int_subNatNat(0, succ(a) * (m + n))
+                              by trans rhs_nn_congr and rhs_mid_pp
+              -- Chain: lhs_val and rhs_both both = Int_subNatNat(0, succ(a)*(m+n))
+              have rhs_sym : Int_subNatNat(0, succ(a) * (m + n)) =
+                             Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n)))
+                             by symm rhs_both
+              have lhs_rhs : Int_mul(neg_succ(a), Int_add(pos(m), pos(n))) =
+                             Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n)))
+                             by trans lhs_val and rhs_sym
+              -- Apply y=pos(m) and z=pos(n) substitutions
+              have same_goal1 : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) =
+                                Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) by decide
+              have rhs_z_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n)))
+                                 by eq_subst hzn and same_goal1
+              have same_lz_pp : Int_mul(neg_succ(a), Int_add(pos(m), pos(n))) =
+                                Int_mul(neg_succ(a), Int_add(pos(m), pos(n))) by decide
+              have lhs_z_congr : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                 Int_mul(neg_succ(a), Int_add(pos(m), pos(n)))
+                                 by eq_subst hzn and same_lz_pp
+              have lhs_step1_pp : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n)))
+                                  by trans lhs_z_congr and lhs_rhs
+              have rhs_z_sym_pp : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), pos(n))) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                  by symm rhs_z_congr
+              have step_z : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                            Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                            by trans lhs_step1_pp and rhs_z_sym_pp
+              have same_goal2 : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) by decide
+              have rhs_y_congr : Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                 by eq_subst hym and same_goal2
+              have same_ly_pp : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                Int_mul(neg_succ(a), Int_add(pos(m), z)) by decide
+              have lhs_y_congr : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                 Int_mul(neg_succ(a), Int_add(pos(m), z))
+                                 by eq_subst hym and same_ly_pp
+              have lhs_step2_pp : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                  by trans lhs_y_congr and step_z
+              have rhs_y_sym_pp : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                  Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                                  by symm rhs_y_congr
+              then Int_mul(neg_succ(a), Int_add(y, z)) =
+                   Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                   by trans lhs_step2_pp and rhs_y_sym_pp
+            done
+            then Int_mul(neg_succ(a), Int_add(y, z)) =
+                 Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hz_res
+          case right : (there exists k : Nat, z = neg_succ(k)) =>
+            -- pn case: y = pos(m), z = neg_succ(n)
+            obtain hz_res from right
+              case n : n, hzn : z = neg_succ(n) =>
+              have add_pn : Int_add(pos(m), neg_succ(n)) = Int_subNatNat(m, succ(n)) by decide
+              have pos_m_eq : pos(m) = Int_subNatNat(m, 0) by pos_eq_subNatNat at m
+              have neg_n_eq : neg_succ(n) = Int_subNatNat(0, succ(n)) by neg_succ_eq_subNatNat at n
+              -- LHS: neg_succ(a) * Int_subNatNat(m, succ(n)) = Int_subNatNat(succ(a)*succ(n), succ(a)*m)
+              have lhs_raw : Int_mul(neg_succ(a), Int_subNatNat(m, succ(n))) =
+                             Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                             by Int_mul_neg_subNatNat at a at succ(n) at m
+              have lhs_congr : Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n))) =
+                               Int_mul(neg_succ(a), Int_subNatNat(m, succ(n)))
+                               by congr add_pn
+              have lhs_val : Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n))) =
+                             Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                             by trans lhs_congr and lhs_raw
+              -- neg_succ(a) * pos(m) = Int_subNatNat(0, succ(a)*m)
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              have mul_nm_raw : Int_mul(neg_succ(a), Int_subNatNat(m, 0)) =
+                                Int_subNatNat(succ(a) * 0, succ(a) * m)
+                                by Int_mul_neg_subNatNat at a at 0 at m
+              have same_sm0 : Int_subNatNat(0, succ(a) * m) = Int_subNatNat(0, succ(a) * m) by decide
+              have mul_nm_step : Int_subNatNat(succ(a) * 0, succ(a) * m) = Int_subNatNat(0, succ(a) * m)
+                                 by eq_subst h_sa0 and same_sm0
+              have mul_nm_sn : Int_mul(neg_succ(a), Int_subNatNat(m, 0)) = Int_subNatNat(0, succ(a) * m)
+                               by trans mul_nm_raw and mul_nm_step
+              have mul_nm_congr : Int_mul(neg_succ(a), pos(m)) = Int_mul(neg_succ(a), Int_subNatNat(m, 0))
+                                  by congr pos_m_eq
+              have mul_nm_val : Int_mul(neg_succ(a), pos(m)) = Int_subNatNat(0, succ(a) * m)
+                                by trans mul_nm_congr and mul_nm_sn
+              -- neg_succ(a) * neg_succ(n) = Int_subNatNat(succ(a)*succ(n), 0)
+              have mul_nn_raw : Int_mul(neg_succ(a), Int_subNatNat(0, succ(n))) =
+                                Int_subNatNat(succ(a) * succ(n), succ(a) * 0)
+                                by Int_mul_neg_subNatNat at a at succ(n) at 0
+              have same_ssn0 : Int_subNatNat(succ(a) * succ(n), 0) = Int_subNatNat(succ(a) * succ(n), 0) by decide
+              have mul_nn_step : Int_subNatNat(succ(a) * succ(n), succ(a) * 0) = Int_subNatNat(succ(a) * succ(n), 0)
+                                 by eq_subst h_sa0 and same_ssn0
+              have mul_nn_sn : Int_mul(neg_succ(a), Int_subNatNat(0, succ(n))) = Int_subNatNat(succ(a) * succ(n), 0)
+                               by trans mul_nn_raw and mul_nn_step
+              have mul_nn_congr : Int_mul(neg_succ(a), neg_succ(n)) = Int_mul(neg_succ(a), Int_subNatNat(0, succ(n)))
+                                  by congr neg_n_eq
+              have mul_nn_val : Int_mul(neg_succ(a), neg_succ(n)) = Int_subNatNat(succ(a) * succ(n), 0)
+                                by trans mul_nn_congr and mul_nn_sn
+              -- RHS: swap + pos_subNatNat_add + Int_add_comm
+              have rhs_add_swap : Int_add(Int_subNatNat(succ(a) * succ(n), 0), Int_subNatNat(0, succ(a) * m)) =
+                                  Int_subNatNat(succ(a) * succ(n) + 0, succ(a) * m)
+                                  by pos_subNatNat_add at succ(a)*succ(n) at 0 at succ(a)*m
+              have h_az_pn : succ(a) * succ(n) + 0 = succ(a) * succ(n) by add_zero at succ(a)*succ(n)
+              have same_sn_sm : Int_subNatNat(succ(a) * succ(n), succ(a) * m) =
+                                Int_subNatNat(succ(a) * succ(n), succ(a) * m) by decide
+              have rhs_simplify : Int_subNatNat(succ(a) * succ(n) + 0, succ(a) * m) =
+                                  Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                                  by eq_subst h_az_pn and same_sn_sm
+              have rhs_val_swap : Int_add(Int_subNatNat(succ(a) * succ(n), 0), Int_subNatNat(0, succ(a) * m)) =
+                                  Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                                  by trans rhs_add_swap and rhs_simplify
+              have rhs_comm : Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(succ(a) * succ(n), 0)) =
+                              Int_add(Int_subNatNat(succ(a) * succ(n), 0), Int_subNatNat(0, succ(a) * m))
+                              by Int_add_comm at Int_subNatNat(0, succ(a)*m) at Int_subNatNat(succ(a)*succ(n), 0)
+              have rhs_val : Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(succ(a) * succ(n), 0)) =
+                             Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                             by trans rhs_comm and rhs_val_swap
+              -- Link mul values to RHS
+              have same_rhs_nm : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) by decide
+              have rhs_nn_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(succ(a) * succ(n), 0))
+                                  by congr mul_nn_val
+              have same_rhs2 : Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                               Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(succ(a) * succ(n), 0)) by decide
+              have rhs_nm_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                                  Int_add(Int_subNatNat(0, succ(a) * m), Int_subNatNat(succ(a) * succ(n), 0))
+                                  by congr mul_nm_val
+              have rhs_mid_pn : Int_add(Int_mul(neg_succ(a), pos(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                               Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                               by trans rhs_nm_congr and rhs_val
+              have rhs_both : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                              Int_subNatNat(succ(a) * succ(n), succ(a) * m)
+                              by trans rhs_nn_congr and rhs_mid_pn
+              have rhs_sym : Int_subNatNat(succ(a) * succ(n), succ(a) * m) =
+                             Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                             by symm rhs_both
+              have lhs_rhs : Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n))) =
+                             Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                             by trans lhs_val and rhs_sym
+              have same_goal1 : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) by decide
+              have rhs_z_congr : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                                 by eq_subst hzn and same_goal1
+              have same_lz_pn : Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n))) =
+                                Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n))) by decide
+              have lhs_z_congr : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                 Int_mul(neg_succ(a), Int_add(pos(m), neg_succ(n)))
+                                 by eq_subst hzn and same_lz_pn
+              have lhs_step1_pn : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                                  by trans lhs_z_congr and lhs_rhs
+              have rhs_z_sym_pn : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                  by symm rhs_z_congr
+              have step_z : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                            Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                            by trans lhs_step1_pn and rhs_z_sym_pn
+              have same_goal2 : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) by decide
+              have rhs_y_congr : Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                 by eq_subst hym and same_goal2
+              have same_ly_pn : Int_mul(neg_succ(a), Int_add(pos(m), z)) =
+                                Int_mul(neg_succ(a), Int_add(pos(m), z)) by decide
+              have lhs_y_congr : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                 Int_mul(neg_succ(a), Int_add(pos(m), z))
+                                 by eq_subst hym and same_ly_pn
+              have lhs_step2_pn : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                  Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z))
+                                  by trans lhs_y_congr and step_z
+              have rhs_y_sym_pn : Int_add(Int_mul(neg_succ(a), pos(m)), Int_mul(neg_succ(a), z)) =
+                                  Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                                  by symm rhs_y_congr
+              then Int_mul(neg_succ(a), Int_add(y, z)) =
+                   Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                   by trans lhs_step2_pn and rhs_y_sym_pn
+            done
+            then Int_mul(neg_succ(a), Int_add(y, z)) =
+                 Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hz_res
+        end cases
+        then Int_mul(neg_succ(a), Int_add(y, z)) =
+             Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by c_hz
+      done
+      then Int_mul(neg_succ(a), Int_add(y, z)) =
+           Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hy_res
+    case right : (there exists k : Nat, y = neg_succ(k)) =>
+      obtain hy_res from right
+        case m : m, hym : y = neg_succ(m) =>
+        have hz : (there exists k : Nat, z = pos(k)) or (there exists k : Nat, z = neg_succ(k))
+                  by int_zero_or_neg_or_pos at z
+        cases c_hz : hz
+          case left : (there exists k : Nat, z = pos(k)) =>
+            -- np case: y = neg_succ(m), z = pos(n)
+            obtain hz_res from left
+              case n : n, hzn : z = pos(n) =>
+              have add_np : Int_add(neg_succ(m), pos(n)) = Int_subNatNat(n, succ(m)) by decide
+              have neg_m_eq : neg_succ(m) = Int_subNatNat(0, succ(m)) by neg_succ_eq_subNatNat at m
+              have pos_n_eq : pos(n) = Int_subNatNat(n, 0) by pos_eq_subNatNat at n
+              -- LHS: neg_succ(a) * Int_subNatNat(n, succ(m)) = Int_subNatNat(succ(a)*succ(m), succ(a)*n)
+              have lhs_raw : Int_mul(neg_succ(a), Int_subNatNat(n, succ(m))) =
+                             Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                             by Int_mul_neg_subNatNat at a at succ(m) at n
+              have lhs_congr : Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n))) =
+                               Int_mul(neg_succ(a), Int_subNatNat(n, succ(m)))
+                               by congr add_np
+              have lhs_val : Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n))) =
+                             Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                             by trans lhs_congr and lhs_raw
+              -- neg_succ(a) * neg_succ(m) = Int_subNatNat(succ(a)*succ(m), 0)
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              have mul_nm_raw : Int_mul(neg_succ(a), Int_subNatNat(0, succ(m))) =
+                                Int_subNatNat(succ(a) * succ(m), succ(a) * 0)
+                                by Int_mul_neg_subNatNat at a at succ(m) at 0
+              have same_ssm0 : Int_subNatNat(succ(a) * succ(m), 0) = Int_subNatNat(succ(a) * succ(m), 0) by decide
+              have mul_nm_step : Int_subNatNat(succ(a) * succ(m), succ(a) * 0) = Int_subNatNat(succ(a) * succ(m), 0)
+                                 by eq_subst h_sa0 and same_ssm0
+              have mul_nm_sn : Int_mul(neg_succ(a), Int_subNatNat(0, succ(m))) = Int_subNatNat(succ(a) * succ(m), 0)
+                               by trans mul_nm_raw and mul_nm_step
+              have mul_nm_congr : Int_mul(neg_succ(a), neg_succ(m)) = Int_mul(neg_succ(a), Int_subNatNat(0, succ(m)))
+                                  by congr neg_m_eq
+              have mul_nm_val : Int_mul(neg_succ(a), neg_succ(m)) = Int_subNatNat(succ(a) * succ(m), 0)
+                                by trans mul_nm_congr and mul_nm_sn
+              -- neg_succ(a) * pos(n) = Int_subNatNat(0, succ(a)*n)
+              have mul_nn_raw : Int_mul(neg_succ(a), Int_subNatNat(n, 0)) =
+                                Int_subNatNat(succ(a) * 0, succ(a) * n)
+                                by Int_mul_neg_subNatNat at a at 0 at n
+              have same_sn0 : Int_subNatNat(0, succ(a) * n) = Int_subNatNat(0, succ(a) * n) by decide
+              have mul_nn_step : Int_subNatNat(succ(a) * 0, succ(a) * n) = Int_subNatNat(0, succ(a) * n)
+                                 by eq_subst h_sa0 and same_sn0
+              have mul_nn_sn : Int_mul(neg_succ(a), Int_subNatNat(n, 0)) = Int_subNatNat(0, succ(a) * n)
+                               by trans mul_nn_raw and mul_nn_step
+              have mul_nn_congr : Int_mul(neg_succ(a), pos(n)) = Int_mul(neg_succ(a), Int_subNatNat(n, 0))
+                                  by congr pos_n_eq
+              have mul_nn_val : Int_mul(neg_succ(a), pos(n)) = Int_subNatNat(0, succ(a) * n)
+                                by trans mul_nn_congr and mul_nn_sn
+              -- RHS: Int_add(Int_subNatNat(succ(a)*succ(m), 0), Int_subNatNat(0, succ(a)*n))
+              --    = Int_subNatNat(succ(a)*succ(m) + 0, succ(a)*n)
+              --    = Int_subNatNat(succ(a)*succ(m), succ(a)*n)
+              have rhs_add : Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(0, succ(a) * n)) =
+                             Int_subNatNat(succ(a) * succ(m) + 0, succ(a) * n)
+                             by pos_subNatNat_add at succ(a)*succ(m) at 0 at succ(a)*n
+              have h_m0 : succ(a) * succ(m) + 0 = succ(a) * succ(m) by add_zero at succ(a)*succ(m)
+              have same_ssm_sn : Int_subNatNat(succ(a) * succ(m), succ(a) * n) =
+                                 Int_subNatNat(succ(a) * succ(m), succ(a) * n) by decide
+              have rhs_simplify : Int_subNatNat(succ(a) * succ(m) + 0, succ(a) * n) =
+                                  Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                                  by eq_subst h_m0 and same_ssm_sn
+              have rhs_val : Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(0, succ(a) * n)) =
+                             Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                             by trans rhs_add and rhs_simplify
+              -- Link mul values to RHS
+              have same_rhs_nm : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) by decide
+              have rhs_nn_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(0, succ(a) * n))
+                                  by congr mul_nn_val
+              have same_rhs2 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(0, succ(a) * n)) =
+                               Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(0, succ(a) * n)) by decide
+              have rhs_nm_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(0, succ(a) * n)) =
+                                  Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(0, succ(a) * n))
+                                  by congr mul_nm_val
+              have rhs_mid_np : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(0, succ(a) * n)) =
+                               Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                               by trans rhs_nm_congr and rhs_val
+              have rhs_both : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) =
+                              Int_subNatNat(succ(a) * succ(m), succ(a) * n)
+                              by trans rhs_nn_congr and rhs_mid_np
+              have rhs_sym : Int_subNatNat(succ(a) * succ(m), succ(a) * n) =
+                             Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n)))
+                             by symm rhs_both
+              have lhs_rhs : Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n))) =
+                             Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n)))
+                             by trans lhs_val and rhs_sym
+              have same_goal1 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) =
+                                Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) by decide
+              have rhs_z_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n)))
+                                 by eq_subst hzn and same_goal1
+              have same_lz_np : Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n))) =
+                                Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n))) by decide
+              have lhs_z_congr : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                 Int_mul(neg_succ(a), Int_add(neg_succ(m), pos(n)))
+                                 by eq_subst hzn and same_lz_np
+              have lhs_step1_np : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n)))
+                                  by trans lhs_z_congr and lhs_rhs
+              have rhs_z_sym_np : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), pos(n))) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                  by symm rhs_z_congr
+              have step_z : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                            Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                            by trans lhs_step1_np and rhs_z_sym_np
+              have same_goal2 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) by decide
+              have rhs_y_congr : Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                 by eq_subst hym and same_goal2
+              have same_ly_np : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) by decide
+              have lhs_y_congr : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                 Int_mul(neg_succ(a), Int_add(neg_succ(m), z))
+                                 by eq_subst hym and same_ly_np
+              have lhs_step2_np : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                  by trans lhs_y_congr and step_z
+              have rhs_y_sym_np : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                  Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                                  by symm rhs_y_congr
+              then Int_mul(neg_succ(a), Int_add(y, z)) =
+                   Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                   by trans lhs_step2_np and rhs_y_sym_np
+            done
+            then Int_mul(neg_succ(a), Int_add(y, z)) =
+                 Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hz_res
+          case right : (there exists k : Nat, z = neg_succ(k)) =>
+            -- nn case: y = neg_succ(m), z = neg_succ(n)
+            obtain hz_res from right
+              case n : n, hzn : z = neg_succ(n) =>
+              have add_nn : Int_add(neg_succ(m), neg_succ(n)) = neg_succ(succ(m + n)) by decide
+              have neg_m_eq : neg_succ(m) = Int_subNatNat(0, succ(m)) by neg_succ_eq_subNatNat at m
+              have neg_n_eq : neg_succ(n) = Int_subNatNat(0, succ(n)) by neg_succ_eq_subNatNat at n
+              have neg_mn_eq : neg_succ(succ(m + n)) = Int_subNatNat(0, succ(succ(m + n)))
+                               by neg_succ_eq_subNatNat at succ(m+n)
+              -- LHS: neg_succ(a) * neg_succ(succ(m+n)) = Int_subNatNat(succ(a)*succ(succ(m+n)), 0)
+              have h_sa0 : succ(a) * 0 = 0 by mul_zero at succ(a)
+              have lhs_mul_raw : Int_mul(neg_succ(a), Int_subNatNat(0, succ(succ(m + n)))) =
+                                 Int_subNatNat(succ(a) * succ(succ(m + n)), succ(a) * 0)
+                                 by Int_mul_neg_subNatNat at a at succ(succ(m+n)) at 0
+              have same_sssmn0 : Int_subNatNat(succ(a) * succ(succ(m + n)), 0) =
+                                 Int_subNatNat(succ(a) * succ(succ(m + n)), 0) by decide
+              have lhs_mul_step : Int_subNatNat(succ(a) * succ(succ(m + n)), succ(a) * 0) =
+                                  Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                  by eq_subst h_sa0 and same_sssmn0
+              have lhs_mul_sn : Int_mul(neg_succ(a), Int_subNatNat(0, succ(succ(m + n)))) =
+                                Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                by trans lhs_mul_raw and lhs_mul_step
+              have lhs_mul_congr : Int_mul(neg_succ(a), neg_succ(succ(m + n))) =
+                                   Int_mul(neg_succ(a), Int_subNatNat(0, succ(succ(m + n))))
+                                   by congr neg_mn_eq
+              have lhs_mul_val : Int_mul(neg_succ(a), neg_succ(succ(m + n))) =
+                                 Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                 by trans lhs_mul_congr and lhs_mul_sn
+              have lhs_add_congr : Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n))) =
+                                   Int_mul(neg_succ(a), neg_succ(succ(m + n)))
+                                   by congr add_nn
+              have lhs_val : Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n))) =
+                             Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                             by trans lhs_add_congr and lhs_mul_val
+              -- neg_succ(a) * neg_succ(m) = Int_subNatNat(succ(a)*succ(m), 0)
+              have mul_nm_raw : Int_mul(neg_succ(a), Int_subNatNat(0, succ(m))) =
+                                Int_subNatNat(succ(a) * succ(m), succ(a) * 0)
+                                by Int_mul_neg_subNatNat at a at succ(m) at 0
+              have same_ssm0 : Int_subNatNat(succ(a) * succ(m), 0) = Int_subNatNat(succ(a) * succ(m), 0) by decide
+              have mul_nm_step : Int_subNatNat(succ(a) * succ(m), succ(a) * 0) = Int_subNatNat(succ(a) * succ(m), 0)
+                                 by eq_subst h_sa0 and same_ssm0
+              have mul_nm_sn : Int_mul(neg_succ(a), Int_subNatNat(0, succ(m))) = Int_subNatNat(succ(a) * succ(m), 0)
+                               by trans mul_nm_raw and mul_nm_step
+              have mul_nm_congr : Int_mul(neg_succ(a), neg_succ(m)) = Int_mul(neg_succ(a), Int_subNatNat(0, succ(m)))
+                                  by congr neg_m_eq
+              have mul_nm_val : Int_mul(neg_succ(a), neg_succ(m)) = Int_subNatNat(succ(a) * succ(m), 0)
+                                by trans mul_nm_congr and mul_nm_sn
+              -- neg_succ(a) * neg_succ(n) = Int_subNatNat(succ(a)*succ(n), 0)
+              have mul_nn_raw : Int_mul(neg_succ(a), Int_subNatNat(0, succ(n))) =
+                                Int_subNatNat(succ(a) * succ(n), succ(a) * 0)
+                                by Int_mul_neg_subNatNat at a at succ(n) at 0
+              have same_ssn0 : Int_subNatNat(succ(a) * succ(n), 0) = Int_subNatNat(succ(a) * succ(n), 0) by decide
+              have mul_nn_step : Int_subNatNat(succ(a) * succ(n), succ(a) * 0) = Int_subNatNat(succ(a) * succ(n), 0)
+                                 by eq_subst h_sa0 and same_ssn0
+              have mul_nn_sn : Int_mul(neg_succ(a), Int_subNatNat(0, succ(n))) = Int_subNatNat(succ(a) * succ(n), 0)
+                               by trans mul_nn_raw and mul_nn_step
+              have mul_nn_congr : Int_mul(neg_succ(a), neg_succ(n)) = Int_mul(neg_succ(a), Int_subNatNat(0, succ(n)))
+                                  by congr neg_n_eq
+              have mul_nn_val : Int_mul(neg_succ(a), neg_succ(n)) = Int_subNatNat(succ(a) * succ(n), 0)
+                                by trans mul_nn_congr and mul_nn_sn
+              -- RHS: pos_subNatNat_add at succ(a)*succ(m) at succ(a)*succ(n) at 0
+              -- gives Int_add(Int_subNatNat(succ(a)*succ(m), 0), Int_subNatNat(succ(a)*succ(n), 0))
+              --     = Int_subNatNat(succ(a)*succ(m) + succ(a)*succ(n), 0)
+              -- But the checker's ForallElim comparison requires the declared prop to match
+              -- the substituted form, so we avoid 0+0 by using a separate add_zero step.
+              have rhs_add : Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(succ(a) * succ(n), 0)) =
+                             Int_subNatNat(succ(a) * succ(m) + succ(a) * succ(n), 0)
+                             by pos_subNatNat_add at succ(a)*succ(m) at succ(a)*succ(n) at 0
+              -- succ(a)*succ(m) + succ(a)*succ(n) = succ(a)*(succ(m)+succ(n)) = succ(a)*succ(succ(m+n))
+              have h_distrib_raw : succ(a) * (succ(m) + succ(n)) = succ(a) * succ(m) + succ(a) * succ(n)
+                                   by mul_distrib_left at succ(a) at succ(m) at succ(n)
+              have h_distrib : succ(a) * succ(m) + succ(a) * succ(n) = succ(a) * (succ(m) + succ(n))
+                               by symm h_distrib_raw
+              have h_succ_sum : succ(m) + succ(n) = succ(succ(m + n)) by nlinarith
+              have h_mul_ssn : succ(a) * (succ(m) + succ(n)) = succ(a) * succ(succ(m + n))
+                               by congr h_succ_sum
+              have h_sum_expand : succ(a) * succ(m) + succ(a) * succ(n) = succ(a) * succ(succ(m + n))
+                                  by trans h_distrib and h_mul_ssn
+              have same_rhs1 : Int_subNatNat(succ(a) * succ(succ(m + n)), 0) =
+                               Int_subNatNat(succ(a) * succ(succ(m + n)), 0) by decide
+              have rhs_expand : Int_subNatNat(succ(a) * succ(m) + succ(a) * succ(n), 0) =
+                                Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                by eq_subst h_sum_expand and same_rhs1
+              have rhs_add_val : Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(succ(a) * succ(n), 0)) =
+                                 Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                 by trans rhs_add and rhs_expand
+              -- Link mul values to RHS
+              have same_rhs_nm : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) by decide
+              have rhs_nn_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(succ(a) * succ(n), 0))
+                                  by congr mul_nn_val
+              have same_rhs2 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                               Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(succ(a) * succ(n), 0)) by decide
+              have rhs_nm_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                                  Int_add(Int_subNatNat(succ(a) * succ(m), 0), Int_subNatNat(succ(a) * succ(n), 0))
+                                  by congr mul_nm_val
+              have rhs_mid_nn : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_subNatNat(succ(a) * succ(n), 0)) =
+                                Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                                by trans rhs_nm_congr and rhs_add_val
+              have rhs_both : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                              Int_subNatNat(succ(a) * succ(succ(m + n)), 0)
+                              by trans rhs_nn_congr and rhs_mid_nn
+              have rhs_sym : Int_subNatNat(succ(a) * succ(succ(m + n)), 0) =
+                             Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                             by symm rhs_both
+              have lhs_rhs : Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n))) =
+                             Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                             by trans lhs_val and rhs_sym
+              have same_goal1 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) by decide
+              have rhs_z_congr : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                                 by eq_subst hzn and same_goal1
+              have same_lz_nn : Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n))) =
+                                Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n))) by decide
+              have lhs_z_congr : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                 Int_mul(neg_succ(a), Int_add(neg_succ(m), neg_succ(n)))
+                                 by eq_subst hzn and same_lz_nn
+              have lhs_step1_nn : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n)))
+                                  by trans lhs_z_congr and lhs_rhs
+              have rhs_z_sym_nn : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), neg_succ(n))) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                  by symm rhs_z_congr
+              have step_z : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                            Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                            by trans lhs_step1_nn and rhs_z_sym_nn
+              have same_goal2 : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) by decide
+              have rhs_y_congr : Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) =
+                                 Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                 by eq_subst hym and same_goal2
+              have same_ly_nn : Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) =
+                                Int_mul(neg_succ(a), Int_add(neg_succ(m), z)) by decide
+              have lhs_y_congr : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                 Int_mul(neg_succ(a), Int_add(neg_succ(m), z))
+                                 by eq_subst hym and same_ly_nn
+              have lhs_step2_nn : Int_mul(neg_succ(a), Int_add(y, z)) =
+                                  Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z))
+                                  by trans lhs_y_congr and step_z
+              have rhs_y_sym_nn : Int_add(Int_mul(neg_succ(a), neg_succ(m)), Int_mul(neg_succ(a), z)) =
+                                  Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                                  by symm rhs_y_congr
+              then Int_mul(neg_succ(a), Int_add(y, z)) =
+                   Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                   by trans lhs_step2_nn and rhs_y_sym_nn
+            done
+            then Int_mul(neg_succ(a), Int_add(y, z)) =
+                 Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hz_res
+        end cases
+        then Int_mul(neg_succ(a), Int_add(y, z)) =
+             Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by c_hz
+      done
+      then Int_mul(neg_succ(a), Int_add(y, z)) =
+           Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by hy_res
+  end cases
+  then Int_mul(neg_succ(a), Int_add(y, z)) =
+       Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z)) by c_hy
+end
+
+-- Left distributivity: x * (y + z) = x*y + x*z for all Int x, y, z.
+-- Case-splits on x: pos(a) uses Int_distrib_left_pos, neg_succ(a) uses Int_distrib_neg_left.
+theorem Int_distrib_left :
+    for all x : Int, for all y : Int, for all z : Int,
+        Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z))
+proof
+  take x : Int
+  take y : Int
+  take z : Int
+  have hx : (there exists k : Nat, x = pos(k)) or (there exists k : Nat, x = neg_succ(k))
+            by int_zero_or_neg_or_pos at x
+  cases c_hx : hx
+    case left : (there exists k : Nat, x = pos(k)) =>
+      obtain hx_res from left
+        case a : a, hxa : x = pos(a) =>
+        have h_pos : Int_mul(pos(a), Int_add(y, z)) =
+                     Int_add(Int_mul(pos(a), y), Int_mul(pos(a), z))
+                     by Int_distrib_left_pos at a at y at z
+        then Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z))
+             by eq_subst hxa and h_pos
+      done
+      then Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z)) by hx_res
+    case right : (there exists k : Nat, x = neg_succ(k)) =>
+      obtain hx_res from right
+        case a : a, hxa : x = neg_succ(a) =>
+        have h_neg : Int_mul(neg_succ(a), Int_add(y, z)) =
+                     Int_add(Int_mul(neg_succ(a), y), Int_mul(neg_succ(a), z))
+                     by Int_distrib_neg_left at a at y at z
+        then Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z))
+             by eq_subst hxa and h_neg
+      done
+      then Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z)) by hx_res
+  end cases
+  then Int_mul(x, Int_add(y, z)) = Int_add(Int_mul(x, y), Int_mul(x, z)) by c_hx
+end
+
+-- Right distributivity: (x + y) * z = x*z + y*z for all Int x, y, z.
+-- Follows from left distributivity and commutativity, discharged by ring.
+theorem Int_distrib_right :
+    for all x : Int, for all y : Int, for all z : Int,
+        Int_mul(Int_add(x, y), z) = Int_add(Int_mul(x, z), Int_mul(y, z))
+proof
+  take x : Int
+  take y : Int
+  take z : Int
+  then Int_mul(Int_add(x, y), z) = Int_add(Int_mul(x, z), Int_mul(y, z)) by ring
+end
